@@ -62,6 +62,7 @@ build_lib(
         model/p4-nic-pna.cc
         model/p4-switch-net-device.cc
         model/custom-p2p-net-device.cc
+        model/p4-controller.cc
         helper/p4-helper.cc
         helper/p4-topology-reader-helper.cc
         helper/p4-p2p-helper.cc
@@ -84,6 +85,7 @@ build_lib(
         model/p4-nic-pna.h
         model/p4-switch-net-device.h
         model/custom-p2p-net-device.h
+        model/p4-controller.h
         helper/p4-helper.h
         helper/p4-topology-reader-helper.h
         helper/p4-p2p-helper.h

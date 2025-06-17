@@ -193,3 +193,14 @@ build_lib_example(
     ${libapplications}
     ${libnetwork}
 )
+
+# p4-controller test
+build_lib_example(Add commentMore actions
+  NAME flow-table-test
+  SOURCE_FILES test-flow-table.cc
+    LIBRARIES_TO_LINK
+    ${libp4sim}
+    ${libinternet}
+    ${libapplications}
+    ${libnetwork}
+  )
