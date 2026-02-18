@@ -185,6 +185,33 @@ std::string ParseParam(std::string& inputStr, unsigned int bitWidth);
 
 uint64_t getTickCount(); // Get current time (ms)
 
+/**
+ * @brief Get the P4Sim project root directory path.
+ *
+ * Reads from the environment variable P4SIM_DIR. If not set, falls back
+ * to a path relative to the executable location.
+ *
+ * Set the environment variable in your shell:
+ *   export P4SIM_DIR="/path/to/ns3/contrib/p4sim"
+ *
+ * @return The absolute path to the p4sim directory.
+ */
+std::string GetP4SimDir();
+
+/**
+ * @brief Get the path to the P4Sim examples/p4src directory.
+ *
+ * Convenience function that returns GetP4SimDir() + "/examples/p4src".
+ * Use this as a base path and append specific example subdirectories.
+ *
+ * Example:
+ *   GetP4ExamplePath() => "/home/user/ns3/contrib/p4sim/examples/p4src"
+ *   GetP4ExamplePath() + "/source_routing" => ".../p4src/source_routing"
+ *
+ * @return The full absolute path to examples/p4src.
+ */
+std::string GetP4ExamplePath();
+
 } // namespace ns3
 
 #endif /* FORMAT_UTILS_H */

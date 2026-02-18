@@ -87,12 +87,11 @@ main(int argc, char* argv[])
     std::string appDataRate = "1Mbps"; // Default application data rate
     bool enableTracePcap = false;
 
-    std::string p4JsonPath =
-        "/home/p4/workdir/ns-3-dev-git/contrib/p4sim/examples/p4src/fat-tree/switch.json";
-    std::string flowTableDirPath =
-        "/home/p4/workdir/ns-3-dev-git/contrib/p4sim/examples/p4src/fat-tree/";
-    std::string topoInput =
-        "/home/p4/workdir/ns-3-dev-git/contrib/p4sim/examples/p4src/fat-tree/topo.txt";
+    // Use P4SIM_DIR environment variable for portable paths
+    std::string p4SrcDir = GetP4ExamplePath() + "/fat-tree";
+    std::string p4JsonPath = p4SrcDir + "/switch.json";
+    std::string flowTableDirPath = p4SrcDir + "/";
+    std::string topoInput = p4SrcDir + "/topo.txt";
     std::string topoFormat("CsmaTopo");
 
     // ============================  command line ============================
