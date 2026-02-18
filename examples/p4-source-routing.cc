@@ -46,10 +46,9 @@
 #include "ns3/network-module.h"
 #include "ns3/p4-helper.h"
 #include "ns3/p4-topology-reader-helper.h"
-#include "ns3/packet-socket-helper.h"
-#include "ns3/packet-socket-factory.h"
 #include "ns3/packet-socket-address.h"
-#include "ns3/system-path.h"
+#include "ns3/packet-socket-factory.h"
+#include "ns3/packet-socket-helper.h"
 #include "ns3/udp-header.h"
 #include "ns3/ipv4-header.h"
 #include "ns3/loopback-net-device.h"
@@ -374,13 +373,10 @@ main(int argc, char* argv[])
     std::string ns3_link_rate = "1000Mbps";
     bool enableTracePcap = true;
 
-    // Use relative paths based on the executable location
-    // Executable is in: build/contrib/p4sim/examples/
-    // We need to go up 4 levels to reach project root, then down to contrib/p4sim/examples/p4src/source_routing
-    std::string exePath = SystemPath::FindSelfDirectory();
-    std::string p4SrcDir = SystemPath::Append(exePath, "../../contrib/p4sim/examples/p4src/source_routing");
-    std::string p4JsonPath = SystemPath::Append(p4SrcDir, "source_routing.json");
-    std::string topoInput = SystemPath::Append(p4SrcDir, "topo.txt");
+    // Use P4SIM_DIR environment variable for portable paths
+    std::string p4SrcDir = GetP4ExamplePath() + "/source_routing";
+    std::string p4JsonPath = p4SrcDir + "/source_routing.json";
+    std::string topoInput = p4SrcDir + "/topo.txt";
     std::string topoFormat("CsmaTopo");
 
     // ============================  command line ============================

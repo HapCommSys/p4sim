@@ -19,10 +19,12 @@
 
 #include "ns3/format-utils.h"
 #include "ns3/log.h"
+#include "ns3/system-path.h"
 
 #include <algorithm>
 #include <chrono>
 #include <cmath>
+#include <cstdlib>
 #include <cstring>
 #include <iomanip>
 #include <iostream>
@@ -381,6 +383,28 @@ getTickCount()
     return std::chrono::duration_cast<std::chrono::milliseconds>(
                std::chrono::steady_clock::now().time_since_epoch())
         .count();
+}
+
+std::string
+GetP4SimDir()
+{
+    const char* envDir = std::getenv("P4SIM_DIR");
+    if (envDir != nullptr && std::string(envDir).length() > 0)
+    {
+        return std::string(envDir);
+    }
+
+    // Fallback: derive from executable location
+    // Executable is typically in: <ns3-root>/build/contrib/p4sim/examples/
+    // We need: <ns3-root>/contrib/p4sim/
+    std::string exePath = SystemPath::FindSelfDirectory();
+    return SystemPath::Append(exePath, "../../../../contrib/p4sim");
+}
+
+std::string
+GetP4ExamplePath()
+{
+    return GetP4SimDir() + "/examples/p4src";
 }
 
 } // namespace ns3

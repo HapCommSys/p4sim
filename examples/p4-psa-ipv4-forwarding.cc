@@ -176,12 +176,12 @@ main(int argc, char* argv[])
     std::string ns3_link_rate = "1000Mbps";
     bool enableTracePcap = true;
 
-    std::string p4JsonPath =
-        "/home/p4/workdir/ns-3-dev-git/contrib/p4sim/examples/p4src/simple_psa/simple_psa.json";
+    // Use P4SIM_DIR environment variable for portable paths
+    std::string p4SrcDir = GetP4ExamplePath() + "/simple_psa";
+    std::string p4JsonPath = p4SrcDir + "/simple_psa.json";
     std::string flowTablePath =
         ""; // ignore, because this p4 script "simple_psa.json" include the flow table configuration
-    std::string topoInput =
-        "/home/p4/workdir/ns-3-dev-git/contrib/p4sim/examples/p4src/simple_psa/topo.txt";
+    std::string topoInput = p4SrcDir + "/topo.txt";
     std::string topoFormat("CsmaTopo");
 
     // ============================  command line ============================

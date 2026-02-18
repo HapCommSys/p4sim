@@ -21,10 +21,10 @@ main(int argc, char* argv[])
     LogComponentEnable("RoutingTest", LOG_LEVEL_INFO);
 
     // P4 parameters
-    std::string p4JsonPath =
-        "/home/p4/workdir/ns-3-dev-git/contrib/p4sim/examples/p4src/routing_test/routing_test.json";
-    std::string flowTableDirPath =
-        "/home/p4/workdir/ns-3-dev-git/contrib/p4sim/examples/p4src/routing_test/";
+    // Use P4SIM_DIR environment variable for portable paths
+    std::string p4SrcDir = GetP4ExamplePath() + "/routing_test";
+    std::string p4JsonPath = p4SrcDir + "/routing_test.json";
+    std::string flowTableDirPath = p4SrcDir + "/";
 
     NodeContainer routers;
     routers.Create(1); // R0, R1, R2

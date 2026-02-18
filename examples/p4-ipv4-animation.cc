@@ -43,11 +43,13 @@ main(int argc, char* argv[])
 
     std::string ns3_link_rate = "1000Mbps";
 
-    std::string p4JsonPath =
-        "/home/p4/workdir/ns3.35/contrib/p4sim/test/test_simple/test_simple.json";
-    std::string flowTablePath =
-        "/home/p4/workdir/ns3.35/contrib/p4sim/test/test_simple/flowtable_0.txt";
-    std::string topoInput = "/home/p4/workdir/ns3.35/contrib/p4sim/test/test_simple/topo.txt";
+    // Use P4SIM_DIR environment variable for portable paths
+    // NOTE: original path was test/test_simple which no longer exists.
+    // Update the subdirectory below to match your actual P4 program location.
+    std::string p4SrcDir = GetP4ExamplePath() + "/simple_v1model";
+    std::string p4JsonPath = p4SrcDir + "/simple_v1model.json";
+    std::string flowTablePath = p4SrcDir + "/flowtable_0.txt";
+    std::string topoInput = p4SrcDir + "/topo.txt";
     std::string topoFormat("CsmaTopo");
 
     // ============================ topo -> network ============================

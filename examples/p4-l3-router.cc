@@ -22,10 +22,10 @@ main(int argc, char* argv[])
     Config::SetDefault("ns3::ArpCache::DeadTimeout", TimeValue(Seconds(0)));
 
     // P4 parameters
-    std::string p4JsonPath =
-        "/home/p4/workdir/ns-3-dev-git/contrib/p4sim/examples/p4src/l3_router/l3_router.json";
-    std::string flowTableDirPath =
-        "/home/p4/workdir/ns-3-dev-git/contrib/p4sim/examples/p4src/l3_router/";
+    // Use P4SIM_DIR environment variable for portable paths
+    std::string p4SrcDir = GetP4ExamplePath() + "/l3_router";
+    std::string p4JsonPath = p4SrcDir + "/l3_router.json";
+    std::string flowTableDirPath = p4SrcDir + "/";
 
     std::vector<NetDeviceContainer> routerPortsNetDevices(3);
 

@@ -196,17 +196,6 @@ build_lib_example(
 
 # p4-controller test
 build_lib_example(
-  NAME flow-table-test
-  SOURCE_FILES test-flow-table.cc
-    LIBRARIES_TO_LINK
-    ${libp4sim}
-    ${libinternet}
-    ${libapplications}
-    ${libnetwork}
-)
-
-# p4-controller test
-build_lib_example(
   NAME p4-basic-controller
   SOURCE_FILES p4-basic-controller.cc
     LIBRARIES_TO_LINK
@@ -219,7 +208,7 @@ build_lib_example(
 
 #p4 - controller test
 build_lib_example(
-    NAME p4-action-profile
+    NAME p4-controller-action-profile
     SOURCE_FILES p4-controller-action-profile.cc 
     LIBRARIES_TO_LINK 
     ${libp4sim} 
