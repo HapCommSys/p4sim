@@ -8,7 +8,7 @@
 #include "ns3/format-utils.h"
 #include "ns3/p4-topology-reader-helper.h"
 #include <iomanip>
-#include <filesystem> // C++17 文件系统支持
+#include <filesystem>
 
 using namespace ns3;
 
@@ -143,7 +143,7 @@ main (int argc, char *argv[])
 
   // ============================ parameters ============================
 
-  ns3::PacketMetadata::Enable (); // 开启数据包元数据追踪
+  ns3::PacketMetadata::Enable ();
 
   // ============================ parameters ============================
 

@@ -30,6 +30,7 @@ def build(bld):
         'utils/format-utils.cc',
         'utils/switch-api.cc',
         'utils/p4-queue.cc',
+        'utils/fattree-topo-helper.cc',
         'model/p4-bridge-channel.cc',
         'model/p4-p2p-channel.cc',
         'model/custom-header.cc',
@@ -41,9 +42,11 @@ def build(bld):
         'model/p4-nic-pna.cc',
         'model/p4-switch-net-device.cc',
         'model/custom-p2p-net-device.cc',
+        'model/p4-controller.cc',
         'helper/p4-helper.cc',
         'helper/p4-topology-reader-helper.cc',
         'helper/p4-p2p-helper.cc',
+        'helper/build-flowtable-helper.cc',
     ]
 
     module_test = bld.create_ns3_module_test_library('p4sim')
@@ -69,6 +72,7 @@ def build(bld):
         'utils/switch-api.h',
         'utils/register-access-v1model.h',
         'utils/primitives-v1model.h',
+        'utils/fattree-topo-helper.h',
         'model/p4-bridge-channel.h',
         'model/p4-p2p-channel.h',
         'model/custom-header.h',
@@ -80,9 +84,11 @@ def build(bld):
         'model/p4-nic-pna.h',
         'model/p4-switch-net-device.h',
         'model/custom-p2p-net-device.h',
+        'model/p4-controller.h',
         'helper/p4-helper.h',
         'helper/p4-topology-reader-helper.h',
         'helper/p4-p2p-helper.h',
+        'helper/build-flowtable-helper.h',
     ]
 
     # Add library dependencies (Deprecated)

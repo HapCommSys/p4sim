@@ -80,7 +80,7 @@ main(int argc, char* argv[])
     csma.SetChannelAttribute("DataRate", StringValue(ns3_link_rate)); //@todo
     csma.SetChannelAttribute("Delay", TimeValue(MilliSeconds(0.01)));
 
-    // 创建并安装网络设备
+    // Create and install network devices
     NetDeviceContainer terminalDevices = csma.Install(terminals);
     NetDeviceContainer switchDevices = csma.Install(switchNode);
     uint32_t nTerminals = terminals.GetN();
@@ -89,12 +89,12 @@ main(int argc, char* argv[])
     std::cout << "Number of Terminals: " << nTerminals << std::endl;
     std::cout << "Number of Switches: " << nSwitches << std::endl;
 
-    // 安装网络协议栈
+    // Install the Internet stack
     InternetStackHelper internet;
     internet.Install(terminals);
     internet.Install(switchNode);
 
-    // 分配 IP 地址
+    // Assign IP addresses
     Ipv4AddressHelper ipv4;
     ipv4.SetBase("10.1.1.0", "255.255.255.0");
     std::vector<Ipv4InterfaceContainer> terminalInterfaces(hostNum);

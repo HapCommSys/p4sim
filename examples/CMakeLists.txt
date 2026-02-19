@@ -1,231 +1,165 @@
+# ──────────────────────────────────────────────────────────────────────
+# P4Sim examples — CMake build definitions
+# ──────────────────────────────────────────────────────────────────────
+# Common library sets used by most examples.  Collecting them in
+# variables keeps the per-target blocks short and easy to maintain.
+# ──────────────────────────────────────────────────────────────────────
 
-# [ ================= V1model Arch ================= ]
+# Base libraries required by virtually every P4 example
+set(P4SIM_BASE_LIBS
+  ${libp4sim}
+  ${libinternet}
+  ${libapplications}
+  ${libnetwork}
+)
 
-# simple 2 hosts 1 switch topology [ipv4 forwarding]
+# Base + CSMA (the most common combination)
+set(P4SIM_CSMA_LIBS ${P4SIM_BASE_LIBS} ${libcsma})
+
+# ========================= V1model Architecture =======================
+
+# 2 hosts, 1 switch — IPv4 forwarding
 build_lib_example(
   NAME p4-v1model-ipv4-forwarding
   SOURCE_FILES p4-v1model-ipv4-forwarding.cc
-  LIBRARIES_TO_LINK
-    ${libp4sim}
-    ${libinternet}
-    ${libapplications}
-    ${libnetwork}
-    ${libcsma}
+  LIBRARIES_TO_LINK ${P4SIM_CSMA_LIBS}
 )
 
-# simple 3 hosts 3 router line topology [ipv4 L3 forwarding]
+# 3 hosts, 3 routers (line topology) — L3 forwarding
 build_lib_example(
   NAME p4-l3-router
   SOURCE_FILES p4-l3-router.cc
-  LIBRARIES_TO_LINK
-    ${libp4sim}
-    ${libinternet}
-    ${libapplications}
-    ${libnetwork}
-    ${libcsma}
+  LIBRARIES_TO_LINK ${P4SIM_CSMA_LIBS}
 )
 
-# 4 hosts 4 switches topology [ipv4 forwarding]
+# 4 hosts, 4 switches — IPv4 forwarding
 build_lib_example(
   NAME p4-basic-example
   SOURCE_FILES p4-basic-example.cc
-  LIBRARIES_TO_LINK
-    ${libp4sim}
-    ${libinternet}
-    ${libapplications}
-    ${libnetwork}
-    ${libcsma}
+  LIBRARIES_TO_LINK ${P4SIM_CSMA_LIBS}
 )
 
-# 3 hosts 3 switches topology [tunnel]
+# 3 hosts, 3 switches — tunnel with custom header
 build_lib_example(
   NAME p4-basic-tunnel
   SOURCE_FILES p4-basic-tunnel.cc
-  LIBRARIES_TO_LINK
-    ${libp4sim}
-    ${libinternet}
-    ${libapplications}
-    ${libnetwork}
+  LIBRARIES_TO_LINK ${P4SIM_BASE_LIBS}
 )
 
-# 4 hosts 4 switches topology [Firewall]
+# 4 hosts, 4 switches — stateful firewall
 build_lib_example(
   NAME p4-firewall
   SOURCE_FILES p4-firewall.cc
-  LIBRARIES_TO_LINK
-    ${libp4sim}
-    ${libinternet}
-    ${libapplications}
-    ${libnetwork}
-    ${libcsma}
+  LIBRARIES_TO_LINK ${P4SIM_CSMA_LIBS}
 )
 
-# 4 hosts 4 switches topology [Link Monitoring]
+# 4 hosts, 4 switches — in-band link monitoring
 build_lib_example(
   NAME p4-link-monitoring
   SOURCE_FILES p4-link-monitoring.cc
-  LIBRARIES_TO_LINK
-    ${libp4sim}
-    ${libinternet}
-    ${libapplications}
-    ${libnetwork}
-    ${libcsma}
+  LIBRARIES_TO_LINK ${P4SIM_CSMA_LIBS}
 )
 
-# 4 hosts 4 switches topology [Link Monitoring]
+# Spine-leaf topology — ECMP load balancing
 build_lib_example(
   NAME p4-spine-leaf-topo
   SOURCE_FILES p4-spine-leaf-topo.cc
-  LIBRARIES_TO_LINK
-    ${libp4sim}
-    ${libinternet}
-    ${libapplications}
-    ${libnetwork}
-    ${libcsma}
-    ${libflow-monitor}
+  LIBRARIES_TO_LINK ${P4SIM_BASE_LIBS}
 )
 
-# fattree test
+# Fat-tree topology — auto-generated with P4 switches
 build_lib_example(
   NAME p4-topo-fattree
   SOURCE_FILES p4-topo-fattree.cc
-  LIBRARIES_TO_LINK
-    ${libp4sim}
-    ${libinternet}
-    ${libapplications}
-    ${libnetwork}
-    ${libcsma}
+  LIBRARIES_TO_LINK ${P4SIM_CSMA_LIBS}
 )
 
-# [ ================= PSA Arch ================= ]
-
-# simple 2 hosts 1 switch topology [ipv4 forwarding]
+# Source routing with custom headers
 build_lib_example(
-  NAME p4-psa-ipv4-forwarding
-  SOURCE_FILES p4-psa-ipv4-forwarding.cc
-  LIBRARIES_TO_LINK
-    ${libp4sim}
-    ${libinternet}
-    ${libapplications}
-    ${libnetwork}
-    ${libcsma}
+  NAME p4-source-routing
+  SOURCE_FILES p4-source-routing.cc
+  LIBRARIES_TO_LINK ${P4SIM_CSMA_LIBS}
 )
 
-# [ ================= NO P4 ================= ]
-
-# simple 2 hosts sending with custom header [p2p]
-build_lib_example(
-  NAME p4-p2p-custom-header-test
-  SOURCE_FILES p4-p2p-custom-header-test.cc
-  LIBRARIES_TO_LINK
-    ${libp4sim}
-    ${libinternet}
-    ${libapplications}
-    ${libnetwork}
-)
-
-# fattree test
-build_lib_example(
-  NAME topo-fattree
-  SOURCE_FILES topo-fattree.cc
-  LIBRARIES_TO_LINK
-    ${libp4sim}
-    ${libinternet}
-    ${libapplications}
-    ${libnetwork}
-    ${libnix-vector-routing}
-    ${libcsma}
-)
-
-# [ ================= Test ================= ]
-
-# custom header test
-build_lib_example(
-  NAME p4-custom-header-test
-  SOURCE_FILES p4-custom-header-test.cc
-  LIBRARIES_TO_LINK
-    ${libp4sim}
-)
-
-# network test
-build_lib_example(
-  NAME net-test
-  SOURCE_FILES net-test.cc
-  LIBRARIES_TO_LINK
-    ${libp4sim}
-    ${libinternet}
-    ${libapplications}
-    ${libnetwork}
-    ${libcsma}
-)
-
-# network test
-build_lib_example(
-  NAME routing-test
-  SOURCE_FILES routing-test.cc
-  LIBRARIES_TO_LINK
-    ${libp4sim}
-    ${libinternet}
-    ${libapplications}
-    ${libnetwork}
-    ${libcsma}
-)
-
-# network test
-build_lib_example(
-  NAME p4-traffic-gene
-  SOURCE_FILES p4-traffic-gene.cc
-  LIBRARIES_TO_LINK
-    ${libp4sim}
-    ${libinternet}
-    ${libapplications}
-    ${libnetwork}
-    ${libpoint-to-point}
-)
-
-# network test
-build_lib_example(
-  NAME p4-queue-test
-  SOURCE_FILES p4-queue-test.cc
-  LIBRARIES_TO_LINK
-    ${libp4sim}
-    ${libinternet}
-    ${libapplications}
-    ${libnetwork}
-)
-
-# p4-controller test
+# Runtime controller — flow-table updates
 build_lib_example(
   NAME p4-basic-controller
   SOURCE_FILES p4-basic-controller.cc
-    LIBRARIES_TO_LINK
-    ${libp4sim}
-    ${libinternet}
-    ${libapplications}
-    ${libnetwork}
-    ${libcsma}
+  LIBRARIES_TO_LINK ${P4SIM_CSMA_LIBS}
 )
 
-#p4 - controller test
+# Controller with action profiles
 build_lib_example(
-    NAME p4-controller-action-profile
-    SOURCE_FILES p4-controller-action-profile.cc 
-    LIBRARIES_TO_LINK 
-    ${libp4sim} 
-    ${libinternet} 
-    ${libapplications} 
-    ${libnetwork} 
-    ${libcsma}
+  NAME p4-controller-action-profile
+  SOURCE_FILES p4-controller-action-profile.cc
+  LIBRARIES_TO_LINK ${P4SIM_CSMA_LIBS}
 )
 
-#p4-source-routing 
-build_lib_example( Add commentMore actions
-  NAME p4-source-routing
-  SOURCE_FILES p4-source-routing.cc
-  LIBRARIES_TO_LINK
-    ${libp4sim}
-    ${libinternet}
-    ${libapplications}
-    ${libnetwork}
-    ${libcsma}
+# QoS-aware queuing test
+build_lib_example(
+  NAME p4-queue-test
+  SOURCE_FILES p4-queue-test.cc
+  LIBRARIES_TO_LINK ${P4SIM_BASE_LIBS}
+)
+
+# IPv4 forwarding with NetAnim visualisation
+build_lib_example(
+  NAME p4-ipv4-animation
+  SOURCE_FILES p4-ipv4-animation.cc
+  LIBRARIES_TO_LINK ${P4SIM_CSMA_LIBS} ${libnetanim} ${libmobility}
+)
+
+# ========================= PSA Architecture ===========================
+
+# 2 hosts, 1 switch — IPv4 forwarding (PSA)
+build_lib_example(
+  NAME p4-psa-ipv4-forwarding
+  SOURCE_FILES p4-psa-ipv4-forwarding.cc
+  LIBRARIES_TO_LINK ${P4SIM_CSMA_LIBS}
+)
+
+# ========================= Non-P4 Helpers =============================
+
+# P2P channel with custom header (no P4 program)
+build_lib_example(
+  NAME p4-p2p-custom-header-test
+  SOURCE_FILES p4-p2p-custom-header-test.cc
+  LIBRARIES_TO_LINK ${P4SIM_BASE_LIBS}
+)
+
+# Fat-tree topology using nix-vector routing (no P4 program)
+build_lib_example(
+  NAME topo-fattree
+  SOURCE_FILES topo-fattree.cc
+  LIBRARIES_TO_LINK ${P4SIM_CSMA_LIBS} ${libnix-vector-routing}
+)
+
+# ========================= Unit / Dev Tests ===========================
+
+# Custom header parsing test
+build_lib_example(
+  NAME p4-custom-header-test
+  SOURCE_FILES p4-custom-header-test.cc
+  LIBRARIES_TO_LINK ${libp4sim}
+)
+
+# CSMA network smoke test
+build_lib_example(
+  NAME net-test
+  SOURCE_FILES net-test.cc
+  LIBRARIES_TO_LINK ${P4SIM_CSMA_LIBS}
+)
+
+# Static routing integration test
+build_lib_example(
+  NAME routing-test
+  SOURCE_FILES routing-test.cc
+  LIBRARIES_TO_LINK ${P4SIM_CSMA_LIBS}
+)
+
+# Point-to-point traffic generation test
+build_lib_example(
+  NAME p4-traffic-gene
+  SOURCE_FILES p4-traffic-gene.cc
+  LIBRARIES_TO_LINK ${P4SIM_BASE_LIBS} ${libpoint-to-point}
 )

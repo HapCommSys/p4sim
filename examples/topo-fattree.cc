@@ -13,6 +13,7 @@
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  *
  * Authors: <https://github.com/kphf1995cm/>
+ * Authors: Mingyu Ma <mingyu.ma@tu-dresden.de>
  */
 
 #include "ns3/applications-module.h"

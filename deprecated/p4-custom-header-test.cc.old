@@ -258,26 +258,22 @@ main ()
   NS_LOG_INFO ("===================================================");
 
   // Test for adding to the packet
-  // 创建一个空的数据包
   Ptr<Packet> packet = Create<Packet> (1000);
   NS_LOG_INFO ("No header added. Packet size: " << packet->GetSize ());
 
-  // 创建 Ethernet 头部
   EthernetHeader ethHeader;
   ethHeader.SetSource (Mac48Address ("00:11:22:33:44:55"));
   ethHeader.SetDestination (Mac48Address ("AA:BB:CC:DD:EE:FF"));
   ethHeader.SetLengthType (0x0800); // IPv4
 
-  // **创建 IPv4 Header**
   Ipv4Header ipv4Header;
   ipv4Header.SetSource (Ipv4Address ("1.1.1.1"));
   ipv4Header.SetDestination (Ipv4Address ("1.1.1.2"));
-  ipv4Header.SetProtocol (17); // UDP 协议
-  ipv4Header.SetTtl (64); // TTL 设置
+  ipv4Header.SetProtocol (17);
+  ipv4Header.SetTtl (64);
   NS_LOG_INFO ("# IPv4 TTL (should be 64): " << (uint32_t) ipv4Header.GetTtl ());
   NS_LOG_INFO ("# IPv4 Protocol (should be 17): " << (uint32_t) ipv4Header.GetProtocol ());
 
-  // 将头部添加到数据包
   packet->AddHeader (ipv4Header);
   NS_LOG_INFO ("IPv4 Header added. Packet size (should +20-60): " << packet->GetSize ());
   packet->AddHeader (ethHeader);

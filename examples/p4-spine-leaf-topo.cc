@@ -1,3 +1,22 @@
+/*
+ * Copyright (c) 2026 TU Dresden
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation;
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software
+ * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+ *
+ * Authors: Mingyu Ma <mingyu.ma@tu-dresden.de>
+ */
+
 #include "ns3/applications-module.h"
 #include "ns3/bridge-helper.h"
 #include "ns3/core-module.h"
@@ -190,7 +209,7 @@ TxCallback_switch_5(Ptr<const Packet> packet)
                                               << ", Total bytes: " << switch5.totalTxBytes);
 }
 
-// 统计吞吐量并打印
+// Calculate and print throughput statistics
 void
 CalculateThroughput()
 {
@@ -210,13 +229,13 @@ CalculateThroughput()
     switch3.totalRxBytes_lasttime = switch3.totalRxBytes;
     switch5.totalTxBytes_lasttime = switch5.totalTxBytes;
 
-    // 打印吞吐量信息
+    // Print throughput information
     NS_LOG_INFO("Time: " << currentTime << "s | Throughput (Mbps) - " << "Switch0(Rx): "
                          << throughput_switch0 << ", " << "Switch2(Rx): " << throughput_switch2
                          << ", " << "Switch3(Rx): " << throughput_switch3 << ", "
                          << "Switch5(Tx): " << throughput_switch5);
 
-    // 追加写入文件
+    // Append to output file
     std::ofstream outFile("throughput_log_1.txt", std::ios::app);
     if (outFile.is_open())
     {
@@ -229,7 +248,7 @@ CalculateThroughput()
         NS_LOG_ERROR("Unable to open file for writing.");
     }
 
-    // 每秒再次调用自身
+    // Re-schedule every second
     Simulator::Schedule(Seconds(1.0), &CalculateThroughput);
 }
 
@@ -383,7 +402,7 @@ main(int argc, char* argv[])
         for (unsigned int j = 0; j < switchNodes[i].switchDevices.GetN(); j++)
         {
             uint32_t netDeviceId =
-                switchNodes[i].switchDevices.Get(j)->GetIfIndex(); // 获取 NetDevice ID
+                switchNodes[i].switchDevices.Get(j)->GetIfIndex(); // Get NetDevice ID
             NS_LOG_INFO("  - Port " << j << " (Device ID: " << netDeviceId << ") connected to "
                                     << switchNodes[i].switchPortInfos[j]);
         }
@@ -451,11 +470,11 @@ main(int argc, char* argv[])
             Ptr<NetDevice> netDevice = switchNodes[i].switchDevices.Get(j);
             Ptr<Ipv4> ipv4 = switchNode.Get(i)->GetObject<Ipv4>();
 
-            // 获取 MAC 地址
+            // Get the MAC address
             Mac48Address mac = Mac48Address::ConvertFrom(netDevice->GetAddress());
 
-            // 获取 IP 地址
-            Ipv4Address ipAddr = Ipv4Address("0.0.0.0"); // 默认值
+            // Get the IP address
+            Ipv4Address ipAddr = Ipv4Address("0.0.0.0"); // default
             int32_t interfaceIndex = ipv4->GetInterfaceForDevice(netDevice);
             if (interfaceIndex != -1)
             {
@@ -533,37 +552,37 @@ main(int argc, char* argv[])
     Ptr<Ipv4> ipv4_adder = serverNode->GetObject<Ipv4>();
     Ipv4Address serverAddr = ipv4_adder->GetAddress(1, 0).GetLocal();
 
-    // **创建 PacketSink 并绑定所有端口**
+    // Create a PacketSink bound to the starting port
     PacketSinkHelper sink("ns3::UdpSocketFactory",
                           InetSocketAddress(Ipv4Address::GetAny(), servPortStart));
     ApplicationContainer sinkApp = sink.Install(serverNode);
     sinkApp.Start(Seconds(sink_start_time));
     sinkApp.Stop(Seconds(sink_stop_time));
 
-    // **创建多个 UDP 数据流**
+    // Create multiple UDP flows
     for (uint16_t port = servPortStart; port < servPortEnd; port++)
     {
         InetSocketAddress dst(serverAddr, port);
 
-        // 配置客户端（OnOffApplication）
+        // Configure the client (OnOffApplication)
         OnOffHelper onOff("ns3::UdpSocketFactory", dst);
         onOff.SetAttribute("PacketSize", UintegerValue(pktSize));
         onOff.SetAttribute("DataRate", StringValue(appDataRate));
-        // 设置开启时间 (OnTime) 和 关闭时间 (OffTime) 为随机分布
-        // 创建随机变量并设置不同种子
+        // Set random on/off time distributions
+        // Create random variables with different seeds
         Ptr<ExponentialRandomVariable> onTime = CreateObject<ExponentialRandomVariable>();
         Ptr<ExponentialRandomVariable> offTime = CreateObject<ExponentialRandomVariable>();
 
         onTime->SetAttribute("Mean", DoubleValue(2.0));
         offTime->SetAttribute("Mean", DoubleValue(1.0));
 
-        // 为每个流分配一个唯一的种子
+        // Assign a unique stream (seed) to each flow
         onTime->SetAttribute(
             "Stream",
             IntegerValue(servPortStart)); // flowId should be different for each flow
         offTime->SetAttribute("Stream", IntegerValue(servPortStart + 1000)); // Avoid overlap
 
-        // 将变量绑定到 OnOffApplication
+        // Bind the random variables to the OnOffApplication
         onOff.SetAttribute("OnTime", PointerValue(onTime));
         onOff.SetAttribute("OffTime", PointerValue(offTime));
 
@@ -613,7 +632,7 @@ main(int argc, char* argv[])
     }
 
     // // === Setup Tracing ===
-    // 启动吞吐量统计
+    // Start throughput statistics
     Simulator::Schedule(Seconds(1.0), &CalculateThroughput);
 
     // Run simulation
