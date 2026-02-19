@@ -157,50 +157,6 @@ CustomHeader::CalculateHeaderInsertOffset(HeaderLayer layer, HeaderLayerOperator
     return offset;
 }
 
-// bool
-// CustomHeader::SetHeaderForPacket (Ptr<Packet> packet, HeaderLayer layer,
-//                                   HeaderLayerOperator operation)
-// {
-//   // Calculate the offset where the custom header should be inserted
-//   m_offset_bytes = CalculateHeaderInsertOffset (layer, operation);
-// }
-
-// void
-// CustomHeader::InsertCustomHeader (Ptr<Packet> packet, const CustomHeader &header)
-// {
-//   uint32_t headerSize = header.GetSerializedSize ();
-//   NS_ASSERT_MSG (header.GetOffset () <= packet->GetSize (), "Offset is out of bounds!");
-
-//   // Insertion position: Start from the packet buffer and move to the specified offset
-//   Buffer::Iterator insertPosition = packet->GetBuffer ()->Begin ();
-//   insertPosition.Next (header.GetOffset ());
-
-//   // Expand the buffer for the new header
-//   packet->GetBuffer ()->AddAt (insertPosition, headerSize);
-
-//   // Serialize the Header to the specified location
-//   header.Serialize (insertPosition);
-// }
-
-// void
-// CustomHeader::RemoveHeaderAtOffset (Ptr<Packet> packet, CustomHeader &header)
-// {
-//   uint16_t offset = header.GetOffset ();
-//   NS_ASSERT_MSG (offset <= packet->GetSize (), "Offset is out of bounds!");
-
-//   // 定位到 Header 的位置
-//   Buffer::Iterator start = packet->GetBuffer ()->Begin ();
-//   start.Next (offset);
-
-//   // 获取 Header 的大小并反序列化
-//   Buffer::Iterator end = start;
-//   end.Next (header.GetSerializedSize ());
-//   uint32_t deserializedSize = header.Deserialize (start, end);
-
-//   // 从缓冲区中移除 Header
-//   packet->GetBuffer ()->RemoveAt (offset, deserializedSize);
-// }
-
 void
 CustomHeader::AddField(const std::string& name, uint32_t bitWidth)
 {

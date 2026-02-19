@@ -131,16 +131,12 @@ control ingress(inout headers_t hdr,
             }
         } else {
             if (hdr.arp.isValid()) {
-                  // ARP 包处理
                 PortIdUint_t port = (PortIdUint_t) hdr.arp.dstIp[1:0];
                 if (port == 1) {
-                    // ARP 目标 IP 后两位为 01，映射为 port 0
                     send_to_port(ostd, (PortId_t) 0);
                 } else if (port == 2) {
-                    // ARP 目标 IP 后两位为 10，映射为 port 1
                     send_to_port(ostd, (PortId_t) 1);
                 } else {
-                    // 其他情况按原规则处理
                     send_to_port(ostd, (PortId_t) port);
                 }
             }

@@ -119,15 +119,15 @@ RxCallback_2(Ptr<const Packet> packet, const Address& addr)
 void
 PrintFinalThroughput()
 {
-    // 计算传输和接收的时间间隔
+    // Calculate send and receive time intervals
     double send_time = last_packet_send_time_tx - first_packet_send_time_tx;
     double elapsed_time = last_packet_received_time_rx - first_packet_received_time_rx;
 
-    // 计算每个传输流的总字节数
+    // Calculate total bytes for each flow
     uint64_t totalTxBytes = totalTxBytes_1 + totalTxBytes_2;
     uint64_t totalRxBytes = totalRxBytes_1 + totalRxBytes_2;
 
-    // 避免除零错误
+    // Guard against division by zero
     double finalTxThroughput = (send_time > 0) ? (totalTxBytes * 8.0) / (send_time * 1e6) : 0.0;
     double finalRxThroughput =
         (elapsed_time > 0) ? (totalRxBytes * 8.0) / (elapsed_time * 1e6) : 0.0;

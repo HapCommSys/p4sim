@@ -9,7 +9,7 @@
 #include "ns3/format-utils.h"
 #include "ns3/p4-topology-reader-helper.h"
 #include <iomanip>
-#include <filesystem> // C++17 文件系统支持
+#include <filesystem>
 
 using namespace ns3;
 
@@ -31,12 +31,11 @@ ConvertIpToHex (Ipv4Address ipAddr)
   return hexStream.str ();
 }
 
-// 在仿真结束时打印总吞吐量
 void
 CalculateThroughput (Ptr<PacketSink> sink, double simulationTime)
 {
-  uint64_t totalRx = sink->GetTotalRx (); // 获取总接收字节数
-  double throughput = (totalRx * 8.0) / (simulationTime * 1e6); // 转换为 Mbps
+  uint64_t totalRx = sink->GetTotalRx ();
+  double throughput = (totalRx * 8.0) / (simulationTime * 1e6);
   std::cout << "Total Throughput: " << throughput << " Mbps" << std::endl;
 }
 
@@ -80,7 +79,7 @@ main (int argc, char *argv[])
 
   // ============================ parameters ============================
 
-  // ns3::PacketMetadata::Enable (); // 开启数据包元数据追踪
+  // ns3::PacketMetadata::Enable ();
 
   // ============================ parameters ============================
 
@@ -373,14 +372,14 @@ main (int argc, char *argv[])
   app1.Start (Seconds (client_start_time));
   app1.Stop (Seconds (client_stop_time));
 
-  sinkApp1.Get (0)->GetObject<PacketSink> (); // 获取 PacketSink 应用程序
+  sinkApp1.Get (0)->GetObject<PacketSink> ();
   Ptr<PacketSink> sink = DynamicCast<PacketSink> (sinkApp1.Get (0));
   if (sink == nullptr)
     {
       std::cerr << "Error: DynamicCast to PacketSink failed!" << std::endl;
       return 0;
     }
-  double sink_simulationTime = sink_stop_time - sink_start_time; // 仿真时间
+  double sink_simulationTime = sink_stop_time - sink_start_time;
   Simulator::Schedule (Seconds (sink_stop_time), &CalculateThroughput, sink, sink_simulationTime);
 
   // Enable pcap tracing

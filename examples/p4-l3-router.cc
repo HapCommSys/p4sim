@@ -1,3 +1,22 @@
+/*
+ * Copyright (c) 2026 TU Dresden
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation;
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software
+ * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+ *
+ * Authors: Mingyu Ma <mingyu.ma@tu-dresden.de>
+ */
+
 #include "ns3/applications-module.h"
 #include "ns3/arp-cache.h"
 #include "ns3/core-module.h"
@@ -29,75 +48,75 @@ main(int argc, char* argv[])
 
     std::vector<NetDeviceContainer> routerPortsNetDevices(3);
 
-    // 1. 创建 3 个路由器 (R0, R1, R2) 和 3 个主机 (H0, H1, H2)
+    // 1. Create 3 routers (R0, R1, R2) and 3 hosts (H0, H1, H2)
     NodeContainer routers;
     routers.Create(3); // R0, R1, R2
 
     NodeContainer hosts;
     hosts.Create(3); // H0, H1, H2
 
-    // 2. 为不同的链接创建 PointToPoint NetDevice
-    //    (1) R0 ↔ R1
-    //    (2) R1 ↔ R2
-    //    (3) R0 ↔ H0
-    //    (4) R1 ↔ H1
-    //    (5) R2 ↔ H2
+    // 2. Create CSMA NetDevices for each link
+    //    (1) R0 <-> R1
+    //    (2) R1 <-> R2
+    //    (3) R0 <-> H0
+    //    (4) R1 <-> H1
+    //    (5) R2 <-> H2
 
     CsmaHelper csma;
     csma.SetChannelAttribute("DataRate", StringValue("5Mbps"));
     csma.SetChannelAttribute("Delay", StringValue("2ms"));
 
-    // R0 ↔ R1
+    // R0 <-> R1
     NodeContainer R0R1;
     R0R1.Add(routers.Get(0));
     R0R1.Add(routers.Get(1));
     NetDeviceContainer ndcR0R1 = csma.Install(R0R1);
 
-    // R1 ↔ R2
+    // R1 <-> R2
     NodeContainer R1R2;
     R1R2.Add(routers.Get(1));
     R1R2.Add(routers.Get(2));
     NetDeviceContainer ndcR1R2 = csma.Install(R1R2);
 
-    // R0 ↔ H0
+    // R0 <-> H0
     NodeContainer R0H0;
     R0H0.Add(routers.Get(0));
     R0H0.Add(hosts.Get(0));
     NetDeviceContainer ndcR0H0 = csma.Install(R0H0);
 
-    // R1 ↔ H1
+    // R1 <-> H1
     NodeContainer R1H1;
     R1H1.Add(routers.Get(1));
     R1H1.Add(hosts.Get(1));
     NetDeviceContainer ndcR1H1 = csma.Install(R1H1);
 
-    // R2 ↔ H2
+    // R2 <-> H2
     NodeContainer R2H2;
     R2H2.Add(routers.Get(2));
     R2H2.Add(hosts.Get(2));
     NetDeviceContainer ndcR2H2 = csma.Install(R2H2);
 
-    // 收集 R0 上的 netdevice 到 routerSwitch[0].switchDevices
+    // Collect NetDevices attached to R0 into routerPortsNetDevices[0]
     routerPortsNetDevices[0].Add(ndcR0R1.Get(0));
     routerPortsNetDevices[0].Add(ndcR0H0.Get(0));
     // ...
 
-    // 收集 R1 上的 netdevice 到 routerSwitch[1].switchDevices
+    // Collect NetDevices attached to R1 into routerPortsNetDevices[1]
     routerPortsNetDevices[1].Add(ndcR0R1.Get(1));
     routerPortsNetDevices[1].Add(ndcR1R2.Get(0));
     routerPortsNetDevices[1].Add(ndcR1H1.Get(0));
     // ...
 
-    // 收集 R2 上的 netdevice 到 routerSwitch[2].switchDevices
+    // Collect NetDevices attached to R2 into routerPortsNetDevices[2]
     routerPortsNetDevices[2].Add(ndcR1R2.Get(1));
     routerPortsNetDevices[2].Add(ndcR2H2.Get(0));
 
-    // 3. 安装网络协议栈 (TCP/IP, IPv4 等) 到路由器和主机
+    // 3. Install the Internet stack (TCP/IP) on routers and hosts
     InternetStackHelper stack;
     stack.Install(routers);
     stack.Install(hosts);
 
-    // 4. 分配 IP 地址（每条链路用一个独立网段）
+    // 4. Assign IP addresses (one subnet per link)
     Ipv4AddressHelper address;
 
     // R0 <-> R1
@@ -136,8 +155,8 @@ main(int argc, char* argv[])
         p4SwitchHelper.Install(routers.Get(i), routerPortsNetDevices[i]);
     }
 
-    // ---- 在这里打印节点拓扑和 IP 信息 ----
-    //    7.1 打印节点和接口信息
+    // ---- Print node topology and IP information ----
+    //    Expected output for reference:
 
     //     === Print Host & IP/MAC Interface Info ===
     // Host node 0 -> real NodeId: 3, 2 Ipv4 Interfaces
@@ -245,7 +264,7 @@ main(int argc, char* argv[])
     serverApps.Start(Seconds(1.0));
     serverApps.Stop(Seconds(10.0));
 
-    // 在 H0 上安装一个 UDP Echo Client，目标 IP 为 H2 的地址
+    // Install a UDP Echo Client on H0, targeting H2's address
     UdpEchoClientHelper echoClient(iicR2H2.GetAddress(1), echoPort);
     echoClient.SetAttribute("MaxPackets", UintegerValue(5));
     echoClient.SetAttribute("Interval", TimeValue(Seconds(1.0)));

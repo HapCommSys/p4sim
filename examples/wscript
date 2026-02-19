@@ -1,52 +1,94 @@
 # -*- Mode: python; py-indent-offset: 4; indent-tabs-mode: nil; coding: utf-8; -*-
 
 def build(bld):
-    ## =================== V1model Arch ===================
+    # Common dependency lists — keep in sync with CMakeLists.txt
+    base_deps  = ['p4sim', 'internet', 'applications', 'network']
+    csma_deps  = base_deps + ['csma']
 
-    obj = bld.create_ns3_program('p4-v1model-ipv4-forwarding', ['p4sim', 'internet', 'applications', 'network', 'csma'])
+    # =================== V1model Architecture ===================
+
+    # 2 hosts, 1 switch — IPv4 forwarding
+    obj = bld.create_ns3_program('p4-v1model-ipv4-forwarding', csma_deps)
     obj.source = 'p4-v1model-ipv4-forwarding.cc'
 
-    obj = bld.create_ns3_program('p4-l3-router', ['p4sim', 'internet', 'applications', 'network', 'csma'])
+    # 3 hosts, 3 routers (line topology) — L3 forwarding
+    obj = bld.create_ns3_program('p4-l3-router', csma_deps)
     obj.source = 'p4-l3-router.cc'
 
-    obj = bld.create_ns3_program('p4-basic-example', ['p4sim', 'internet', 'applications', 'network', 'csma'])
+    # 4 hosts, 4 switches — IPv4 forwarding
+    obj = bld.create_ns3_program('p4-basic-example', csma_deps)
     obj.source = 'p4-basic-example.cc'
 
-    obj = bld.create_ns3_program('p4-basic-tunnel', ['p4sim', 'internet', 'applications', 'network'])
+    # 3 hosts, 3 switches — tunnel with custom header
+    obj = bld.create_ns3_program('p4-basic-tunnel', base_deps)
     obj.source = 'p4-basic-tunnel.cc'
 
-    obj = bld.create_ns3_program('p4-firewall', ['p4sim', 'internet', 'applications', 'network', 'csma'])
+    # 4 hosts, 4 switches — stateful firewall
+    obj = bld.create_ns3_program('p4-firewall', csma_deps)
     obj.source = 'p4-firewall.cc'
 
-    obj = bld.create_ns3_program('p4-link-monitoring', ['p4sim', 'internet', 'applications', 'network', 'csma'])
+    # 4 hosts, 4 switches — in-band link monitoring
+    obj = bld.create_ns3_program('p4-link-monitoring', csma_deps)
     obj.source = 'p4-link-monitoring.cc'
 
-    obj = bld.create_ns3_program('p4-spine-leaf-topo', ['p4sim', 'internet', 'applications', 'network', 'csma', 'flow-monitor'])
+    # Spine-leaf topology — ECMP load balancing
+    obj = bld.create_ns3_program('p4-spine-leaf-topo', base_deps)
     obj.source = 'p4-spine-leaf-topo.cc'
 
-    ## =================== PSA Arch ===================
+    # Fat-tree topology — auto-generated with P4 switches
+    obj = bld.create_ns3_program('p4-topo-fattree', csma_deps)
+    obj.source = 'p4-topo-fattree.cc'
 
-    obj = bld.create_ns3_program('p4-psa-ipv4-forwarding', ['p4sim', 'internet', 'applications', 'network', 'csma'])
+    # Source routing with custom headers
+    obj = bld.create_ns3_program('p4-source-routing', csma_deps)
+    obj.source = 'p4-source-routing.cc'
+
+    # Runtime controller — flow-table updates
+    obj = bld.create_ns3_program('p4-basic-controller', csma_deps)
+    obj.source = 'p4-basic-controller.cc'
+
+    # Controller with action profiles
+    obj = bld.create_ns3_program('p4-controller-action-profile', csma_deps)
+    obj.source = 'p4-controller-action-profile.cc'
+
+    # QoS-aware queuing test
+    obj = bld.create_ns3_program('p4-queue-test', base_deps)
+    obj.source = 'p4-queue-test.cc'
+
+    # IPv4 forwarding with NetAnim visualisation
+    obj = bld.create_ns3_program('p4-ipv4-animation', csma_deps + ['netanim', 'mobility'])
+    obj.source = 'p4-ipv4-animation.cc'
+
+    # =================== PSA Architecture ===================
+
+    # 2 hosts, 1 switch — IPv4 forwarding (PSA)
+    obj = bld.create_ns3_program('p4-psa-ipv4-forwarding', csma_deps)
     obj.source = 'p4-psa-ipv4-forwarding.cc'
 
-    ## =================== NO P4 ===================
+    # =================== Non-P4 Helpers ===================
 
-    obj = bld.create_ns3_program('p4-p2p-custom-header-test', ['p4sim', 'internet', 'applications', 'network'])
+    # P2P channel with custom header (no P4 program)
+    obj = bld.create_ns3_program('p4-p2p-custom-header-test', base_deps)
     obj.source = 'p4-p2p-custom-header-test.cc'
 
-    ## =================== Test ===================
+    # Fat-tree topology using nix-vector routing (no P4 program)
+    obj = bld.create_ns3_program('topo-fattree', csma_deps + ['nix-vector-routing'])
+    obj.source = 'topo-fattree.cc'
 
+    # =================== Unit / Dev Tests ===================
+
+    # Custom header parsing test
     obj = bld.create_ns3_program('p4-custom-header-test', ['p4sim'])
     obj.source = 'p4-custom-header-test.cc'
 
-    obj = bld.create_ns3_program('net-test', ['p4sim', 'internet', 'applications', 'network', 'csma'])
+    # CSMA network smoke test
+    obj = bld.create_ns3_program('net-test', csma_deps)
     obj.source = 'net-test.cc'
 
-    obj = bld.create_ns3_program('routing-test', ['p4sim', 'internet', 'applications', 'network', 'csma'])
+    # Static routing integration test
+    obj = bld.create_ns3_program('routing-test', csma_deps)
     obj.source = 'routing-test.cc'
 
-    obj = bld.create_ns3_program('p4-traffic-gene', ['p4sim', 'internet', 'applications', 'network', 'point-to-point'])
+    # Point-to-point traffic generation test
+    obj = bld.create_ns3_program('p4-traffic-gene', base_deps + ['point-to-point'])
     obj.source = 'p4-traffic-gene.cc'
-
-    obj = bld.create_ns3_program('p4-queue-test', ['p4sim', 'internet', 'applications', 'network'])
-    obj.source = 'p4-queue-test.cc'

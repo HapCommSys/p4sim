@@ -52,7 +52,7 @@ TxCallback_host_0(Ptr<const Packet> packet)
                                               << ", Total bytes: " << host_0.totalTxBytes);
 }
 
-// 统计吞吐量并打印
+// Calculate and print throughput statistics
 void
 CalculateThroughput()
 {
@@ -63,11 +63,11 @@ CalculateThroughput()
 
     host_0.totalTxBytes_lasttime = host_0.totalTxBytes;
 
-    // 打印吞吐量信息
+    // Print throughput information
     NS_LOG_INFO("Time: " << currentTime << "s | Throughput (Mbps) - "
                          << "Host0(Tx): " << throughput_host_0);
 
-    // 追加写入文件
+    // Append to output file
     std::ofstream outFile("p2p_test_throughput_log.txt", std::ios::app);
     if (outFile.is_open())
     {
@@ -79,7 +79,7 @@ CalculateThroughput()
         NS_LOG_ERROR("Unable to open file for writing.");
     }
 
-    // 每秒再次调用自身
+    // Re-schedule every second
     Simulator::Schedule(Seconds(1.0), &CalculateThroughput);
 }
 
@@ -103,22 +103,22 @@ main(int argc, char* argv[])
     CommandLine cmd;
     cmd.Parse(argc, argv);
 
-    // **创建两个节点**
+    // Create two nodes
     NodeContainer terminals;
     terminals.Create(2);
 
-    // **创建 P2P 设备**
+    // Create P2P devices
     PointToPointHelper p2p;
     p2p.SetDeviceAttribute("DataRate", StringValue("10Gbps"));
     p2p.SetChannelAttribute("Delay", StringValue("10ns"));
 
     NetDeviceContainer devices = p2p.Install(terminals);
 
-    // **安装 Internet 协议**
+    // Install the Internet stack
     InternetStackHelper internet;
     internet.Install(terminals);
 
-    // **分配 IP 地址**
+    // Assign IP addresses
     Ipv4AddressHelper ipv4;
     ipv4.SetBase("192.168.1.0", "255.255.255.0");
     Ipv4InterfaceContainer interfaces = ipv4.Assign(devices);
@@ -130,41 +130,41 @@ main(int argc, char* argv[])
     Ptr<Ipv4> ipv4_adder = serverNode->GetObject<Ipv4>();
     Ipv4Address serverAddr = ipv4_adder->GetAddress(1, 0).GetLocal();
 
-    // **在 Server 端创建 PacketSink，仅监听 servPortStart 端口**
+    // Create a PacketSink on the server, listening on servPortStart
     PacketSinkHelper sink("ns3::UdpSocketFactory",
                           InetSocketAddress(Ipv4Address::GetAny(), servPortStart));
     ApplicationContainer sinkApp = sink.Install(serverNode);
     sinkApp.Start(Seconds(sink_start_time));
     sinkApp.Stop(Seconds(sink_stop_time));
 
-    // **在 Client 端创建多个 UDP 数据流，每个流使用不同的源端口**
+    // Create multiple UDP flows on the client, each using a different source port
     Ptr<Node> clientNode = terminals.Get(clientI);
 
     for (uint16_t port = servPortStart; port < servPortEnd; port++)
     {
-        InetSocketAddress dst(serverAddr, servPortStart); // 目标端口始终为 servPortStart
-        dst.SetTos(0xb8);                                 // 设置 DiffServ（可选）
+        InetSocketAddress dst(serverAddr, servPortStart); // Destination port is always servPortStart
+        dst.SetTos(0xb8);                                 // Set DiffServ (optional)
 
-        // 配置客户端 (OnOffApplication)
+        // Configure the client (OnOffApplication)
         OnOffHelper onOff("ns3::UdpSocketFactory", dst);
         onOff.SetAttribute("PacketSize", UintegerValue(pktSize));
         onOff.SetAttribute("DataRate", StringValue(appDataRate));
 
-        // 创建随机开启 (OnTime) 和关闭 (OffTime) 时间
+        // Create random on-time and off-time distributions
         Ptr<ExponentialRandomVariable> onTime = CreateObject<ExponentialRandomVariable>();
         Ptr<ExponentialRandomVariable> offTime = CreateObject<ExponentialRandomVariable>();
 
         onTime->SetAttribute("Mean", DoubleValue(2.0));
         offTime->SetAttribute("Mean", DoubleValue(1.0));
 
-        // 使用不同的随机种子，确保流量随机
+        // Use different random streams to ensure traffic randomness
         onTime->SetAttribute("Stream", IntegerValue(port));
         offTime->SetAttribute("Stream", IntegerValue(port + 1000));
 
         onOff.SetAttribute("OnTime", PointerValue(onTime));
         onOff.SetAttribute("OffTime", PointerValue(offTime));
 
-        // **指定客户端使用不同的源端口**
+        // Assign each flow a different source port
         onOff.SetAttribute("Protocol", TypeIdValue(UdpSocketFactory::GetTypeId()));
         onOff.SetAttribute("Remote", AddressValue(dst));
 
@@ -172,7 +172,7 @@ main(int argc, char* argv[])
         app.Start(Seconds(client_start_time));
         app.Stop(Seconds(client_stop_time));
     }
-    // **启用路由**
+    // Enable routing
     Ipv4GlobalRoutingHelper::PopulateRoutingTables();
 
     Ptr<NetDevice> netDevice0 = devices.Get(0); // host 0 port 0
@@ -183,10 +183,10 @@ main(int argc, char* argv[])
         p2pNetDevice0->TraceConnectWithoutContext("MacTx", MakeCallback(&TxCallback_host_0));
     }
 
-    // 启动吞吐量统计
+    // Start throughput statistics
     Simulator::Schedule(Seconds(1.0), &CalculateThroughput);
 
-    // **启动仿真**
+    // Run the simulation
     Simulator::Stop(Seconds(global_stop_time));
     Simulator::Run();
     Simulator::Destroy();

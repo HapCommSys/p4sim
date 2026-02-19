@@ -140,7 +140,7 @@ $1 = {m_data = 0x5555558d9720, m_maxZeroAreaStart = 1042, m_zeroAreaStart = 1042
 462             if (item.isFragment)
 (gdb) p item
 $2 = {type = ns3::PacketMetadata::Item::PAYLOAD, isFragment = false, tid = {m_tid = 0}, currentSize = 1042, currentTrimmedFromStart = 0, currentTrimmedFromEnd = 0, current = {
-    m_zeroStart = 0, m_zeroEnd = 0, m_dataStart = 0, m_dataEnd = 0, m_current = 0, m_data = 0x0}} # 这里仅有PAYLOAD，然后RemoveHeader也不能进行该操作。
+    m_zeroStart = 0, m_zeroEnd = 0, m_dataStart = 0, m_dataEnd = 0, m_current = 0, m_data = 0x0}}
 (gdb) n
 479                 switch (item.type)
 (gdb) n

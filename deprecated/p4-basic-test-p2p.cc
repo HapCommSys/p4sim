@@ -127,7 +127,7 @@ main (int argc, char *argv[])
 
   // ============================ parameters ============================
 
-  // ns3::PacketMetadata::Enable (); // 开启数据包元数据追踪
+  // ns3::PacketMetadata::Enable ();
 
   LogComponentEnable ("P4BasicTestP2P", LOG_LEVEL_INFO);
   // LogComponentEnable ("CustomP2PNetDevice", LOG_LEVEL_DEBUG);

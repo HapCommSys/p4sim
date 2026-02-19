@@ -158,20 +158,17 @@ FormatUtilsTestCase::TestHexCharToInt ()
 void
 FormatUtilsTestCase::TestHexStrToBytes ()
 {
-  // 测试有效输入
   NS_TEST_ASSERT_MSG_EQ (HexStrToBytes ("0x0a010001"), "\x0a\x01\x00\x01",
                          "HexStrToBytes failed for valid input");
 
   NS_TEST_ASSERT_MSG_EQ (HexStrToBytes ("ff00"), "\xff\x00",
                          "HexStrToBytes failed for short input");
 
-  // 测试无效输入
   NS_TEST_EXPECT_MSG_EQ (HexStrToBytes ("0x123"), "",
                          "HexStrToBytes should fail for odd-length input");
   NS_TEST_EXPECT_MSG_EQ (HexStrToBytes ("zz00"), "",
                          "HexStrToBytes should fail for invalid characters");
 
-  // 边界情况
   NS_TEST_ASSERT_MSG_EQ (HexStrToBytes (""), "", "HexStrToBytes failed for empty input");
 }
 

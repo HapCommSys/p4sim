@@ -166,8 +166,7 @@ main(int argc, char* argv[])
 
     // ============================ parameters ============================
 
-    // ns3::PacketMetadata::Enable (); // 开启数据包元数据追踪
-
+    // ns3::PacketMetadata::Enable (); // Enable packet metadata tracing
     // ============================ parameters ============================
 
     int running_number = 0;
@@ -254,12 +253,12 @@ main(int argc, char* argv[])
 
     // ========================Print the Channel Type and NetDevice Type========================
 
-    // 安装网络协议栈
+    // Install the Internet stack
     InternetStackHelper internet;
     internet.Install(terminals);
     internet.Install(switchNode);
 
-    // 分配 IP 地址
+    // Assign IP addresses
     Ipv4AddressHelper ipv4;
     ipv4.SetBase("10.1.1.0", "255.255.255.0");
     std::vector<Ipv4InterfaceContainer> terminalInterfaces(hostNum);
