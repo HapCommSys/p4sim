@@ -1,1 +1,23 @@
-.vscode
+# IDE / editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Build artifacts
+*.o
+*.d
+*.pyc
+__pycache__/
+
+# Logs and runtime output
+logs/
+*.log
+*.pcap
+*.xml
+*.tr
+
+# OS files
+.DS_Store
+Thumbs.db
