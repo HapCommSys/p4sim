@@ -216,23 +216,27 @@ void P4SwitchNetDevice::ReceiveFromDevice(Ptr<NetDevice> incomingPort,
 
     ns3Packet->AddHeader(eeh);
   } else if (m_channelType == P4CHANNELP2P) {
-    // The P4 processing part need the Ethernet header.
+    // The P4 processing pipeline requires an Ethernet header at the front of
+    // the packet so that the P4 parser can extract hdr.ethernet.  When the
+    // P2P port device (CustomP2PNetDevice) delivers a packet to us via the
+    // registered protocol handler it has already stripped the wire-level
+    // Ethernet wrapper and passed its EtherType as the 'protocol' parameter.
+    // We must therefore build a fresh Ethernet header from the metadata
+    // (src, dst, protocol) rather than trying to re-parse packet bytes that
+    // are NOT an Ethernet header.  The previous approach of calling
+    // PeekHeader(eeh_1) here was incorrect: PeekHeader always succeeds on
+    // any packet >= 14 bytes, so it was silently consuming the first 14 bytes
+    // of the actual payload (IPv4 / tunnel header), corrupting the packet.
     EthernetHeader eeh_1;
-    if (ns3Packet->PeekHeader(eeh_1)) {
-      NS_LOG_DEBUG("Ethernet packet");
-      ns3Packet->RemoveHeader(eeh_1);
-    } else {
-      eeh_1.SetLengthType(protocol);
-    }
     eeh_1.SetDestination(dst48);
     eeh_1.SetSource(src48);
-    // Here we don't modify the protocol number
-    // eeh_1.SetLengthType (protocol);
+    eeh_1.SetLengthType(protocol); // EtherType from the stripped wire header
 
-    NS_LOG_DEBUG("* Modified Ethernet header: Source MAC: "
+    NS_LOG_DEBUG("* Reconstructed Ethernet header: Source MAC: "
                  << eeh_1.GetSource()
                  << ", Destination MAC: " << eeh_1.GetDestination()
-                 << ", Protocol: " << eeh_1.GetLengthType());
+                 << ", Protocol: 0x" << std::hex << eeh_1.GetLengthType()
+                 << std::dec);
 
     ns3Packet->AddHeader(eeh_1);
 

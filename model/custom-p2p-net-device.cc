@@ -519,10 +519,56 @@ CustomP2PNetDevice::ProcessHeader(Ptr<Packet> p, uint16_t& param)
 
     if (m_NeedProcessHeader)
     {
-        // accelerate, if not, no need for checking that.
+        // Strip/restore custom header fields and rebuild the original packet layout.
+        // After this call the packet is [IPv4|ARP][...] — the Ethernet wrapper
+        // has been consumed by RestoreHeaders() and is NOT put back.
         NS_LOG_DEBUG("*** Custom header detected, start processing the custom header");
         RestoreHeaders(p);
+
+        // Determine the protocol directly from the rebuilt inner header.
+        // We MUST NOT call PeekHeader(EthernetHeader) here because NS-3's
+        // EthernetHeader::Deserialize() will "succeed" on any >= 14-byte
+        // packet, silently consuming the first 14 bytes of the IPv4 header
+        // and producing a garbage EtherType.
+        Ipv4Header ipv4Peek;
+        ArpHeader  arpPeek;
+        if (p->PeekHeader(ipv4Peek))
+        {
+            param = 0x0800; // IPv4
+            NS_LOG_DEBUG("ProcessHeader (restored): IPv4 detected"
+                         "  payload=" << p->GetSize() << " B");
+        }
+        else if (p->PeekHeader(arpPeek))
+        {
+            param = 0x0806; // ARP
+            NS_LOG_DEBUG("ProcessHeader (restored): ARP detected"
+                         "  payload=" << p->GetSize() << " B");
+        }
+        else
+        {
+            NS_LOG_WARN("ProcessHeader: cannot determine protocol after RestoreHeaders"
+                        "; packet may be dropped  size=" << p->GetSize());
+        }
+        return true;
     }
+
+    // m_NeedProcessHeader is false (switch ports): the packet arrives with
+    // a switch-reconstructed Ethernet header (from SendFrom → AddEthernetHeader).
+    // Strip it and use its EtherType as the protocol for m_rxCallback.
+    EthernetHeader eth;
+    if (p->PeekHeader(eth))
+    {
+        param = eth.GetLengthType(); // e.g. 0x0800 for IPv4, 0x0806 for ARP
+        p->RemoveHeader(eth);
+        NS_LOG_DEBUG("ProcessHeader: EtherType=0x" << std::hex << param << std::dec
+                                                   << "  payload=" << p->GetSize() << " B");
+    }
+    else
+    {
+        NS_LOG_WARN("ProcessHeader (switch port): no Ethernet header found;"
+                    " packet may be dropped  size=" << p->GetSize());
+    }
+
     return true;
 }
 
@@ -549,6 +595,29 @@ CustomP2PNetDevice::RestoreHeaders(Ptr<Packet> p)
 
     uint64_t protocol = CheckIfEthernetHeader(p, eeh_hd);
     std::stack<uint64_t> protocolStack; // Storage protocol stack path
+
+    // The P4 switch strips the Ethernet header before calling Send() on the
+    // outgoing port device (see P4SwitchNetDevice::SendNs3Packet).  When the
+    // packet therefore arrives at the destination host WITHOUT an Ethernet
+    // header, CheckIfEthernetHeader returns 0 and the while-loop below would
+    // never run, leaving the custom tunnel header (and all following headers)
+    // un-parsed.  To handle this, we fall back to attempting to parse the
+    // custom header directly at the front of the packet.
+    if (protocol == 0)
+    {
+        NS_LOG_DEBUG("RestoreHeaders: no Ethernet header found; "
+                     "attempting direct custom-header parse (switch-stripped path)");
+        uint64_t nextProto = CheckIfCustomHeader(p);
+        if (nextProto != 0)
+        {
+            // Custom header was present and removed.  Push a synthetic
+            // "0x1" (Ethernet sentinel) so the reverse loop adds nothing
+            // back, then continue parsing from the next protocol.
+            protocol = nextProto;
+        }
+        // If there is no custom header either, leave the packet as-is and
+        // let ProcessHeader deal with a bare IPv4/ARP packet.
+    }
 
     while (protocol != 0)
     {
