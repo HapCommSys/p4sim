@@ -65,13 +65,19 @@ def build(bld):
     obj = bld.create_ns3_program('p4-psa-ipv4-forwarding', csma_deps)
     obj.source = 'p4-psa-ipv4-forwarding.cc'
 
+    # =================== PNA Architecture ===================
+
+    # 2 hosts, 1 internhosts (node with PNA arch) — IPv4 forwarding (PNA)
+    obj = bld.create_ns3_program('p4-pna-ipv4-forwarding', csma_deps)
+    obj.source = 'p4-pna-ipv4-forwarding.cc'
+
     # =================== Non-P4 Helpers ===================
 
     # P2P channel with custom header (no P4 program)
     obj = bld.create_ns3_program('p4-p2p-custom-header-test', base_deps)
     obj.source = 'p4-p2p-custom-header-test.cc'
 
-    # Fat-tree topology using nix-vector routing (no P4 program)
+    # ns-3 simulation of a k-ary Fat-Tree data-center network topology (no P4 program)
     obj = bld.create_ns3_program('topo-fattree', csma_deps + ['nix-vector-routing'])
     obj.source = 'topo-fattree.cc'
 
@@ -80,15 +86,3 @@ def build(bld):
     # Custom header parsing test
     obj = bld.create_ns3_program('p4-custom-header-test', ['p4sim'])
     obj.source = 'p4-custom-header-test.cc'
-
-    # CSMA network smoke test
-    obj = bld.create_ns3_program('net-test', csma_deps)
-    obj.source = 'net-test.cc'
-
-    # Static routing integration test
-    obj = bld.create_ns3_program('routing-test', csma_deps)
-    obj.source = 'routing-test.cc'
-
-    # Point-to-point traffic generation test
-    obj = bld.create_ns3_program('p4-traffic-gene', base_deps + ['point-to-point'])
-    obj.source = 'p4-traffic-gene.cc'
