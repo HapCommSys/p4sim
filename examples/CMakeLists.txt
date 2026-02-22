@@ -118,6 +118,15 @@ build_lib_example(
   LIBRARIES_TO_LINK ${P4SIM_CSMA_LIBS}
 )
 
+# ========================= PNA Architecture ===========================
+
+# 2 hosts, 1 internhosts (node with PNA arch) — IPv4 forwarding (PNA)
+build_lib_example(
+  NAME p4-pna-ipv4-forwarding
+  SOURCE_FILES p4-pna-ipv4-forwarding.cc
+  LIBRARIES_TO_LINK ${P4SIM_CSMA_LIBS}
+)
+
 # ========================= Non-P4 Helpers =============================
 
 # P2P channel with custom header (no P4 program)
@@ -127,7 +136,7 @@ build_lib_example(
   LIBRARIES_TO_LINK ${P4SIM_BASE_LIBS}
 )
 
-# Fat-tree topology using nix-vector routing (no P4 program)
+# ns-3 simulation of a k-ary Fat-Tree data-center network topology (no P4 program)
 build_lib_example(
   NAME topo-fattree
   SOURCE_FILES topo-fattree.cc
@@ -141,25 +150,4 @@ build_lib_example(
   NAME p4-custom-header-test
   SOURCE_FILES p4-custom-header-test.cc
   LIBRARIES_TO_LINK ${libp4sim}
-)
-
-# CSMA network smoke test
-build_lib_example(
-  NAME net-test
-  SOURCE_FILES net-test.cc
-  LIBRARIES_TO_LINK ${P4SIM_CSMA_LIBS}
-)
-
-# Static routing integration test
-build_lib_example(
-  NAME routing-test
-  SOURCE_FILES routing-test.cc
-  LIBRARIES_TO_LINK ${P4SIM_CSMA_LIBS}
-)
-
-# Point-to-point traffic generation test
-build_lib_example(
-  NAME p4-traffic-gene
-  SOURCE_FILES p4-traffic-gene.cc
-  LIBRARIES_TO_LINK ${P4SIM_BASE_LIBS} ${libpoint-to-point}
 )
