@@ -17,6 +17,70 @@
  * Authors: Mingyu Ma <mingyu.ma@tu-dresden.de>
  */
 
+/**
+ * @file p4-basic-tunnel.cc
+ * @brief NS-3 simulation of P4-based tunneling with two concurrent UDP flows.
+ *
+ * Overview
+ * --------
+ * This example mirrors the "basic_tunnel" exercise from the p4lang/tutorials
+ * repository (https://github.com/p4lang/tutorials/tree/master/exercises/basic_tunnel).
+ * It demonstrates how a custom P4 tunnel header (proto_id + dst_id) can be
+ * prepended to IPv4 packets at the source host and stripped at the destination,
+ * enabling tunnel-based forwarding independent of the inner IP address.
+ *
+ * Two independent UDP flows share the same host pair (h0 -> h1):
+ *   - Flow 1 (tunnel stream) : port tunnelPort1, rate appDataRate[0].
+ *   - Flow 2 (normal stream) : port tunnelPort2, rate appDataRate[1].
+ *
+ * The tunnel header is injected by a CustomP2PNetDevice installed on every
+ * host.  P4 switches use ChannelType=1 (P2P) and are loaded with static
+ * flow tables from the basic_tunnel directory.
+ *
+ * Topology (loaded from topo.txt, P2PTopo format)
+ * ------------------------------------------------
+ *
+ *   h0 --- s0 --- s1 --- h1
+ *
+ * (Actual topology is defined in topo.txt; the above is the typical case.)
+ *
+ * Custom tunnel header
+ * --------------------
+ * The header is inserted at Layer 3 (BEFORE the IPv4 header):
+ * @code
+ *   Field    | Width | Example value
+ *   ---------+-------+--------------
+ *   proto_id |  16 b | 0x0800 (IPv4)
+ *   dst_id   |  16 b | 0x0022
+ * @endcode
+ *
+ * Throughput measurement
+ * ----------------------
+ * Unlike the basic examples, this file does NOT skip warmup packets — all
+ * transmitted/received bytes for each flow are counted from the start.
+ * Per-flow byte counters (g_txBytes1/2, g_rxBytes1/2) are reported
+ * separately and as a combined total in PrintThroughputSummary().
+ *
+ * Usage
+ * -----
+ * @code
+ *   ./ns3 run "p4-basic-tunnel       \
+ *       --pktSize=1000               \
+ *       --flowRate1=1Mbps            \
+ *       --flowRate2=4Mbps            \
+ *       --linkRate=100Mbps           \
+ *       --linkDelay=1ms              \
+ *       --clientIndex=0              \
+ *       --serverIndex=1              \
+ *       --tunnelPort1=12000          \
+ *       --tunnelPort2=1301           \
+ *       --flowDuration=3             \
+ *       --simDuration=20             \
+ *       --pcap=true                  \
+ *       --runnum=0"
+ * @endcode
+ */
+
 #include "ns3/applications-module.h"
 #include "ns3/bridge-helper.h"
 #include "ns3/core-module.h"
@@ -36,427 +100,566 @@ using namespace ns3;
 
 NS_LOG_COMPONENT_DEFINE("P4BasicTunnel");
 
-unsigned long start = getTickCount();
-double global_start_time = 1.0;
-double sink_start_time = global_start_time + 1.0;
-double client_start_time = sink_start_time + 1.0;
-double client_stop_time = client_start_time + 3; // sending time
-double sink_stop_time = client_stop_time + 5;
-double global_stop_time = sink_stop_time + 5;
+// ---------------------------------------------------------------------------
+// Simulation-wide wall-clock reference
+// ---------------------------------------------------------------------------
+static unsigned long g_wallClockStart =
+    getTickCount(); ///< Wall-clock start for runtime measurement.
 
-// bool first_tx = true;
-// bool first_rx = true;
-int counter_sender_10 = 10;
-int counter_receiver_10 = 10;
-double first_packet_send_time_tx = 0.0;
-double last_packet_send_time_tx = 0.0;
-double first_packet_received_time_rx = 0.0;
-double last_packet_received_time_rx = 0.0;
-uint64_t totalTxBytes_1 = 0;
-uint64_t totalRxBytes_1 = 0;
-uint64_t totalTxBytes_2 = 0;
-uint64_t totalRxBytes_2 = 0;
+// ---------------------------------------------------------------------------
+// Simulation timeline (seconds) — filled in main() after command-line parsing.
+// ---------------------------------------------------------------------------
+static double g_simStartTime = 1.0;    ///< Simulation warm-up offset (s).
+static double g_sinkStartTime = 0.0;   ///< Time at which PacketSink applications start (s).
+static double g_clientStartTime = 0.0; ///< Time at which OnOff clients start (s).
+static double g_clientStopTime = 0.0;  ///< Time at which OnOff clients stop (s).
+static double g_sinkStopTime = 0.0;    ///< Time at which PacketSink applications stop (s).
+static double g_simStopTime = 0.0;     ///< Total simulation stop time (s).
 
-// Convert IP address to hexadecimal format
-std::string
-ConvertIpToHex(Ipv4Address ipAddr)
+// ---------------------------------------------------------------------------
+// Per-flow throughput measurement state (two independent flows).
+// Timestamps shared across both flows (last seen wins).
+// ---------------------------------------------------------------------------
+static double g_firstTxTime = 0.0; ///< Timestamp of first Tx packet across both flows (s).
+static double g_lastTxTime = 0.0;  ///< Timestamp of last  Tx packet across both flows (s).
+static double g_firstRxTime = 0.0; ///< Timestamp of first Rx packet across both flows (s).
+static double g_lastRxTime = 0.0;  ///< Timestamp of last  Rx packet across both flows (s).
+
+static uint64_t g_txBytes1 = 0; ///< Bytes transmitted by flow 1 (tunnel stream).
+static uint64_t g_rxBytes1 = 0; ///< Bytes received   by flow 1 (tunnel stream).
+static uint64_t g_txBytes2 = 0; ///< Bytes transmitted by flow 2 (normal stream).
+static uint64_t g_rxBytes2 = 0; ///< Bytes received   by flow 2 (normal stream).
+
+// ---------------------------------------------------------------------------
+// Helper utilities
+// ---------------------------------------------------------------------------
+
+/**
+ * @brief Converts an IPv4 address to a zero-padded hexadecimal string.
+ *
+ * Example: Ipv4Address("10.1.1.1") -> "0x0a010101"
+ *
+ * @param ipAddr The IPv4 address to convert.
+ * @return Hex string prefixed with "0x", e.g. "0x0a010101".
+ */
+static std::string
+IpToHexString(Ipv4Address ipAddr)
 {
-    std::ostringstream hexStream;
-    uint32_t ip = ipAddr.Get(); // Get the IP address as a 32-bit integer
-    hexStream << "0x" << std::hex << std::setfill('0') << std::setw(2)
-              << ((ip >> 24) & 0xFF)                 // First byte
-              << std::setw(2) << ((ip >> 16) & 0xFF) // Second byte
-              << std::setw(2) << ((ip >> 8) & 0xFF)  // Third byte
-              << std::setw(2) << (ip & 0xFF);        // Fourth byte
-    return hexStream.str();
+    std::ostringstream oss;
+    uint32_t ip = ipAddr.Get();
+    oss << "0x" << std::hex << std::setfill('0') << std::setw(2) << ((ip >> 24) & 0xFF)
+        << std::setw(2) << ((ip >> 16) & 0xFF) << std::setw(2) << ((ip >> 8) & 0xFF) << std::setw(2)
+        << (ip & 0xFF);
+    return oss.str();
 }
 
-// Convert MAC address to hexadecimal format
-std::string
-ConvertMacToHex(Address macAddr)
+/**
+ * @brief Converts a MAC address to a zero-padded hexadecimal string.
+ *
+ * Example: Mac48Address("00:11:22:33:44:55") -> "0x001122334455"
+ *
+ * @param macAddr The MAC address (as ns3::Address) to convert.
+ * @return Hex string prefixed with "0x", e.g. "0x001122334455".
+ */
+static std::string
+MacToHexString(Address macAddr)
 {
-    std::ostringstream hexStream;
-    Mac48Address mac = Mac48Address::ConvertFrom(macAddr); // Convert Address to Mac48Address
-    uint8_t buffer[6];
-    mac.CopyTo(buffer); // Copy MAC address bytes into buffer
-
-    hexStream << "0x";
+    std::ostringstream oss;
+    Mac48Address mac = Mac48Address::ConvertFrom(macAddr);
+    uint8_t buf[6];
+    mac.CopyTo(buf);
+    oss << "0x";
     for (int i = 0; i < 6; ++i)
-    {
-        hexStream << std::hex << std::setfill('0') << std::setw(2) << static_cast<int>(buffer[i]);
-    }
-    return hexStream.str();
+        oss << std::hex << std::setfill('0') << std::setw(2) << static_cast<int>(buf[i]);
+    return oss.str();
 }
 
-void
-TxCallback(Ptr<const Packet> packet)
+// ---------------------------------------------------------------------------
+// Trace callbacks — one pair per flow
+// ---------------------------------------------------------------------------
+
+/**
+ * @brief Tx trace callback for flow 1 (tunnel stream).
+ *
+ * Accumulates payload bytes into g_txBytes1 and records the last Tx timestamp.
+ * Also sets g_firstTxTime on the very first call.
+ *
+ * @param packet The transmitted packet (read-only).
+ */
+static void
+OnTxFlow1(Ptr<const Packet> packet)
 {
-    totalTxBytes_1 += packet->GetSize();
-    last_packet_send_time_tx = Simulator::Now().GetSeconds();
+    if (g_firstTxTime == 0.0)
+        g_firstTxTime = Simulator::Now().GetSeconds();
+    g_txBytes1 += packet->GetSize();
+    g_lastTxTime = Simulator::Now().GetSeconds();
 }
 
-void
-RxCallback(Ptr<const Packet> packet, const Address& addr)
+/**
+ * @brief Rx trace callback for flow 1 (tunnel stream).
+ *
+ * Accumulates payload bytes into g_rxBytes1 and records the last Rx timestamp.
+ * Also sets g_firstRxTime on the very first call.
+ *
+ * @param packet The received packet (read-only).
+ * @param addr   Sender's address (unused here).
+ */
+static void
+OnRxFlow1(Ptr<const Packet> packet, const Address& addr)
 {
-    totalRxBytes_1 += packet->GetSize();
-    last_packet_received_time_rx = Simulator::Now().GetSeconds();
+    if (g_firstRxTime == 0.0)
+        g_firstRxTime = Simulator::Now().GetSeconds();
+    g_rxBytes1 += packet->GetSize();
+    g_lastRxTime = Simulator::Now().GetSeconds();
 }
 
-void
-TxCallback_2(Ptr<const Packet> packet)
+/**
+ * @brief Tx trace callback for flow 2 (normal stream).
+ *
+ * Accumulates payload bytes into g_txBytes2 and updates shared timestamps.
+ *
+ * @param packet The transmitted packet (read-only).
+ */
+static void
+OnTxFlow2(Ptr<const Packet> packet)
 {
-    totalTxBytes_2 += packet->GetSize();
-    last_packet_send_time_tx = Simulator::Now().GetSeconds();
+    if (g_firstTxTime == 0.0)
+        g_firstTxTime = Simulator::Now().GetSeconds();
+    g_txBytes2 += packet->GetSize();
+    g_lastTxTime = Simulator::Now().GetSeconds();
 }
 
-void
-RxCallback_2(Ptr<const Packet> packet, const Address& addr)
+/**
+ * @brief Rx trace callback for flow 2 (normal stream).
+ *
+ * Accumulates payload bytes into g_rxBytes2 and updates shared timestamps.
+ *
+ * @param packet The received packet (read-only).
+ * @param addr   Sender's address (unused here).
+ */
+static void
+OnRxFlow2(Ptr<const Packet> packet, const Address& addr)
 {
-    totalRxBytes_2 += packet->GetSize();
-    last_packet_received_time_rx = Simulator::Now().GetSeconds();
+    if (g_firstRxTime == 0.0)
+        g_firstRxTime = Simulator::Now().GetSeconds();
+    g_rxBytes2 += packet->GetSize();
+    g_lastRxTime = Simulator::Now().GetSeconds();
 }
 
-void
-PrintFinalThroughput()
+/**
+ * @brief Prints a formatted per-flow and aggregate throughput summary.
+ *
+ * Reports per-flow byte counts (flow 1 / flow 2) and computes combined
+ * Tx and Rx goodput in Mbps.  Guards against division by zero if the
+ * measurement window is empty.
+ */
+static void
+PrintThroughputSummary()
 {
-    // Calculate send and receive time intervals
-    double send_time = last_packet_send_time_tx - first_packet_send_time_tx;
-    double elapsed_time = last_packet_received_time_rx - first_packet_received_time_rx;
+    uint64_t totalTx = g_txBytes1 + g_txBytes2;
+    uint64_t totalRx = g_rxBytes1 + g_rxBytes2;
 
-    // Calculate total bytes for each flow
-    uint64_t totalTxBytes = totalTxBytes_1 + totalTxBytes_2;
-    uint64_t totalRxBytes = totalRxBytes_1 + totalRxBytes_2;
+    double txDuration = g_lastTxTime - g_firstTxTime;
+    double rxDuration = g_lastRxTime - g_firstRxTime;
 
-    // Guard against division by zero
-    double finalTxThroughput = (send_time > 0) ? (totalTxBytes * 8.0) / (send_time * 1e6) : 0.0;
-    double finalRxThroughput =
-        (elapsed_time > 0) ? (totalRxBytes * 8.0) / (elapsed_time * 1e6) : 0.0;
+    std::cout << "\n======================================\n";
+    std::cout << "  Final Simulation Results\n";
+    std::cout << "======================================\n";
+    std::cout << "  Tx window : " << g_firstTxTime << " s  ->  " << g_lastTxTime << " s  ("
+              << txDuration << " s)\n";
+    std::cout << "  Rx window : " << g_firstRxTime << " s  ->  " << g_lastRxTime << " s  ("
+              << rxDuration << " s)\n";
+    std::cout << "--------------------------------------\n";
+    std::cout << "  Flow 1 (tunnel) Tx : " << g_txBytes1 << " bytes\n";
+    std::cout << "  Flow 1 (tunnel) Rx : " << g_rxBytes1 << " bytes\n";
+    std::cout << "  Flow 2 (normal) Tx : " << g_txBytes2 << " bytes\n";
+    std::cout << "  Flow 2 (normal) Rx : " << g_rxBytes2 << " bytes\n";
+    std::cout << "--------------------------------------\n";
+    std::cout << "  Total Tx : " << totalTx << " bytes\n";
+    std::cout << "  Total Rx : " << totalRx << " bytes\n";
 
-    std::cout << "======================================" << std::endl;
-    std::cout << "Final Simulation Results:" << std::endl;
-    std::cout << "Client Start Time: " << first_packet_send_time_tx << " s" << std::endl;
-    std::cout << "Client Stop Time: " << last_packet_send_time_tx << " s" << std::endl;
-    std::cout << "Sink Start Time: " << first_packet_received_time_rx << " s" << std::endl;
-    std::cout << "Sink Stop Time: " << last_packet_received_time_rx << " s" << std::endl;
+    if (txDuration > 0.0)
+        std::cout << "  Tx goodput: " << (totalTx * 8.0) / (txDuration * 1e6) << " Mbps\n";
+    else
+        std::cout << "  Tx goodput: N/A (measurement window is zero)\n";
 
-    std::cout << "--------------------------------------" << std::endl;
-    std::cout << "Detailed Bytes Transmitted & Received" << std::endl;
-    std::cout << "Tx Stream 1: " << totalTxBytes_1 << " bytes" << std::endl;
-    std::cout << "Tx Stream 2: " << totalTxBytes_2 << " bytes" << std::endl;
-    std::cout << "Total Transmitted Bytes: " << totalTxBytes << " bytes over " << send_time << " s"
-              << std::endl;
+    if (rxDuration > 0.0)
+        std::cout << "  Rx goodput: " << (totalRx * 8.0) / (rxDuration * 1e6) << " Mbps\n";
+    else
+        std::cout << "  Rx goodput: N/A (measurement window is zero)\n";
 
-    std::cout << "Rx Stream 1: " << totalRxBytes_1 << " bytes" << std::endl;
-    std::cout << "Rx Stream 2: " << totalRxBytes_2 << " bytes" << std::endl;
-    std::cout << "Total Received Bytes: " << totalRxBytes << " bytes over " << elapsed_time << " s"
-              << std::endl;
-
-    std::cout << "--------------------------------------" << std::endl;
-    std::cout << "Final Throughput Metrics" << std::endl;
-    std::cout << "Final Transmitted Throughput: " << finalTxThroughput << " Mbps" << std::endl;
-    std::cout << "Final Received Throughput: " << finalRxThroughput << " Mbps" << std::endl;
-    std::cout << "======================================" << std::endl;
+    std::cout << "======================================\n";
 }
 
-// ============================ data struct ============================
-struct SwitchNodeC_t
+// ---------------------------------------------------------------------------
+// Topology data structures
+// ---------------------------------------------------------------------------
+
+/**
+ * @brief Per-switch topology descriptor.
+ *
+ * Holds the set of NetDevices installed on a switch and a human-readable
+ * label for each port (e.g. "h0" or "s1_2"), used when configuring the
+ * P4 flow tables.
+ */
+struct SwitchInfo
 {
-    NetDeviceContainer switchDevices;
-    std::vector<std::string> switchPortInfos;
+    NetDeviceContainer devices;          ///< All NetDevices on this switch (one per port).
+    std::vector<std::string> portLabels; ///< Port label: "h<hostIdx>" or "s<swIdx>_<portNb>".
 };
 
-struct HostNodeC_t
+/**
+ * @brief Per-host topology descriptor.
+ *
+ * Holds the host's NetDevice, its assigned IPv4 interface, and the index /
+ * port number of the edge switch it is connected to.
+ */
+struct HostInfo
 {
-    NetDeviceContainer hostDevice;
-    Ipv4InterfaceContainer hostIpv4;
-    unsigned int linkSwitchIndex;
-    unsigned int linkSwitchPort;
-    std::string hostIpv4Str;
+    NetDeviceContainer device;        ///< The host's single NetDevice.
+    Ipv4InterfaceContainer ipv4Iface; ///< The host's IPv4 interface.
+    unsigned int uplinkSwitchIdx;     ///< Index of the connected edge switch.
+    unsigned int uplinkSwitchPort;    ///< Port number on that switch.
+    std::string ipv4Hex;              ///< IPv4 address as hex string (for P4 table use).
 };
+
+// ---------------------------------------------------------------------------
+// main()
+// ---------------------------------------------------------------------------
 
 int
 main(int argc, char* argv[])
 {
     LogComponentEnable("P4BasicTunnel", LOG_LEVEL_INFO);
-
     Packet::EnablePrinting();
 
-    // ============================ parameters ============================
+    // -----------------------------------------------------------------------
+    // Simulation parameters — all overridable from the command line.
+    // -----------------------------------------------------------------------
+    int runNumber = 0;                ///< Loop index when running in batch mode.
+    uint16_t pktSize = 1000;          ///< UDP payload size in bytes.
+    std::string flowRate1 = "1Mbps";  ///< Data rate for flow 1 (tunnel stream).
+    std::string flowRate2 = "4Mbps";  ///< Data rate for flow 2 (normal stream).
+    std::string linkRate = "100Mbps"; ///< P2P link capacity.
+    std::string linkDelay = "1ms";    ///< P2P link propagation delay.
+    bool enablePcap = true;           ///< Whether to write PCAP trace files.
+    uint32_t clientIndex = 0;         ///< Index of the sending host.
+    uint32_t serverIndex = 1;         ///< Index of the receiving host.
+    uint16_t tunnelPort1 = 12000;     ///< UDP port for flow 1 (tunnel stream).
+    uint16_t tunnelPort2 = 1301;      ///< UDP port for flow 2 (normal stream).
+    double flowDuration = 3.0;        ///< Duration of both OnOff flows in seconds.
+    double simDuration = 20.0;        ///< Total simulation duration (s).
 
-    int running_number = 0;
-    uint16_t pktSize = 1000; // in Bytes. 1458 to prevent fragments, default 512
-    std::string appDataRate[] = {"1Mbps", "4Mbps"}; // Default application data rate
-    std::string ns3_link_rate = "100Mbps";
-    bool enableTracePcap = true;
-
-    // Use P4SIM_DIR environment variable for portable paths
+    // P4 program / topology paths (use P4SIM_DIR env var for portability).
     std::string p4SrcDir = GetP4ExamplePath() + "/basic_tunnel";
     std::string p4JsonPath = p4SrcDir + "/basic_tunnel.json";
-    std::string flowTableDirPath = p4SrcDir + "/";
-    std::string topoInput = p4SrcDir + "/topo.txt";
-    std::string topoFormat("P2PTopo");
+    std::string flowTableDir = p4SrcDir + "/";
+    std::string topoFile = p4SrcDir + "/topo.txt";
+    std::string topoFormat = "P2PTopo";
 
-    // ============================  command line ============================
+    // -----------------------------------------------------------------------
+    // Command-line interface
+    // -----------------------------------------------------------------------
     CommandLine cmd;
-    cmd.AddValue("runnum", "running number in loops", running_number);
-    cmd.AddValue("pktSize", "Packet size in bytes (default 1000)", pktSize);
-    cmd.AddValue("pcap", "Trace packet pacp [true] or not[false]", enableTracePcap);
+    cmd.AddValue("runnum", "Batch run index (used when sweeping parameters)", runNumber);
+    cmd.AddValue("pktSize", "UDP payload size in bytes [default: 1000]", pktSize);
+    cmd.AddValue("flowRate1", "Data rate for flow 1 (tunnel stream) [default: 1Mbps]", flowRate1);
+    cmd.AddValue("flowRate2", "Data rate for flow 2 (normal stream) [default: 4Mbps]", flowRate2);
+    cmd.AddValue("linkRate", "P2P link capacity [default: 100Mbps]", linkRate);
+    cmd.AddValue("linkDelay", "P2P link propagation delay [default: 1ms]", linkDelay);
+    cmd.AddValue("clientIndex", "Index of the UDP sender host [default: 0]", clientIndex);
+    cmd.AddValue("serverIndex", "Index of the UDP receiver host [default: 1]", serverIndex);
+    cmd.AddValue("tunnelPort1",
+                 "UDP port for flow 1 (tunnel stream) [default: 12000]",
+                 tunnelPort1);
+    cmd.AddValue("tunnelPort2", "UDP port for flow 2 (normal stream) [default: 1301]", tunnelPort2);
+    cmd.AddValue("flowDuration", "Duration of both flows in seconds [default: 3]", flowDuration);
+    cmd.AddValue("simDuration", "Total simulation duration in seconds [default: 20]", simDuration);
+    cmd.AddValue("p4Json", "Path to the compiled P4 JSON program", p4JsonPath);
+    cmd.AddValue("flowTableDir", "Directory containing flowtable_<i>.txt files", flowTableDir);
+    cmd.AddValue("topoFile", "Path to the topology description file", topoFile);
+    cmd.AddValue("pcap", "Enable PCAP tracing [default: true]", enablePcap);
     cmd.Parse(argc, argv);
 
-    // ============================ topo -> network ============================
+    // -----------------------------------------------------------------------
+    // Derive simulation timeline from parsed parameters.
+    // Layout: [0 -- simStart -- sinkStart -- clientStart
+    //          -- clientStop -- sinkStop -- simStop]
+    // -----------------------------------------------------------------------
+    g_sinkStartTime = g_simStartTime + 1.0;
+    g_clientStartTime = g_sinkStartTime + 1.0;
+    g_clientStopTime = g_clientStartTime + flowDuration;
+    g_sinkStopTime = g_clientStopTime + 5.0;
+    g_simStopTime = std::max(simDuration, g_sinkStopTime + 5.0);
 
-    P4TopologyReaderHelper p4TopoHelper;
-    p4TopoHelper.SetFileName(topoInput);
-    p4TopoHelper.SetFileType(topoFormat);
-    NS_LOG_INFO("*** Reading topology from file: " << topoInput << " with format: " << topoFormat);
+    NS_LOG_INFO("Simulation timeline:" << "  sink [" << g_sinkStartTime << "," << g_sinkStopTime
+                                       << "] s" << "  client [" << g_clientStartTime << ","
+                                       << g_clientStopTime << "] s" << "  stop at " << g_simStopTime
+                                       << " s");
 
-    // Get the topology reader, and read the file, load in the m_linksList.
-    Ptr<P4TopologyReader> topoReader = p4TopoHelper.GetTopologyReader();
+    // -----------------------------------------------------------------------
+    // Load topology
+    // -----------------------------------------------------------------------
+    P4TopologyReaderHelper topoHelper;
+    topoHelper.SetFileName(topoFile);
+    topoHelper.SetFileType(topoFormat);
+    NS_LOG_INFO("Reading topology from: " << topoFile << " (format: " << topoFormat << ")");
+
+    Ptr<P4TopologyReader> topoReader = topoHelper.GetTopologyReader();
 
     if (topoReader->LinksSize() == 0)
     {
-        NS_LOG_ERROR("Problems reading the topology file. Failing.");
+        NS_LOG_ERROR("Topology file contains no links. Aborting.");
         return -1;
     }
 
-    // get switch and host node
-    NodeContainer terminals = topoReader->GetHostNodeContainer();
-    NodeContainer switchNode = topoReader->GetSwitchNodeContainer();
+    NodeContainer hosts = topoReader->GetHostNodeContainer();
+    NodeContainer switches = topoReader->GetSwitchNodeContainer();
 
-    const unsigned int hostNum = terminals.GetN();
-    const unsigned int switchNum = switchNode.GetN();
-    NS_LOG_INFO("*** Host number: " << hostNum << ", Switch number: " << switchNum);
+    const unsigned int hostNum = hosts.GetN();
+    const unsigned int switchNum = switches.GetN();
+    NS_LOG_INFO("Topology: " << hostNum << " host(s), " << switchNum << " switch(es)");
 
-    // set default network link parameter
-    P4PointToPointHelper p4p2phelper;
-    p4p2phelper.SetDeviceAttribute("DataRate", DataRateValue(DataRate(ns3_link_rate)));
-    p4p2phelper.SetChannelAttribute("Delay", TimeValue(MilliSeconds(1)));
+    // Validate user-supplied indices.
+    NS_ABORT_MSG_IF(clientIndex >= hostNum,
+                    "clientIndex (" << clientIndex << ") >= hostNum (" << hostNum << ")");
+    NS_ABORT_MSG_IF(serverIndex >= hostNum,
+                    "serverIndex (" << serverIndex << ") >= hostNum (" << hostNum << ")");
 
-    P4TopologyReader::ConstLinksIterator_t iter;
-    SwitchNodeC_t switchNodes[switchNum];
-    HostNodeC_t hostNodes[hostNum];
-    unsigned int fromIndex, toIndex;
+    // -----------------------------------------------------------------------
+    // Build P2P links from the topology file
+    // -----------------------------------------------------------------------
+    // P4PointToPointHelper is used instead of CsmaHelper because the P4 tunnel
+    // program requires custom P2P net devices (CustomP2PNetDevice) on hosts.
+    P4PointToPointHelper p2pHelper;
+    p2pHelper.SetDeviceAttribute("DataRate", DataRateValue(DataRate(linkRate)));
+    p2pHelper.SetChannelAttribute("Delay", TimeValue(Time(linkDelay)));
+
+    std::vector<SwitchInfo> switchInfos(switchNum);
+    std::vector<HostInfo> hostInfos(hostNum);
+
     std::string dataRate, delay;
-    for (iter = topoReader->LinksBegin(); iter != topoReader->LinksEnd(); iter++)
+    for (auto iter = topoReader->LinksBegin(); iter != topoReader->LinksEnd(); ++iter)
     {
-        fromIndex = iter->GetFromIndex();
-        toIndex = iter->GetToIndex();
+        unsigned int fromIdx = iter->GetFromIndex();
+        unsigned int toIdx = iter->GetToIndex();
         NetDeviceContainer link =
-            p4p2phelper.Install(NodeContainer(iter->GetFromNode(), iter->GetToNode()));
+            p2pHelper.Install(NodeContainer(iter->GetFromNode(), iter->GetToNode()));
 
-        if (iter->GetFromType() == 's' && iter->GetToType() == 's')
+        char fromType = iter->GetFromType();
+        char toType = iter->GetToType();
+
+        if (fromType == 's' && toType == 's')
         {
-            NS_LOG_INFO("*** Link from  switch " << fromIndex << " to  switch " << toIndex
-                                                 << " with data rate " << dataRate << " and delay "
-                                                 << delay);
+            NS_LOG_INFO("Link: switch[" << fromIdx << "] <-> switch[" << toIdx << "]");
 
-            unsigned int fromSwitchPortNumber = switchNodes[fromIndex].switchDevices.GetN();
-            unsigned int toSwitchPortNumber = switchNodes[toIndex].switchDevices.GetN();
-            switchNodes[fromIndex].switchDevices.Add(link.Get(0));
-            switchNodes[fromIndex].switchPortInfos.push_back("s" + UintToString(toIndex) + "_" +
-                                                             UintToString(toSwitchPortNumber));
+            unsigned int fromPort = switchInfos[fromIdx].devices.GetN();
+            unsigned int toPort = switchInfos[toIdx].devices.GetN();
 
-            switchNodes[toIndex].switchDevices.Add(link.Get(1));
-            switchNodes[toIndex].switchPortInfos.push_back("s" + UintToString(fromIndex) + "_" +
-                                                           UintToString(fromSwitchPortNumber));
+            switchInfos[fromIdx].devices.Add(link.Get(0));
+            switchInfos[fromIdx].portLabels.push_back("s" + UintToString(toIdx) + "_" +
+                                                      UintToString(toPort));
+
+            switchInfos[toIdx].devices.Add(link.Get(1));
+            switchInfos[toIdx].portLabels.push_back("s" + UintToString(fromIdx) + "_" +
+                                                    UintToString(fromPort));
+        }
+        else if (fromType == 's' && toType == 'h')
+        {
+            unsigned int hostLocalIdx = toIdx - switchNum;
+            NS_LOG_INFO("Link: switch[" << fromIdx << "] -> host[" << hostLocalIdx << "]");
+
+            unsigned int fromPort = switchInfos[fromIdx].devices.GetN();
+            switchInfos[fromIdx].devices.Add(link.Get(0));
+            switchInfos[fromIdx].portLabels.push_back("h" + UintToString(hostLocalIdx));
+
+            hostInfos[hostLocalIdx].device.Add(link.Get(1));
+            hostInfos[hostLocalIdx].uplinkSwitchIdx = fromIdx;
+            hostInfos[hostLocalIdx].uplinkSwitchPort = fromPort;
+        }
+        else if (fromType == 'h' && toType == 's')
+        {
+            unsigned int hostLocalIdx = fromIdx - switchNum;
+            NS_LOG_INFO("Link: host[" << hostLocalIdx << "] -> switch[" << toIdx << "]");
+
+            unsigned int toPort = switchInfos[toIdx].devices.GetN();
+            switchInfos[toIdx].devices.Add(link.Get(1));
+            switchInfos[toIdx].portLabels.push_back("h" + UintToString(hostLocalIdx));
+
+            hostInfos[hostLocalIdx].device.Add(link.Get(0));
+            hostInfos[hostLocalIdx].uplinkSwitchIdx = toIdx;
+            hostInfos[hostLocalIdx].uplinkSwitchPort = toPort;
         }
         else
         {
-            if (iter->GetFromType() == 's' && iter->GetToType() == 'h')
-            {
-                NS_LOG_INFO("*** Link from switch " << fromIndex << " to  host" << toIndex
-                                                    << " with data rate " << dataRate
-                                                    << " and delay " << delay);
-
-                unsigned int fromSwitchPortNumber = switchNodes[fromIndex].switchDevices.GetN();
-                switchNodes[fromIndex].switchDevices.Add(link.Get(0));
-                switchNodes[fromIndex].switchPortInfos.push_back("h" +
-                                                                 UintToString(toIndex - switchNum));
-
-                hostNodes[toIndex - switchNum].hostDevice.Add(link.Get(1));
-                hostNodes[toIndex - switchNum].linkSwitchIndex = fromIndex;
-                hostNodes[toIndex - switchNum].linkSwitchPort = fromSwitchPortNumber;
-            }
-            else
-            {
-                if (iter->GetFromType() == 'h' && iter->GetToType() == 's')
-                {
-                    NS_LOG_INFO("*** Link from host " << fromIndex << " to  switch" << toIndex
-                                                      << " with data rate " << dataRate
-                                                      << " and delay " << delay);
-                    unsigned int toSwitchPortNumber = switchNodes[toIndex].switchDevices.GetN();
-                    switchNodes[toIndex].switchDevices.Add(link.Get(1));
-                    switchNodes[toIndex].switchPortInfos.push_back(
-                        "h" + UintToString(fromIndex - switchNum));
-
-                    hostNodes[fromIndex - switchNum].hostDevice.Add(link.Get(0));
-                    hostNodes[fromIndex - switchNum].linkSwitchIndex = toIndex;
-                    hostNodes[fromIndex - switchNum].linkSwitchPort = toSwitchPortNumber;
-                }
-                else
-                {
-                    NS_LOG_ERROR("link error!");
-                    abort();
-                }
-            }
+            NS_FATAL_ERROR("Unsupported link type: '" << fromType << "' <-> '" << toType << "'");
         }
     }
-    // ======================== Print the Channel Type and NetDevice Type ========================
 
+    // -----------------------------------------------------------------------
+    // Install Internet stacks and assign IPv4 addresses to hosts
+    // -----------------------------------------------------------------------
     InternetStackHelper internet;
-    internet.Install(terminals);
-    internet.Install(switchNode);
+    internet.Install(hosts);
+    internet.Install(switches);
 
-    Ipv4AddressHelper ipv4;
-    ipv4.SetBase("10.1.1.0", "255.255.255.0");
-    std::vector<Ipv4InterfaceContainer> terminalInterfaces(hostNum);
-    std::vector<std::string> hostIpv4(hostNum);
+    // All hosts share a single /24 subnet (10.1.1.0/24).
+    Ipv4AddressHelper ipv4Helper;
+    ipv4Helper.SetBase("10.1.1.0", "255.255.255.0");
 
     for (unsigned int i = 0; i < hostNum; i++)
     {
-        terminalInterfaces[i] = ipv4.Assign(terminals.Get(i)->GetDevice(0));
-        hostIpv4[i] = Uint32IpToHex(terminalInterfaces[i].GetAddress(0).Get());
+        hostInfos[i].ipv4Iface = ipv4Helper.Assign(hosts.Get(i)->GetDevice(0));
+        hostInfos[i].ipv4Hex = Uint32IpToHex(hostInfos[i].ipv4Iface.GetAddress(0).Get());
     }
 
-    //===============================  Print IP and MAC addresses===============================
-    NS_LOG_INFO("Node IP and MAC addresses:");
-    for (uint32_t i = 0; i < terminals.GetN(); ++i)
+    // Print IP / MAC summary for debugging.
+    NS_LOG_INFO("Host IP and MAC addresses:");
+    for (unsigned int i = 0; i < hostNum; ++i)
     {
-        Ptr<Node> node = terminals.Get(i);
-        Ptr<Ipv4> ipv4 = node->GetObject<Ipv4>();
-        Ptr<NetDevice> netDevice = node->GetDevice(0);
+        Ptr<Ipv4> ipv4obj = hosts.Get(i)->GetObject<Ipv4>();
+        Ipv4Address ipAddr = ipv4obj->GetAddress(1, 0).GetLocal();
+        Mac48Address mac = Mac48Address::ConvertFrom(hosts.Get(i)->GetDevice(0)->GetAddress());
 
-        // Get the IP address
-        Ipv4Address ipAddr =
-            ipv4->GetAddress(1, 0)
-                .GetLocal(); // Interface index 1 corresponds to the first assigned IP
-
-        // Get the MAC address
-        Ptr<NetDevice> device = node->GetDevice(0); // Assuming the first device is the desired one
-        Mac48Address mac = Mac48Address::ConvertFrom(device->GetAddress());
-
-        NS_LOG_INFO("Node " << i << ": IP = " << ipAddr << ", MAC = " << mac);
-
-        // Convert to hexadecimal
-        std::string ipHex = ConvertIpToHex(ipAddr);
-        std::string macHex = ConvertMacToHex(mac);
-        NS_LOG_INFO("Node " << i << ": IP = " << ipHex << ", MAC = " << macHex);
+        NS_LOG_INFO("  host[" << i << "]" << "  IP=" << ipAddr << " (" << IpToHexString(ipAddr)
+                              << ")" << "  MAC=" << mac << " (" << MacToHexString(mac) << ")"
+                              << "  uplink=switch[" << hostInfos[i].uplinkSwitchIdx << "] port "
+                              << hostInfos[i].uplinkSwitchPort << ")");
     }
 
-    // Bridge or P4 switch configuration
-    P4Helper p4SwitchHelper;
-    p4SwitchHelper.SetDeviceAttribute("JsonPath", StringValue(p4JsonPath));
-    // p4SwitchHelper.SetDeviceAttribute("ChannelType", UintegerValue(0));
-    p4SwitchHelper.SetDeviceAttribute("P4SwitchArch", UintegerValue(0));
-    p4SwitchHelper.SetDeviceAttribute("ChannelType", UintegerValue(1));
-    p4SwitchHelper.SetDeviceAttribute("SwitchRate", UintegerValue(1000));
+    // -----------------------------------------------------------------------
+    // Install P4 switches (ChannelType=1 for P2P, static flow tables)
+    // -----------------------------------------------------------------------
+    P4Helper p4Helper;
+    p4Helper.SetDeviceAttribute("JsonPath", StringValue(p4JsonPath));
+    p4Helper.SetDeviceAttribute("P4SwitchArch", UintegerValue(0));
+    p4Helper.SetDeviceAttribute("ChannelType", UintegerValue(1)); // P2P channel
+    p4Helper.SetDeviceAttribute("SwitchRate", UintegerValue(1000));
 
     for (unsigned int i = 0; i < switchNum; i++)
     {
-        std::string flowTablePath = flowTableDirPath + "flowtable_" + std::to_string(i) + ".txt";
-        p4SwitchHelper.SetDeviceAttribute("FlowTablePath", StringValue(flowTablePath));
-        NS_LOG_INFO("*** P4 switch configuration: " << p4JsonPath << ", \n " << flowTablePath);
+        std::string flowTablePath = flowTableDir + "flowtable_" + std::to_string(i) + ".txt";
+        p4Helper.SetDeviceAttribute("FlowTablePath", StringValue(flowTablePath));
 
-        p4SwitchHelper.Install(switchNode.Get(i), switchNodes[i].switchDevices);
+        NS_LOG_INFO("Installing P4 switch[" << i << "]:" << "\n  JSON      : " << p4JsonPath
+                                            << "\n  FlowTable : " << flowTablePath);
+
+        p4Helper.Install(switches.Get(i), switchInfos[i].devices);
     }
 
-    // ============================ add custom header for the p4 switch ============================
+    // -----------------------------------------------------------------------
+    // Configure custom tunnel header on all host NetDevices
+    //
+    // The tunnel header is prepended at Layer 3 (before IPv4) by each
+    // CustomP2PNetDevice.  Fields:
+    //   proto_id (16 b) : 0x0800  -> inner packet is IPv4
+    //   dst_id   (16 b) : 0x0022  -> tunnel destination identifier
+    // -----------------------------------------------------------------------
+    CustomHeader tunnelHeader;
+    tunnelHeader.SetLayer(HeaderLayer::LAYER_3); ///< Insert at network layer.
+    tunnelHeader.SetOperator(ADD_BEFORE);        ///< Prepend before the IPv4 header.
+    tunnelHeader.AddField("proto_id", 16);
+    tunnelHeader.AddField("dst_id", 16);
+    tunnelHeader.SetField("proto_id", 0x0800); ///< IPv4 EtherType.
+    tunnelHeader.SetField("dst_id", 0x0022);   ///< Example tunnel destination ID.
 
-    CustomHeader myTunnelHeader;
-    myTunnelHeader.SetLayer(HeaderLayer::LAYER_3); // Network Layer
-    myTunnelHeader.SetOperator(ADD_BEFORE);        // add before the ipv4 header
-
-    myTunnelHeader.AddField("proto_id", 16);
-    myTunnelHeader.AddField("dst_id", 16);
-
-    myTunnelHeader.SetField("proto_id", 0x0800); // Example: IPv4 protocol
-    myTunnelHeader.SetField("dst_id", 0x22);     // Example: Destination ID
-
-    // Set for the NetDevice
     for (unsigned int i = 0; i < hostNum; i++)
     {
-        Ptr<NetDevice> device = hostNodes[i].hostDevice.Get(0);
-        if (device->GetObject<CustomP2PNetDevice>())
+        Ptr<NetDevice> dev = hostInfos[i].device.Get(0);
+        Ptr<CustomP2PNetDevice> custDev = DynamicCast<CustomP2PNetDevice>(dev);
+        if (custDev)
         {
-            NS_LOG_DEBUG(
-                "Host " << i << " NetDevice is CustomP2PNetDevice, Setting for the Tunnel Header!");
-            Ptr<CustomP2PNetDevice> customDevice = DynamicCast<CustomP2PNetDevice>(device);
-            customDevice->SetWithCustomHeader(true);
-            customDevice->SetCustomHeader(myTunnelHeader);
+            NS_LOG_INFO("  host[" << i << "]: setting tunnel header on CustomP2PNetDevice");
+            custDev->SetWithCustomHeader(true);
+            custDev->SetCustomHeader(tunnelHeader);
+        }
+        else
+        {
+            NS_LOG_WARN("  host[" << i << "]: NetDevice is not a CustomP2PNetDevice — skipping.");
         }
     }
 
-    // ============================ add application to the hosts ============================
+    // -----------------------------------------------------------------------
+    // Install UDP OnOff / PacketSink applications (two flows, same host pair)
+    // -----------------------------------------------------------------------
+    Ipv4Address serverAddr = hosts.Get(serverIndex)->GetObject<Ipv4>()->GetAddress(1, 0).GetLocal();
 
-    // TUNNEL stream == First == send link h0 -----> h1
-    unsigned int serverI = 1;
-    unsigned int clientI = 0;
-    uint16_t servPort = 12000; // setting for port
+    // --- Flow 1: tunnel stream ---
+    InetSocketAddress endpoint1(serverAddr, tunnelPort1);
 
-    Ptr<Node> node = terminals.Get(serverI);
-    Ptr<Ipv4> ipv4_adder = node->GetObject<Ipv4>();
-    Ipv4Address serverAddr1 =
-        ipv4_adder->GetAddress(1, 0)
-            .GetLocal(); // Interface index 1 corresponds to the first assigned IP
-    InetSocketAddress dst1 = InetSocketAddress(serverAddr1, servPort);
-    PacketSinkHelper sink1 = PacketSinkHelper("ns3::UdpSocketFactory", dst1);
-    ApplicationContainer sinkApp1 = sink1.Install(terminals.Get(serverI));
+    PacketSinkHelper sinkHelper1("ns3::UdpSocketFactory", endpoint1);
+    ApplicationContainer sinkApp1 = sinkHelper1.Install(hosts.Get(serverIndex));
+    sinkApp1.Start(Seconds(g_sinkStartTime));
+    sinkApp1.Stop(Seconds(g_sinkStopTime));
 
-    sinkApp1.Start(Seconds(sink_start_time));
-    sinkApp1.Stop(Seconds(sink_stop_time));
+    OnOffHelper onOffHelper1("ns3::UdpSocketFactory", endpoint1);
+    onOffHelper1.SetAttribute("PacketSize", UintegerValue(pktSize));
+    onOffHelper1.SetAttribute("DataRate", StringValue(flowRate1));
+    onOffHelper1.SetAttribute("OnTime", StringValue("ns3::ConstantRandomVariable[Constant=1]"));
+    onOffHelper1.SetAttribute("OffTime", StringValue("ns3::ConstantRandomVariable[Constant=0]"));
 
-    OnOffHelper onOff1("ns3::UdpSocketFactory", dst1);
-    onOff1.SetAttribute("PacketSize", UintegerValue(pktSize));
-    onOff1.SetAttribute("DataRate", StringValue(appDataRate[0]));
-    onOff1.SetAttribute("OnTime", StringValue("ns3::ConstantRandomVariable[Constant=1]"));
-    onOff1.SetAttribute("OffTime", StringValue("ns3::ConstantRandomVariable[Constant=0]"));
-    // onOff1.SetAttribute("MaxBytes", UintegerValue(5000));
+    ApplicationContainer clientApp1 = onOffHelper1.Install(hosts.Get(clientIndex));
+    clientApp1.Start(Seconds(g_clientStartTime));
+    clientApp1.Stop(Seconds(g_clientStopTime));
 
-    ApplicationContainer app1 = onOff1.Install(terminals.Get(clientI));
-    app1.Start(Seconds(client_start_time));
-    app1.Stop(Seconds(client_stop_time));
+    NS_LOG_INFO("Flow 1 (tunnel): host["
+                << clientIndex << "] -> host[" << serverIndex << "]" << "  dst=" << serverAddr
+                << ":" << tunnelPort1 << "  rate=" << flowRate1 << "  pktSize=" << pktSize << " B");
 
-    // Normal Stream == Second == send link h0 -----> h1
-    servPort = 1301; // change the application port
+    // --- Flow 2: normal stream ---
+    InetSocketAddress endpoint2(serverAddr, tunnelPort2);
 
-    node = terminals.Get(serverI);
-    ipv4_adder = node->GetObject<Ipv4>();
-    serverAddr1 = ipv4_adder->GetAddress(1, 0)
-                      .GetLocal(); // Interface index 1 corresponds to the first assigned IP
-    InetSocketAddress dst2 = InetSocketAddress(serverAddr1, servPort);
-    PacketSinkHelper sink2 = PacketSinkHelper("ns3::UdpSocketFactory", dst2);
-    ApplicationContainer sinkApp2 = sink2.Install(terminals.Get(serverI));
+    PacketSinkHelper sinkHelper2("ns3::UdpSocketFactory", endpoint2);
+    ApplicationContainer sinkApp2 = sinkHelper2.Install(hosts.Get(serverIndex));
+    sinkApp2.Start(Seconds(g_sinkStartTime));
+    sinkApp2.Stop(Seconds(g_sinkStopTime));
 
-    sinkApp2.Start(Seconds(sink_start_time));
-    sinkApp2.Stop(Seconds(sink_stop_time));
+    OnOffHelper onOffHelper2("ns3::UdpSocketFactory", endpoint2);
+    onOffHelper2.SetAttribute("PacketSize", UintegerValue(pktSize));
+    onOffHelper2.SetAttribute("DataRate", StringValue(flowRate2));
+    onOffHelper2.SetAttribute("OnTime", StringValue("ns3::ConstantRandomVariable[Constant=1]"));
+    onOffHelper2.SetAttribute("OffTime", StringValue("ns3::ConstantRandomVariable[Constant=0]"));
 
-    OnOffHelper onOff2("ns3::UdpSocketFactory", dst2);
-    onOff2.SetAttribute("PacketSize", UintegerValue(pktSize));
-    onOff2.SetAttribute("DataRate", StringValue(appDataRate[1]));
-    onOff2.SetAttribute("OnTime", StringValue("ns3::ConstantRandomVariable[Constant=1]"));
-    onOff2.SetAttribute("OffTime", StringValue("ns3::ConstantRandomVariable[Constant=0]"));
-    // onOff2.SetAttribute("MaxBytes", UintegerValue(10000));
+    ApplicationContainer clientApp2 = onOffHelper2.Install(hosts.Get(clientIndex));
+    clientApp2.Start(Seconds(g_clientStartTime));
+    clientApp2.Stop(Seconds(g_clientStopTime));
 
-    ApplicationContainer app2 = onOff2.Install(terminals.Get(clientI));
-    app2.Start(Seconds(client_start_time));
-    app2.Stop(Seconds(client_stop_time));
+    NS_LOG_INFO("Flow 2 (normal): host["
+                << clientIndex << "] -> host[" << serverIndex << "]" << "  dst=" << serverAddr
+                << ":" << tunnelPort2 << "  rate=" << flowRate2 << "  pktSize=" << pktSize << " B");
 
-    // Enable pcap tracing
-    p4p2phelper.EnablePcapAll("p4-basic-tunnel");
+    // Connect throughput measurement trace callbacks.
+    DynamicCast<OnOffApplication>(hosts.Get(clientIndex)->GetApplication(0))
+        ->TraceConnectWithoutContext("Tx", MakeCallback(&OnTxFlow1));
+    sinkApp1.Get(0)->TraceConnectWithoutContext("Rx", MakeCallback(&OnRxFlow1));
 
-    // Run simulation
-    NS_LOG_INFO("Running simulation...");
-    unsigned long simulate_start = getTickCount();
-    Simulator::Stop(Seconds(global_stop_time));
+    DynamicCast<OnOffApplication>(hosts.Get(clientIndex)->GetApplication(1))
+        ->TraceConnectWithoutContext("Tx", MakeCallback(&OnTxFlow2));
+    sinkApp2.Get(0)->TraceConnectWithoutContext("Rx", MakeCallback(&OnRxFlow2));
+
+    // -----------------------------------------------------------------------
+    // PCAP tracing (always enabled for P2P links in this example)
+    // -----------------------------------------------------------------------
+    if (enablePcap)
+    {
+        p2pHelper.EnablePcapAll("p4-basic-tunnel");
+        NS_LOG_INFO("PCAP tracing enabled -> p4-basic-tunnel-*.pcap");
+    }
+
+    // -----------------------------------------------------------------------
+    // Run the simulation
+    // -----------------------------------------------------------------------
+    NS_LOG_INFO("Starting simulation (stop at t=" << g_simStopTime << " s) ...");
+    unsigned long simWallStart = getTickCount();
+
+    Simulator::Stop(Seconds(g_simStopTime));
     Simulator::Run();
     Simulator::Destroy();
 
-    unsigned long end = getTickCount();
-    NS_LOG_INFO("Simulate Running time: " << end - simulate_start << "ms" << std::endl
-                                          << "Total Running time: " << end - start << "ms"
-                                          << std::endl
-                                          << "Run successfully!");
+    unsigned long wallEnd = getTickCount();
+    NS_LOG_INFO("Simulate time : " << (wallEnd - simWallStart) << " ms");
+    NS_LOG_INFO("Total runtime : " << (wallEnd - g_wallClockStart) << " ms");
 
-    PrintFinalThroughput();
+    PrintThroughputSummary();
     return 0;
 }
