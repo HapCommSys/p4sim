@@ -14,7 +14,7 @@
  * along with this program; if not, write to the Free Software
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  *
- * Authors: P4sim Contributors
+ * Authors: Mingyu Ma <mingyu.ma@tu-dresden.de>
  */
 
 #include "ns3/dummy-switch-port.h"
