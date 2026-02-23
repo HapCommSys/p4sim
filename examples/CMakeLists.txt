@@ -108,6 +108,17 @@ build_lib_example(
   SOURCE_FILES p4-ipv4-animation.cc
   LIBRARIES_TO_LINK ${P4SIM_CSMA_LIBS} ${libnetanim} ${libmobility}
 )
+build_lib_example(
+  NAME dummy-switch-example
+  SOURCE_FILES dummy-switch-example.cc
+  LIBRARIES_TO_LINK
+    ${libp4sim}
+    ${libinternet}
+    ${libapplications}
+    ${libnetwork}
+    ${libcsma}
+    ${libtraffic-control}
+)
 
 # ========================= PSA Architecture ===========================
 
