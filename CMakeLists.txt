@@ -63,10 +63,13 @@ build_lib(
         model/p4-switch-net-device.cc
         model/custom-p2p-net-device.cc
         model/p4-controller.cc
+        model/dummy-switch-port.cc
+        model/dummy-switch-net-device.cc
         helper/p4-helper.cc
         helper/p4-topology-reader-helper.cc
         helper/p4-p2p-helper.cc
         helper/build-flowtable-helper.cc
+        helper/dummy-switch-helper.cc
     HEADER_FILES # equivalent to headers.source
         utils/p4-queue.h
         utils/format-utils.h
@@ -86,9 +89,12 @@ build_lib(
         model/p4-switch-net-device.h
         model/custom-p2p-net-device.h
         model/p4-controller.h
+        model/dummy-switch-port.h
+        model/dummy-switch-net-device.h
         helper/p4-helper.h
         helper/p4-topology-reader-helper.h
         helper/p4-p2p-helper.h
+        helper/dummy-switch-helper.h
         helper/build-flowtable-helper.h
     LIBRARIES_TO_LINK 
         ${libcore} 
