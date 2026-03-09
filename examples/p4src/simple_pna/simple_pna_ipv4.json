@@ -78,26 +78,26 @@
       "name" : "scalars_t",
       "id" : 6,
       "fields" : [
-        ["pna_pre_output_metadata_t.decrypt_start_offset", 16, false],
-        ["pna_pre_output_metadata_t.said", 32, false],
-        ["pna_pre_output_metadata_t.decrypt", 1, false],
         ["pna_pre_input_metadata_t.loopedback", 1, false],
         ["pna_pre_input_metadata_t.pass", 3, false],
         ["pna_pre_input_metadata_t.direction", 32, false],
+        [],
+        ["pna_pre_input_metadata_t.input_port", 32, false],
+        ["pna_main_parser_input_metadata_t.direction", 32, false],
+        ["pna_pre_output_metadata_t.decrypt_start_offset", 16, false],
+        ["pna_pre_output_metadata_t.said", 32, false],
+        ["pna_pre_output_metadata_t.decrypt", 1, false],
         ["pna_main_input_metadata_t.pass", 3, false],
         ["pna_main_input_metadata_t.direction", 32, false],
         ["pna_main_parser_input_metadata_t.input_port", 32, false],
         ["pna_main_parser_input_metadata_t.loopedback", 1, false],
         ["pna_main_parser_input_metadata_t.pass", 3, false],
-        ["pna_main_parser_input_metadata_t.direction", 32, false],
-        ["pna_main_input_metadata_t.input_port", 32, false],
-        ["pna_main_input_metadata_t.class_of_service", 8, false],
         [],
         ["pna_main_input_metadata_t.timestamp", 64, false],
         ["pna_main_input_metadata_t.loopedback", 1, false],
+        ["pna_main_input_metadata_t.input_port", 32, false],
+        ["pna_main_input_metadata_t.class_of_service", 8, false],
         ["pna_main_output_metadata_t.class_of_service", 8, false],
-        ["pna_pre_input_metadata_t.input_port", 32, false],
-        [],
         ["_padding_1", 3, false]
       ]
     }
@@ -756,7 +756,7 @@
   "force_arith" : [],
   "extern_instances" : [],
   "field_aliases" : [],
-  "program" : "simple_pna_ipv4.p4",
+  "program" : "./simple_pna_ipv4.p4i",
   "__meta__" : {
     "version" : [2, 23],
     "compiler" : "https://github.com/p4lang/p4c"

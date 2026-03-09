@@ -356,10 +356,9 @@ class NSQueueingLogicPriRL
         Time now = Simulator::Now();
         Time next = now + Seconds(5);
 
-        // This will iterate from nb_priorities-1 to 0
-        for (auto it = workers_info.begin(); it != workers_info.end(); it++)
+        // workers_info is a std::vector<WorkerInfo>, so iterate by reference directly
+        for (auto& w_info : workers_info)
         {
-            auto& w_info = it->second;
             for (size_t pri = nb_priorities; pri-- > 0;)
             {
                 auto& q = w_info.queues[pri];

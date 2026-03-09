@@ -73,6 +73,7 @@ build_lib(
         utils/switch-api.h
         utils/register-access-v1model.h
         utils/primitives-v1model.h
+        utils/primitives-pna.h
         utils/fattree-topo-helper.h
         model/p4-bridge-channel.h
         model/p4-p2p-channel.h
