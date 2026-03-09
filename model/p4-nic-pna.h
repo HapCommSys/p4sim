@@ -117,8 +117,8 @@ class P4PnaNic : public P4SwitchCore
      */
     struct PortTxState
     {
-        bool    busy{false};
-        Time    busyUntil{Time(0)};
+        bool busy{false};
+        Time busyUntil{Time(0)};
         EventId pendingEvent{};
     };
 

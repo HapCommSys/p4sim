@@ -1130,8 +1130,8 @@ P4CoreV1model::AddFlowEntry(const std::string& tableName,
 
     if (rc != bm::MatchErrorCode::SUCCESS)
     {
-        std::cout << "AddFlowEntry failed for table " << tableName << " with error code "
-                  << MatchErrorCodeToStr(rc);
+        NS_LOG_WARN("AddFlowEntry failed for table " << tableName << ": "
+                                                     << MatchErrorCodeToStr(rc));
         return -1;
     }
 
@@ -1181,9 +1181,8 @@ P4CoreV1model::DeleteFlowEntry(const std::string& tableName, bm::entry_handle_t 
 
     if (rc != bm::MatchErrorCode::SUCCESS)
     {
-        std::cout << "DeleteFlowEntry failed for table " << tableName << " and handle " << handle
-                  << " with code " << static_cast<int>(rc) << " (" << MatchErrorCodeToStr(rc)
-                  << ")";
+        NS_LOG_WARN("DeleteFlowEntry failed for table " << tableName << ", handle " << handle
+                                                        << ": " << MatchErrorCodeToStr(rc));
         return -1;
     }
 
@@ -1219,9 +1218,8 @@ P4CoreV1model::SetEntryTtl(const std::string& tableName,
 
     if (rc != bm::MatchErrorCode::SUCCESS)
     {
-        std::cout << "SetEntryTtl failed for table " << tableName << ", handle " << handle
-                  << " with code " << static_cast<int>(rc) << " (" << MatchErrorCodeToStr(rc)
-                  << ")";
+        NS_LOG_WARN("SetEntryTtl failed for table " << tableName << ", handle " << handle << ": "
+                                                    << MatchErrorCodeToStr(rc));
         return -1;
     }
 
@@ -1296,11 +1294,10 @@ P4CoreV1model::CreateActionProfileGroup(const std::string& profileName,
                                         bm::ActionProfile::grp_hdl_t* outHandle)
 {
     bm::MatchErrorCode rc = this->mt_act_prof_create_group(0, profileName, outHandle);
-    std::cout << "THe control flow is reaching here";
     if (rc != bm::MatchErrorCode::SUCCESS)
     {
-        NS_LOG_WARN("CreateActionProfileGroup failed for profile " << profileName);
-        NS_LOG_WARN("Error: " << MatchErrorCodeToStr(rc));
+        NS_LOG_WARN("CreateActionProfileGroup failed for profile " << profileName << ": "
+                                                                   << MatchErrorCodeToStr(rc));
         return -1;
     }
     return 0;

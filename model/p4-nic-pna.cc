@@ -97,7 +97,7 @@ P4PnaNic::main_processing_pipeline()
     bm::Deparser* deparser = this->get_deparser("main_deparser");
     deparser->deparse(bm_packet.get());
 
-    int out_port  = bm_packet->get_egress_port();
+    int out_port = bm_packet->get_egress_port();
 
     // drop_packet() sets the egress port to 511 (SSWITCH_DROP_PORT).
     // Discard the packet silently rather than sending it to the network stack.
@@ -115,21 +115,23 @@ P4PnaNic::main_processing_pipeline()
                          : 0ULL;
     Time txDelay = NanoSeconds(tx_ns);
 
-    auto& pstate     = m_portTxState[static_cast<uint32_t>(out_port)];
-    pstate.busy      = true;
+    auto& pstate = m_portTxState[static_cast<uint32_t>(out_port)];
+    pstate.busy = true;
     pstate.busyUntil = Simulator::Now() + txDelay;
 
     NS_LOG_DEBUG("PNA port " << out_port << ": transmitting " << pkt_bytes
                              << " B, tx delay = " << tx_ns << " ns");
 
     uint16_t protocol = RegisterAccess::get_ns_protocol(bm_packet.get());
-    int addr_index    = RegisterAccess::get_ns_address(bm_packet.get());
+    int addr_index = RegisterAccess::get_ns_address(bm_packet.get());
     Ptr<Packet> ns_packet = this->ConvertToNs3Packet(std::move(bm_packet));
     m_switchNetDevice->SendNs3Packet(ns_packet, out_port, protocol, m_destinationList[addr_index]);
 
     // Schedule PortTxComplete to fire after the serialisation delay.
-    pstate.pendingEvent = Simulator::Schedule(
-        txDelay, &P4PnaNic::PortTxComplete, this, static_cast<uint32_t>(out_port));
+    pstate.pendingEvent = Simulator::Schedule(txDelay,
+                                              &P4PnaNic::PortTxComplete,
+                                              this,
+                                              static_cast<uint32_t>(out_port));
 
     return true;
 }
@@ -181,8 +183,7 @@ void
 P4PnaNic::start_and_return_()
 {
     NS_LOG_FUNCTION(this);
-    NS_LOG_DEBUG("PNA NIC ID " << m_p4SwitchId
-                               << ": event-driven scheduler active"
+    NS_LOG_DEBUG("PNA NIC ID " << m_p4SwitchId << ": event-driven scheduler active"
                                << " (link rate = " << m_linkRateBps << " bps)");
 }
 
@@ -257,8 +258,8 @@ P4PnaNic::PortTxComplete(uint32_t port)
 {
     NS_LOG_FUNCTION(this << port);
 
-    auto& pstate  = m_portTxState[port];
-    pstate.busy   = false;
+    auto& pstate = m_portTxState[port];
+    pstate.busy = false;
     pstate.pendingEvent = EventId();
 
     // If more packets are waiting in the input buffer, process the next one.
