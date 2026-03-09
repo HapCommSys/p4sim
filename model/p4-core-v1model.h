@@ -24,9 +24,12 @@
 #include "ns3/p4-switch-core.h"
 
 #include <bm/bm_sim/counters.h>
+#include <unordered_map>
 
 #define SSWITCH_VIRTUAL_QUEUE_NUM_V1MODEL 8
 
+namespace ns3
+{
 namespace ns3
 {
 
@@ -287,58 +290,73 @@ class P4CoreV1model : public P4SwitchCore
             return egress_port % nb_threads;
         }
 
+        size_t operator()(size_t egress_port) const
+        {
+            return egress_port % nb_threads;
+        }
+
         size_t nb_threads;
     };
 
-  private:
-    uint64_t m_packetId;
-    uint64_t m_switchRate;
-
-    // Tracing statistics (per-interval counters)
-    uint64_t m_inputBps;
-    uint64_t m_inputBp;
-    uint64_t m_inputPps;
-    uint64_t m_inputPp;
-    uint64_t m_egressBps;
-    uint64_t m_egressBp;
-    uint64_t m_egressPps;
-    uint64_t m_egressPp;
-
-    Time m_timeInterval;       ///< Statistics logging interval
-    double m_virtualQueueRate; ///< Per-queue rate (pps)
-
-    size_t m_nbQueuesPerPort;
-    EventId m_egressTimeEvent; ///< Legacy polling event (unused in event-driven mode)
-    Time m_egressTimeRef;      ///< Inter-packet gap derived from m_switchRate
-    uint64_t m_startTimestamp; ///< Simulation start timestamp
-
-    static constexpr size_t m_nbEgressThreads = 1u;
-
-    std::unique_ptr<InputBuffer> input_buffer;
-    NSQueueingLogicPriRL<std::unique_ptr<bm::Packet>, EgressThreadMapper> egress_buffer;
-    bm::Queue<std::unique_ptr<bm::Packet>> output_buffer;
-
-    bool m_firstPacket;
-
-    // ---- Event-driven scheduler state ----
-
-    /**
-     * @brief Per-port transmission state.
-     *
-     * busy/busyUntil model the link serialisation delay;
-     * pendingEvent allows cancellation of a stale dequeue timer.
-     */
-    struct PortTxState
-    {
-        bool busy{false};
-        Time busyUntil{Time(0)};
-        EventId pendingEvent{};
-    };
-
-    std::unordered_map<uint32_t, PortTxState> m_portTxState;
-
-    uint64_t m_linkRateBps{1000000000ULL}; ///< Link rate for tx-delay modelling (default 1 Gbps)
+    size_t nb_threads;
 };
+
+private:
+uint64_t m_packetId;
+uint64_t m_switchRate;
+
+private:
+uint64_t m_packetId;
+uint64_t m_switchRate;
+
+// Tracing statistics (per-interval counters)
+uint64_t m_inputBps;
+uint64_t m_inputBp;
+uint64_t m_inputPps;
+uint64_t m_inputPp;
+uint64_t m_egressBps;
+uint64_t m_egressBp;
+uint64_t m_egressPps;
+uint64_t m_egressPp;
+
+Time m_timeInterval;       ///< Statistics logging interval
+double m_virtualQueueRate; ///< Per-queue rate (pps)
+
+size_t m_nbQueuesPerPort;
+EventId m_egressTimeEvent; ///< Legacy polling event (unused in event-driven mode)
+Time m_egressTimeRef;      ///< Inter-packet gap derived from m_switchRate
+uint64_t m_startTimestamp; ///< Simulation start timestamp
+
+static constexpr size_t m_nbEgressThreads = 1u;
+
+std::unique_ptr<InputBuffer> input_buffer;
+NSQueueingLogicPriRL<std::unique_ptr<bm::Packet>, EgressThreadMapper> egress_buffer;
+bm::Queue<std::unique_ptr<bm::Packet>> output_buffer;
+std::unique_ptr<InputBuffer> input_buffer;
+NSQueueingLogicPriRL<std::unique_ptr<bm::Packet>, EgressThreadMapper> egress_buffer;
+bm::Queue<std::unique_ptr<bm::Packet>> output_buffer;
+
+bool m_firstPacket;
+
+// ---- Event-driven scheduler state ----
+
+/**
+ * @brief Per-port transmission state.
+ *
+ * busy/busyUntil model the link serialisation delay;
+ * pendingEvent allows cancellation of a stale dequeue timer.
+ */
+struct PortTxState
+{
+    bool busy{false};
+    Time busyUntil{Time(0)};
+    EventId pendingEvent{};
+};
+
+std::unordered_map<uint32_t, PortTxState> m_portTxState;
+
+uint64_t m_linkRateBps{1000000000ULL}; ///< Link rate for tx-delay modelling (default 1 Gbps)
+}; // namespace ns3
 
 } // namespace ns3
 

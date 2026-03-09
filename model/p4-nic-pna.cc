@@ -18,7 +18,9 @@
 
 #include "ns3/p4-nic-pna.h"
 
+#include "ns3/data-rate.h"
 #include "ns3/p4-switch-net-device.h"
+#include "ns3/primitives-pna.h"
 #include "ns3/register-access-v1model.h"
 #include "ns3/simulator.h"
 
@@ -50,6 +52,9 @@ P4PnaNic::P4PnaNic(P4SwitchNetDevice* net_device, bool enable_swap)
     force_arith_header("pna_main_parser_input_metadata");
     force_arith_header("pna_main_input_metadata");
     force_arith_header("pna_main_output_metadata");
+
+    import_pna_primitives(); // register send_to_port, drop_packet
+    CalculateScheduleTime();
 }
 
 P4PnaNic::~P4PnaNic()
@@ -160,6 +165,10 @@ P4PnaNic::ReceivePacket(Ptr<Packet> packetIn,
     bm_packet->set_register(0, len);
 
     input_buffer.push_front(std::move(bm_packet));
+
+    // Event-driven: process the packet immediately if the pipeline is free,
+    // otherwise it will be picked up by PortTxComplete when the link is idle.
+    main_processing_pipeline();
     return 0;
 }
 

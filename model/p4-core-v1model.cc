@@ -19,6 +19,7 @@
 
 #include "ns3/p4-core-v1model.h"
 
+#include "ns3/data-rate.h"
 #include "ns3/p4-switch-net-device.h"
 #include "ns3/primitives-v1model.h"
 #include "ns3/register-access-v1model.h"
@@ -299,14 +300,13 @@ P4CoreV1model::start_and_return_()
     NS_LOG_FUNCTION("Switch ID: " << m_p4SwitchId << " start");
     CheckQueueingMetadata();
 
-    if (!m_egressTimeRef.IsZero())
-    {
-        NS_LOG_DEBUG("Switch ID: " << m_p4SwitchId
-                                   << " Scheduling initial timer event using m_egressTimeRef = "
-                                   << m_egressTimeRef.GetNanoSeconds() << " ns");
-        m_egressTimeEvent =
-            Simulator::Schedule(m_egressTimeRef, &P4CoreV1model::SetEgressTimerEvent, this);
-    }
+    // Event-driven scheduler: no periodic polling timer is started here.
+    // Dequeue events will be scheduled on-demand by ScheduleEgressIfNeeded()
+    // (called from Enqueue()) and by PortTxComplete() after each transmission.
+
+    NS_LOG_DEBUG("Switch ID: " << m_p4SwitchId << " using event-driven egress scheduler"
+                               << " (queue rate = " << m_switchRate << " pps"
+                               << ", link rate = " << m_linkRateBps << " bps)");
 
     if (m_enableTracing)
     {
@@ -329,10 +329,14 @@ P4CoreV1model::reset_target_state_()
     get_component<bm::McSimplePreLAG>()->reset_state();
 }
 
+// ---------------------------------------------------------------------------
+// Legacy polling callback – retained for reference but no longer scheduled
+// by start_and_return_().  The event-driven scheduler supersedes this.
+// ---------------------------------------------------------------------------
 void
 P4CoreV1model::SetEgressTimerEvent()
 {
-    NS_LOG_FUNCTION("p4_switch has been triggered by the egress timer event");
+    NS_LOG_FUNCTION("p4_switch has been triggered by the egress timer event (legacy)");
     bool checkflag = HandleEgressPipeline(0);
     m_egressTimeEvent =
         Simulator::Schedule(m_egressTimeRef, &P4CoreV1model::SetEgressTimerEvent, this);
@@ -344,6 +348,275 @@ P4CoreV1model::SetEgressTimerEvent()
     {
         NS_LOG_INFO("Egress timer event needs additional scheduling due to !checkflag.");
         Simulator::Schedule(Time(NanoSeconds(10)), &P4CoreV1model::HandleEgressPipeline, this, 0);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Event-driven scheduler implementation
+// ---------------------------------------------------------------------------
+
+void
+P4CoreV1model::ScheduleEgressIfNeeded(uint32_t port)
+{
+    NS_LOG_FUNCTION(this << port);
+
+    auto& pstate = m_portTxState[port];
+
+    // If the port is already busy transmitting, do nothing: PortTxComplete()
+    // will call EventDrivenEgressDequeue() when the link is free.
+    if (pstate.busy)
+    {
+        NS_LOG_DEBUG("Port " << port << " busy until " << pstate.busyUntil.GetNanoSeconds()
+                             << " ns – deferring to PortTxComplete");
+        return;
+    }
+
+    // If a dequeue event is already pending for this port, cancel it and
+    // reschedule so we always use the tightest eligible time.
+    if (pstate.pendingEvent.IsRunning())
+    {
+        NS_LOG_DEBUG("Port " << port
+                             << ": cancelling stale pending dequeue event and rescheduling");
+        Simulator::Cancel(pstate.pendingEvent);
+        pstate.pendingEvent = EventId();
+    }
+
+    // Ask the queue what the earliest eligible dequeue time is.
+    // get_next_tp_all_ports() walks all ports; for a targeted call we use
+    // now as a lower bound – the packet's QE::send timestamp encodes the
+    // rate-limit deadline.
+    Time now = Simulator::Now();
+    Time nextEligible = egress_buffer.get_next_tp_all_ports();
+
+    Time delay = (nextEligible > now) ? (nextEligible - now) : Time(0);
+
+    NS_LOG_DEBUG("Port " << port << ": scheduling EventDrivenEgressDequeue in "
+                         << delay.GetNanoSeconds() << " ns (at " << (now + delay).GetNanoSeconds()
+                         << " ns)");
+
+    pstate.pendingEvent =
+        Simulator::Schedule(delay, &P4CoreV1model::EventDrivenEgressDequeue, this, port);
+}
+
+void
+P4CoreV1model::EventDrivenEgressDequeue(uint32_t port)
+{
+    NS_LOG_FUNCTION(this << port);
+
+    auto& pstate = m_portTxState[port];
+    // Clear the pending event handle – we are now executing it.
+    pstate.pendingEvent = EventId();
+
+    if (pstate.busy)
+    {
+        // Should not normally happen, but guard anyway.
+        NS_LOG_DEBUG("Port " << port << " still busy – PortTxComplete will retry");
+        return;
+    }
+
+    // Attempt to dequeue and process one packet destined for this port.
+    std::unique_ptr<bm::Packet> bm_packet;
+    size_t out_port = 0;
+    size_t priority = 0;
+
+    // pop_back respects the rate-limit timestamp: it only pops a packet whose
+    // QE::send <= Simulator::Now().
+    egress_buffer.pop_back(0 /* workerId */, &out_port, &priority, &bm_packet);
+
+    if (!bm_packet)
+    {
+        NS_LOG_DEBUG("Port " << port << ": no eligible packet available right now");
+        // There may still be packets in the queue whose rate-limit has not yet
+        // expired.  Schedule the next attempt at the earliest future eligible time.
+        Time now = Simulator::Now();
+        Time nextEligible = egress_buffer.get_next_tp_all_ports();
+        if (nextEligible > now && nextEligible < now + Seconds(5))
+        {
+            Time delay = nextEligible - now;
+            NS_LOG_DEBUG("Port " << port << ": rescheduling dequeue in " << delay.GetNanoSeconds()
+                                 << " ns");
+            pstate.pendingEvent =
+                Simulator::Schedule(delay, &P4CoreV1model::EventDrivenEgressDequeue, this, port);
+        }
+        return;
+    }
+
+    // ---- Run the egress pipeline on the dequeued packet ----
+    if (m_enableTracing)
+    {
+        m_egressPps++;
+        int len = bm_packet->get_data_size();
+        m_egressBps += len * 8;
+    }
+
+    NS_LOG_FUNCTION("Egress processing for the packet (event-driven)");
+    bm::PHV* phv = bm_packet->get_phv();
+    bm::Pipeline* egress_mau = this->get_pipeline("egress");
+    bm::Deparser* deparser = this->get_deparser("deparser");
+
+    if (phv->has_field("intrinsic_metadata.egress_global_timestamp"))
+    {
+        phv->get_field("intrinsic_metadata.egress_global_timestamp").set(GetTimeStamp());
+    }
+
+    if (m_enableQueueingMetadata)
+    {
+        uint64_t enq_timestamp = phv->get_field("queueing_metadata.enq_timestamp").get<uint64_t>();
+        phv->get_field("queueing_metadata.deq_timedelta").set(GetTimeStamp() - enq_timestamp);
+
+        size_t pkt_priority = phv->has_field("intrinsic_metadata.priority")
+                                  ? phv->get_field("intrinsic_metadata.priority").get<size_t>()
+                                  : 0u;
+        if (pkt_priority >= m_nbQueuesPerPort)
+        {
+            NS_LOG_ERROR("Priority out of range (m_nbQueuesPerPort = " << m_nbQueuesPerPort
+                                                                       << "), dropping packet");
+            // Still need to check remaining queues for the port.
+            PortTxComplete(static_cast<uint32_t>(out_port));
+            return;
+        }
+
+        phv->get_field("queueing_metadata.deq_qdepth").set(egress_buffer.size(out_port));
+        if (phv->has_field("queueing_metadata.qid"))
+        {
+            phv->get_field("queueing_metadata.qid").set(m_nbQueuesPerPort - 1 - pkt_priority);
+        }
+    }
+
+    phv->get_field("standard_metadata.egress_port").set(out_port);
+
+    bm::Field& f_egress_spec = phv->get_field("standard_metadata.egress_spec");
+    f_egress_spec.set(0);
+
+    phv->get_field("standard_metadata.packet_length")
+        .set(bm_packet->get_register(RegisterAccess::PACKET_LENGTH_REG_IDX));
+
+    egress_mau->apply(bm_packet.get());
+
+    // EGRESS CLONING
+    auto clone_mirror_session_id = RegisterAccess::get_clone_mirror_session_id(bm_packet.get());
+    auto clone_field_list = RegisterAccess::get_clone_field_list(bm_packet.get());
+    if (clone_mirror_session_id)
+    {
+        NS_LOG_DEBUG("Cloning packet at egress, Packet ID: " << bm_packet->get_packet_id());
+        RegisterAccess::set_clone_mirror_session_id(bm_packet.get(), 0);
+        RegisterAccess::set_clone_field_list(bm_packet.get(), 0);
+        MirroringSessionConfig config;
+        clone_mirror_session_id &= RegisterAccess::MIRROR_SESSION_ID_MASK;
+        bool is_session_configured =
+            GetMirroringSession(static_cast<int>(clone_mirror_session_id), &config);
+        if (is_session_configured)
+        {
+            std::unique_ptr<bm::Packet> packet_copy =
+                bm_packet->clone_with_phv_reset_metadata_ptr();
+            bm::PHV* phv_copy = packet_copy->get_phv();
+            bm::FieldList* field_list = this->get_field_list(clone_field_list);
+            field_list->copy_fields_between_phvs(phv_copy, phv);
+            phv_copy->get_field("standard_metadata.instance_type")
+                .set(PKT_INSTANCE_TYPE_EGRESS_CLONE);
+            auto packet_size = bm_packet->get_register(RegisterAccess::PACKET_LENGTH_REG_IDX);
+            RegisterAccess::clear_all(packet_copy.get());
+            packet_copy->set_register(RegisterAccess::PACKET_LENGTH_REG_IDX, packet_size);
+            if (config.mgid_valid)
+            {
+                NS_LOG_DEBUG("Cloning packet to MGID " << config.mgid);
+                MulticastPacket(packet_copy.get(), config.mgid);
+            }
+            if (config.egress_port_valid)
+            {
+                NS_LOG_DEBUG("Cloning packet to egress port " << config.egress_port);
+                Enqueue(config.egress_port, std::move(packet_copy));
+            }
+        }
+    }
+
+    uint32_t egress_spec = f_egress_spec.get_uint();
+    if (egress_spec == m_dropPort)
+    {
+        NS_LOG_DEBUG("Dropping packet at the end of egress");
+        // Port is still free; check for more packets.
+        PortTxComplete(static_cast<uint32_t>(out_port));
+        return;
+    }
+
+    deparser->deparse(bm_packet.get());
+
+    // RECIRCULATE
+    auto recirculate_flag = RegisterAccess::get_recirculate_flag(bm_packet.get());
+    if (recirculate_flag)
+    {
+        NS_LOG_DEBUG("Recirculating packet");
+        int field_list_id = recirculate_flag;
+        RegisterAccess::set_recirculate_flag(bm_packet.get(), 0);
+        bm::FieldList* field_list = this->get_field_list(field_list_id);
+        std::unique_ptr<bm::Packet> packet_copy = bm_packet->clone_no_phv_ptr();
+        bm::PHV* phv_copy = packet_copy->get_phv();
+        phv_copy->reset_metadata();
+        field_list->copy_fields_between_phvs(phv_copy, phv);
+        phv_copy->get_field("standard_metadata.instance_type").set(PKT_INSTANCE_TYPE_RECIRC);
+        size_t packet_size = packet_copy->get_data_size();
+        RegisterAccess::clear_all(packet_copy.get());
+        packet_copy->set_register(RegisterAccess::PACKET_LENGTH_REG_IDX, packet_size);
+        phv_copy->get_field("standard_metadata.packet_length").set(packet_size);
+        packet_copy->set_ingress_length(packet_size);
+        input_buffer->push_front(InputBuffer::PacketType::RECIRCULATE, std::move(packet_copy));
+        // Port is free; try to serve the next queued packet.
+        PortTxComplete(static_cast<uint32_t>(out_port));
+        return;
+    }
+
+    // ---- Model link serialisation delay ----
+    // Compute how long it takes to put this packet on the wire at m_linkRateBps.
+    int pkt_bytes = static_cast<int>(bm_packet->get_data_size());
+    uint64_t tx_ns = (m_linkRateBps > 0)
+                         ? (static_cast<uint64_t>(pkt_bytes) * 8ULL * 1000000000ULL / m_linkRateBps)
+                         : 0ULL;
+    Time txDelay = NanoSeconds(tx_ns);
+
+    // Mark port busy until serialisation finishes.
+    pstate.busy = true;
+    pstate.busyUntil = Simulator::Now() + txDelay;
+
+    NS_LOG_DEBUG("Port " << out_port << ": transmitting " << pkt_bytes << " B, tx delay = " << tx_ns
+                         << " ns, free at " << pstate.busyUntil.GetNanoSeconds() << " ns");
+
+    // Hand the packet off to the ns-3 network stack.
+    uint16_t protocol = RegisterAccess::get_ns_protocol(bm_packet.get());
+    int addr_index = RegisterAccess::get_ns_address(bm_packet.get());
+    Ptr<Packet> ns_packet = this->ConvertToNs3Packet(std::move(bm_packet));
+    NS_LOG_DEBUG("Sending packet to NS-3 stack, Packet ID: " << ns_packet->GetUid()
+                                                             << ", Size: " << ns_packet->GetSize()
+                                                             << " bytes, Port: " << out_port);
+    m_switchNetDevice->SendNs3Packet(ns_packet,
+                                     static_cast<int>(out_port),
+                                     protocol,
+                                     m_destinationList[addr_index]);
+
+    // Schedule PortTxComplete to fire after the serialisation delay.
+    Simulator::Schedule(txDelay,
+                        &P4CoreV1model::PortTxComplete,
+                        this,
+                        static_cast<uint32_t>(out_port));
+}
+
+void
+P4CoreV1model::PortTxComplete(uint32_t port)
+{
+    NS_LOG_FUNCTION(this << port);
+
+    auto& pstate = m_portTxState[port];
+    pstate.busy = false;
+
+    // Check if there are still packets waiting for this port.
+    if (egress_buffer.size(port) > 0)
+    {
+        NS_LOG_DEBUG(
+            "Port " << port << ": PortTxComplete – queued packets remain, scheduling next dequeue");
+        ScheduleEgressIfNeeded(port);
+    }
+    else
+    {
+        NS_LOG_DEBUG("Port " << port << ": PortTxComplete – queue empty, port idle");
     }
 }
 
@@ -602,174 +875,35 @@ P4CoreV1model::Enqueue(uint32_t egress_port, std::unique_ptr<bm::Packet>&& packe
 
     NS_LOG_DEBUG("Packet enqueued in queue buffer with Port: " << egress_port
                                                                << ", Priority: " << priority);
+
+    // Event-driven scheduler: trigger a dequeue attempt for this port if it is
+    // currently idle and no event is already pending.
+    ScheduleEgressIfNeeded(egress_port);
 }
 
 bool
 P4CoreV1model::HandleEgressPipeline(size_t workerId)
 {
-    NS_LOG_FUNCTION("HandleEgressPipeline");
-    std::unique_ptr<bm::Packet> bm_packet;
-    size_t port;
-    size_t priority;
+    NS_LOG_FUNCTION("HandleEgressPipeline (delegates to event-driven dequeue)");
 
+    // Quick check: are any queues non-empty?
     int queue_number = SSWITCH_VIRTUAL_QUEUE_NUM_V1MODEL;
-
+    bool any_queued = false;
     for (int i = 0; i < queue_number; i++)
     {
         if (egress_buffer.size(i) > 0)
         {
+            any_queued = true;
             break;
         }
-        if (i == queue_number - 1)
-        {
-            return false;
-        }
     }
-
-    egress_buffer.pop_back(workerId, &port, &priority, &bm_packet);
-    if (bm_packet == nullptr)
+    if (!any_queued)
         return false;
 
-    if (m_enableTracing)
-    {
-        m_egressPps++; // egress pps
-        int len = bm_packet->get_data_size();
-        m_egressBps += len * 8; // egress bps, this may add the header in account.
-    }
-
-    NS_LOG_FUNCTION("Egress processing for the packet");
-    bm::PHV* phv = bm_packet->get_phv();
-    bm::Pipeline* egress_mau = this->get_pipeline("egress");
-    bm::Deparser* deparser = this->get_deparser("deparser");
-
-    if (phv->has_field("intrinsic_metadata.egress_global_timestamp"))
-    {
-        phv->get_field("intrinsic_metadata.egress_global_timestamp").set(GetTimeStamp());
-    }
-
-    if (m_enableQueueingMetadata)
-    {
-        uint64_t enq_timestamp = phv->get_field("queueing_metadata.enq_timestamp").get<uint64_t>();
-        phv->get_field("queueing_metadata.deq_timedelta").set(GetTimeStamp() - enq_timestamp);
-
-        size_t priority = phv->has_field("intrinsic_metadata.priority")
-                              ? phv->get_field("intrinsic_metadata.priority").get<size_t>()
-                              : 0u;
-        if (priority >= m_nbQueuesPerPort)
-        {
-            NS_LOG_ERROR("Priority out of range (m_nbQueuesPerPort = " << m_nbQueuesPerPort
-                                                                       << "), dropping packet");
-            return true;
-        }
-
-        phv->get_field("queueing_metadata.deq_qdepth").set(egress_buffer.size(port));
-        if (phv->has_field("queueing_metadata.qid"))
-        {
-            auto& qid_f = phv->get_field("queueing_metadata.qid");
-            qid_f.set(m_nbQueuesPerPort - 1 - priority);
-        }
-    }
-
-    phv->get_field("standard_metadata.egress_port").set(port);
-
-    bm::Field& f_egress_spec = phv->get_field("standard_metadata.egress_spec");
-    f_egress_spec.set(0);
-
-    phv->get_field("standard_metadata.packet_length")
-        .set(bm_packet->get_register(RegisterAccess::PACKET_LENGTH_REG_IDX));
-
-    egress_mau->apply(bm_packet.get());
-
-    auto clone_mirror_session_id = RegisterAccess::get_clone_mirror_session_id(bm_packet.get());
-    auto clone_field_list = RegisterAccess::get_clone_field_list(bm_packet.get());
-
-    // EGRESS CLONING
-    if (clone_mirror_session_id)
-    {
-        NS_LOG_DEBUG("Cloning packet at egress, Packet ID: "
-                     << bm_packet->get_packet_id() << ", Size: " << bm_packet->get_data_size()
-                     << " bytes");
-        RegisterAccess::set_clone_mirror_session_id(bm_packet.get(), 0);
-        RegisterAccess::set_clone_field_list(bm_packet.get(), 0);
-        MirroringSessionConfig config;
-        // Extract the part of clone_mirror_session_id that contains the
-        // actual session id.
-        clone_mirror_session_id &= RegisterAccess::MIRROR_SESSION_ID_MASK;
-        bool is_session_configured =
-            GetMirroringSession(static_cast<int>(clone_mirror_session_id), &config);
-        if (is_session_configured)
-        {
-            int field_list_id = clone_field_list;
-            std::unique_ptr<bm::Packet> packet_copy =
-                bm_packet->clone_with_phv_reset_metadata_ptr();
-            bm::PHV* phv_copy = packet_copy->get_phv();
-            bm::FieldList* field_list = this->get_field_list(field_list_id);
-            field_list->copy_fields_between_phvs(phv_copy, phv);
-            phv_copy->get_field("standard_metadata.instance_type")
-                .set(PKT_INSTANCE_TYPE_EGRESS_CLONE);
-            auto packet_size = bm_packet->get_register(RegisterAccess::PACKET_LENGTH_REG_IDX);
-            RegisterAccess::clear_all(packet_copy.get());
-            packet_copy->set_register(RegisterAccess::PACKET_LENGTH_REG_IDX, packet_size);
-            if (config.mgid_valid)
-            {
-                NS_LOG_DEBUG("Cloning packet to MGID " << config.mgid);
-                MulticastPacket(packet_copy.get(), config.mgid);
-            }
-            if (config.egress_port_valid)
-            {
-                NS_LOG_DEBUG("Cloning packet to egress port " << config.egress_port);
-                // TODO This create a copy packet(new bm packet), but the UID mapping
-                // may need to be updated in map.
-                Enqueue(config.egress_port, std::move(packet_copy));
-            }
-        }
-    }
-
-    // TODO(antonin): should not be done like this in egress pipeline
-    uint32_t egress_spec = f_egress_spec.get_uint();
-    if (egress_spec == m_dropPort)
-    {
-        // drop packet
-        NS_LOG_DEBUG("Dropping packet at the end of egress");
-        return true;
-    }
-
-    deparser->deparse(bm_packet.get());
-
-    // RECIRCULATE
-    auto recirculate_flag = RegisterAccess::get_recirculate_flag(bm_packet.get());
-    if (recirculate_flag)
-    {
-        NS_LOG_DEBUG("Recirculating packet");
-
-        int field_list_id = recirculate_flag;
-        RegisterAccess::set_recirculate_flag(bm_packet.get(), 0);
-        bm::FieldList* field_list = this->get_field_list(field_list_id);
-        // TODO(antonin): just like for resubmit, there is no need for a copy
-        // here, but it is more convenient for this first prototype
-        std::unique_ptr<bm::Packet> packet_copy = bm_packet->clone_no_phv_ptr();
-        bm::PHV* phv_copy = packet_copy->get_phv();
-        phv_copy->reset_metadata();
-        field_list->copy_fields_between_phvs(phv_copy, phv);
-        phv_copy->get_field("standard_metadata.instance_type").set(PKT_INSTANCE_TYPE_RECIRC);
-        size_t packet_size = packet_copy->get_data_size();
-        RegisterAccess::clear_all(packet_copy.get());
-        packet_copy->set_register(RegisterAccess::PACKET_LENGTH_REG_IDX, packet_size);
-        phv_copy->get_field("standard_metadata.packet_length").set(packet_size);
-        // TODO(antonin): really it may be better to create a new packet here or
-        // to fold this functionality into the Packet class?
-        packet_copy->set_ingress_length(packet_size);
-        input_buffer->push_front(InputBuffer::PacketType::RECIRCULATE, std::move(packet_copy));
-        return true;
-    }
-
-    uint16_t protocol = RegisterAccess::get_ns_protocol(bm_packet.get());
-    int addr_index = RegisterAccess::get_ns_address(bm_packet.get());
-
-    Ptr<Packet> ns_packet = this->ConvertToNs3Packet(std::move(bm_packet));
-    NS_LOG_DEBUG("Sending packet to NS-3 stack, Packet ID: " << ns_packet->GetUid() << ", Size: "
-                                                             << ns_packet->GetSize() << " bytes");
-    m_switchNetDevice->SendNs3Packet(ns_packet, port, protocol, m_destinationList[addr_index]);
+    // Delegate to the event-driven dequeue path.  UINT32_MAX signals
+    // "any port" – EventDrivenEgressDequeue will pop from whichever port
+    // the egress_buffer selects (highest-priority, rate-eligible packet).
+    EventDrivenEgressDequeue(UINT32_MAX);
     return true;
 }
 
@@ -778,14 +912,37 @@ P4CoreV1model::CalculateScheduleTime()
 {
     m_egressTimeEvent = EventId();
 
-    // Now we can not set the dequeue rate for each queue, later we will add this
-    // feature by p4 runtime controller.
+    // Compute the inter-packet gap from the configured switch rate.
+    // This is still used as the per-queue rate in egress_buffer.
     uint64_t bottleneck_ns = 1e9 / m_switchRate;
     egress_buffer.set_rate_for_all(m_switchRate);
     m_egressTimeRef = Time::FromDouble(bottleneck_ns, Time::NS);
 
+    // Try to obtain the physical link rate from the first bridge port so that
+    // the event-driven scheduler can model per-packet transmission delay
+    // accurately.  Fall back to 1 Gbps if no port is attached yet.
+    if (m_switchNetDevice && m_switchNetDevice->GetNBridgePorts() > 0)
+    {
+        Ptr<NetDevice> port = m_switchNetDevice->GetBridgePort(0);
+        // CsmaNetDevice and PointToPointNetDevice both expose a DataRate attribute.
+        DataRateValue drv;
+        if (port->GetAttributeFailSafe("DataRate", drv))
+        {
+            m_linkRateBps = drv.Get().GetBitRate();
+            NS_LOG_INFO("Switch ID " << m_p4SwitchId
+                                     << ": link rate from port 0 = " << m_linkRateBps << " bps");
+        }
+        else
+        {
+            NS_LOG_DEBUG("Switch ID "
+                         << m_p4SwitchId
+                         << ": could not read DataRate attribute; using default 1 Gbps");
+        }
+    }
+
     NS_LOG_DEBUG("Switch ID: " << m_p4SwitchId << " Egress time reference set to " << bottleneck_ns
-                               << " ns (" << m_egressTimeRef.GetNanoSeconds() << " [ns])");
+                               << " ns (" << m_egressTimeRef.GetNanoSeconds() << " [ns])"
+                               << ", link rate = " << m_linkRateBps << " bps");
 }
 
 void
@@ -848,7 +1005,7 @@ P4CoreV1model::CalculatePacketsPerSecond()
     size_t input_buffer_size = input_buffer->get_size();
     log_stream << "Input buffer size: " << input_buffer_size << "\n";
 
-    uint32_t port_number = m_switchNetDevice->GetNPorts();
+    uint32_t port_number = m_switchNetDevice->GetNBridgePorts();
 
     for (size_t i = 0; i < static_cast<size_t>(port_number); i++)
     {
@@ -973,8 +1130,8 @@ P4CoreV1model::AddFlowEntry(const std::string& tableName,
 
     if (rc != bm::MatchErrorCode::SUCCESS)
     {
-        NS_LOG_WARN("AddFlowEntry failed for table " << tableName << ": "
-                                                     << MatchErrorCodeToStr(rc));
+        std::cout << "AddFlowEntry failed for table " << tableName << " with error code "
+                  << MatchErrorCodeToStr(rc);
         return -1;
     }
 
@@ -1024,8 +1181,9 @@ P4CoreV1model::DeleteFlowEntry(const std::string& tableName, bm::entry_handle_t 
 
     if (rc != bm::MatchErrorCode::SUCCESS)
     {
-        NS_LOG_WARN("DeleteFlowEntry failed for table " << tableName << ", handle " << handle
-                                                        << ": " << MatchErrorCodeToStr(rc));
+        std::cout << "DeleteFlowEntry failed for table " << tableName << " and handle " << handle
+                  << " with code " << static_cast<int>(rc) << " (" << MatchErrorCodeToStr(rc)
+                  << ")";
         return -1;
     }
 
@@ -1061,8 +1219,9 @@ P4CoreV1model::SetEntryTtl(const std::string& tableName,
 
     if (rc != bm::MatchErrorCode::SUCCESS)
     {
-        NS_LOG_WARN("SetEntryTtl failed for table " << tableName << ", handle " << handle << ": "
-                                                    << MatchErrorCodeToStr(rc));
+        std::cout << "SetEntryTtl failed for table " << tableName << ", handle " << handle
+                  << " with code " << static_cast<int>(rc) << " (" << MatchErrorCodeToStr(rc)
+                  << ")";
         return -1;
     }
 
@@ -1137,10 +1296,11 @@ P4CoreV1model::CreateActionProfileGroup(const std::string& profileName,
                                         bm::ActionProfile::grp_hdl_t* outHandle)
 {
     bm::MatchErrorCode rc = this->mt_act_prof_create_group(0, profileName, outHandle);
+    std::cout << "THe control flow is reaching here";
     if (rc != bm::MatchErrorCode::SUCCESS)
     {
-        NS_LOG_WARN("CreateActionProfileGroup failed for profile " << profileName << ": "
-                                                                   << MatchErrorCodeToStr(rc));
+        NS_LOG_WARN("CreateActionProfileGroup failed for profile " << profileName);
+        NS_LOG_WARN("Error: " << MatchErrorCodeToStr(rc));
         return -1;
     }
     return 0;
