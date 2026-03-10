@@ -199,6 +199,13 @@ P4CorePsa::ScheduleEgressIfNeeded(uint32_t port)
 
     Time now = Simulator::Now();
     Time nextEligible = egress_buffer.get_next_tp_all_ports();
+
+    if (nextEligible == Time::Max())
+    {
+        NS_LOG_DEBUG("PSA port " << port << ": all queues empty, not scheduling dequeue");
+        return;
+    }
+
     Time delay = (nextEligible > now) ? (nextEligible - now) : Time(0);
 
     NS_LOG_DEBUG("PSA port " << port << ": scheduling dequeue in " << delay.GetNanoSeconds()
@@ -234,13 +241,27 @@ P4CorePsa::EventDrivenEgressDequeue(uint32_t port)
         NS_LOG_DEBUG("PSA port " << port << ": no eligible packet right now");
         Time now = Simulator::Now();
         Time nextEligible = egress_buffer.get_next_tp_all_ports();
-        if (nextEligible > now && nextEligible < now + Seconds(5))
+        // Only reschedule if there are actually queued packets for this port;
+        // get_next_tp_all_ports() returns now+5s as a sentinel when all queues
+        // are empty, which must not be treated as a real future deadline.
+        if (nextEligible != Time::Max() && nextEligible > now)
         {
             pstate.pendingEvent = Simulator::Schedule(nextEligible - now,
                                                       &P4CorePsa::EventDrivenEgressDequeue,
                                                       this,
                                                       port);
         }
+        return;
+    }
+
+    // Bug-fix: pop_back() is global – the dequeued packet may belong to any
+    // port, not necessarily 'port'.  All state from here on must be keyed on
+    // out_port.
+    auto& out_pstate = m_portTxState[static_cast<uint32_t>(out_port)];
+    if (out_pstate.busy)
+    {
+        NS_LOG_WARN("PSA port " << out_port << " busy when dequeued from port " << port
+                                << " scheduler – packet lost");
         return;
     }
 
@@ -333,8 +354,8 @@ P4CorePsa::EventDrivenEgressDequeue(uint32_t port)
                          : 0ULL;
     Time txDelay = NanoSeconds(tx_ns);
 
-    pstate.busy = true;
-    pstate.busyUntil = Simulator::Now() + txDelay;
+    out_pstate.busy = true;
+    out_pstate.busyUntil = Simulator::Now() + txDelay;
 
     NS_LOG_DEBUG("PSA port " << out_port << ": transmitting " << pkt_bytes
                              << " B, tx delay = " << tx_ns << " ns");
