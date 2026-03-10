@@ -351,12 +351,22 @@ class NSQueueingLogicPriRL
         return q_info_pri.pkt_delay_time;
     }
 
+    /**
+     * @brief Returns the earliest time at which any queued packet becomes
+     * rate-eligible for dequeue.
+     *
+     * Returns Time(0) if at least one packet is already eligible (send <= now).
+     * Returns Time::Max() if all queues are empty (no packets at all).
+     * Returns a future Time otherwise.
+     *
+     * Callers should check `size(port) > 0` or compare against Time::Max()
+     * to distinguish "nothing queued" from "queued but rate-limited".
+     */
     Time get_next_tp_all_ports()
     {
         Time now = Simulator::Now();
-        Time next = now + Seconds(5);
+        Time next = Time::Max(); // sentinel: no packets queued anywhere
 
-        // workers_info is a std::vector<WorkerInfo>, so iterate by reference directly
         for (auto& w_info : workers_info)
         {
             for (size_t pri = nb_priorities; pri-- > 0;)
@@ -366,12 +376,12 @@ class NSQueueingLogicPriRL
                     continue;
                 if (q.top().send <= now)
                 {
-                    return q.top().send;
+                    return Time(0); // at least one packet is immediately eligible
                 }
                 next = std::min(next, q.top().send);
             }
         }
-        return next;
+        return next; // either a real future time, or Time::Max() if empty
     }
 
     /**

@@ -381,11 +381,18 @@ P4CoreV1model::ScheduleEgressIfNeeded(uint32_t port)
     }
 
     // Ask the queue what the earliest eligible dequeue time is.
-    // get_next_tp_all_ports() walks all ports; for a targeted call we use
-    // now as a lower bound – the packet's QE::send timestamp encodes the
-    // rate-limit deadline.
+    // get_next_tp_all_ports() returns Time(0) if a packet is already eligible,
+    // a future Time if all packets are rate-limited, or Time::Max() if all
+    // queues are empty.
     Time now = Simulator::Now();
     Time nextEligible = egress_buffer.get_next_tp_all_ports();
+
+    if (nextEligible == Time::Max())
+    {
+        // All queues are empty; nothing to schedule.
+        NS_LOG_DEBUG("Port " << port << ": all queues empty, not scheduling dequeue");
+        return;
+    }
 
     Time delay = (nextEligible > now) ? (nextEligible - now) : Time(0);
 
@@ -427,9 +434,11 @@ P4CoreV1model::EventDrivenEgressDequeue(uint32_t port)
         NS_LOG_DEBUG("Port " << port << ": no eligible packet available right now");
         // There may still be packets in the queue whose rate-limit has not yet
         // expired.  Schedule the next attempt at the earliest future eligible time.
+        // get_next_tp_all_ports() returns Time::Max() if queues are empty,
+        // Time(0) if a packet is immediately eligible, or a future deadline.
         Time now = Simulator::Now();
         Time nextEligible = egress_buffer.get_next_tp_all_ports();
-        if (nextEligible > now && nextEligible < now + Seconds(5))
+        if (nextEligible != Time::Max() && nextEligible > now)
         {
             Time delay = nextEligible - now;
             NS_LOG_DEBUG("Port " << port << ": rescheduling dequeue in " << delay.GetNanoSeconds()
@@ -437,6 +446,21 @@ P4CoreV1model::EventDrivenEgressDequeue(uint32_t port)
             pstate.pendingEvent =
                 Simulator::Schedule(delay, &P4CoreV1model::EventDrivenEgressDequeue, this, port);
         }
+        return;
+    }
+
+    // Bug-fix: pop_back() is a global arbitration – the dequeued packet may
+    // belong to any port, not necessarily 'port'.  All state from here on
+    // must be keyed on out_port, not on the scheduling port.
+    auto& out_pstate = m_portTxState[static_cast<uint32_t>(out_port)];
+    if (out_pstate.busy)
+    {
+        // The actual output port is already occupied.  Put the packet back
+        // is not possible in BMv2's queue; instead drop the pending-event so
+        // PortTxComplete(out_port) will reschedule when it clears.
+        NS_LOG_WARN("Port " << out_port << " busy when dequeued from port " << port
+                            << " scheduler – packet lost; fix: use per-port dequeue");
+        // Re-schedule for the correct port when it becomes free.
         return;
     }
 
@@ -568,11 +592,11 @@ P4CoreV1model::EventDrivenEgressDequeue(uint32_t port)
     // The port NetDevice will serialise the packet onto the wire at its own
     // configured DataRate.  Its PhyTxEnd trace fires when done and triggers
     // P4SwitchNetDevice::OnPortTxEnd → PortTxComplete(out_port), which clears
-    // pstate.busy and schedules the next dequeue.  We must mark the port busy
+    // out_pstate.busy and schedules the next dequeue.  We must mark the port busy
     // *before* calling SendNs3Packet so that any re-entrant Enqueue() call
     // (e.g. from an egress clone) correctly sees the port as occupied.
     size_t pkt_bytes = bm_packet->get_data_size();
-    pstate.busy = true;
+    out_pstate.busy = true;
 
     NS_LOG_DEBUG("Port " << out_port << ": handing " << pkt_bytes
                          << " B to NetDevice – waiting for PhyTxEnd");

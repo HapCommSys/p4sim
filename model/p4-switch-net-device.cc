@@ -355,9 +355,16 @@ P4SwitchNetDevice::AddBridgePort(Ptr<NetDevice> bridgePort)
         MakeCallback(&P4SwitchNetDevice::OnPortTxEnd, this, bridgePort));
     if (!ok)
     {
-        NS_LOG_WARN("AddBridgePort: could not connect PhyTxEnd trace on port "
-                    << bridgePort->GetInstanceTypeId().GetName()
-                    << " – port-readiness signalling will not be available for this port.");
+        // The v1model egress scheduler relies exclusively on PhyTxEnd to clear
+        // the port-busy flag and trigger the next dequeue.  If the trace
+        // connection fails, the port will stall permanently after the first
+        // transmission.  Treat this as a fatal configuration error rather than
+        // silently allowing incorrect simulation behaviour.
+        NS_FATAL_ERROR("AddBridgePort: could not connect PhyTxEnd trace on "
+                       << bridgePort->GetInstanceTypeId().GetName()
+                       << ". Ensure the device type exposes a 'PhyTxEnd' trace source "
+                       << "(CsmaNetDevice, PointToPointNetDevice, and CustomP2PNetDevice "
+                       << "all do). Cannot continue.");
     }
 }
 
