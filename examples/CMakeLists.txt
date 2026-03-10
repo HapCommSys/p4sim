@@ -75,25 +75,25 @@ build_lib_example(
 )
 
 # Source routing with custom headers
-build_lib_example(
-  NAME p4-source-routing
-  SOURCE_FILES p4-source-routing.cc
-  LIBRARIES_TO_LINK ${P4SIM_CSMA_LIBS}
-)
+# build_lib_example(
+#   NAME p4-source-routing
+#   SOURCE_FILES p4-source-routing.cc
+#   LIBRARIES_TO_LINK ${P4SIM_CSMA_LIBS}
+# )
 
 # Runtime controller — flow-table updates
-build_lib_example(
-  NAME p4-basic-controller
-  SOURCE_FILES p4-basic-controller.cc
-  LIBRARIES_TO_LINK ${P4SIM_CSMA_LIBS}
-)
+# build_lib_example(
+#   NAME p4-basic-controller
+#   SOURCE_FILES p4-basic-controller.cc
+#   LIBRARIES_TO_LINK ${P4SIM_CSMA_LIBS}
+# )
 
 # Controller with action profiles
-build_lib_example(
-  NAME p4-controller-action-profile
-  SOURCE_FILES p4-controller-action-profile.cc
-  LIBRARIES_TO_LINK ${P4SIM_CSMA_LIBS}
-)
+# build_lib_example(
+#   NAME p4-controller-action-profile
+#   SOURCE_FILES p4-controller-action-profile.cc
+#   LIBRARIES_TO_LINK ${P4SIM_CSMA_LIBS}
+# )
 
 # QoS-aware queuing test
 build_lib_example(
