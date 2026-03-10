@@ -92,6 +92,7 @@ build_lib_example(
   LIBRARIES_TO_LINK
     ${libp4sim}
     ${libinternet}
+    ${libcsma}
     ${libapplications}
     ${libnetwork}
 )
@@ -129,6 +130,7 @@ build_lib_example(
   SOURCE_FILES topo-fattree.cc
   LIBRARIES_TO_LINK
     ${libp4sim}
+    ${libcsma}
     ${libinternet}
     ${libapplications}
     ${libnetwork}

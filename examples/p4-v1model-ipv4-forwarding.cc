@@ -177,12 +177,11 @@ main(int argc, char* argv[])
     std::string ns3_link_rate = "1000Mbps";
     bool enableTracePcap = true;
 
-    std::string p4JsonPath = "/home/p4/workdir/ns-3-dev-git/contrib/p4sim/examples/p4src/"
+    std::string p4JsonPath = "/home/mm/ns3.39/contrib/p4sim/examples/p4src/"
                              "simple_v1model/simple_v1model.json";
     std::string flowTablePath =
-        "/home/p4/workdir/ns-3-dev-git/contrib/p4sim/examples/p4src/simple_v1model/flowtable_0.txt";
-    std::string topoInput =
-        "/home/p4/workdir/ns-3-dev-git/contrib/p4sim/examples/p4src/simple_v1model/topo.txt";
+        "/home/mm/ns3.39/contrib/p4sim/examples/p4src/simple_v1model/flowtable_0.txt";
+    std::string topoInput = "/home/mm/ns3.39/contrib/p4sim/examples/p4src/simple_v1model/topo.txt";
     std::string topoFormat("CsmaTopo");
 
     // ============================  command line ============================
@@ -306,6 +305,7 @@ main(int argc, char* argv[])
         p4SwitchHelper.SetDeviceAttribute("ChannelType", UintegerValue(0));
         p4SwitchHelper.SetDeviceAttribute("P4SwitchArch",
                                           UintegerValue(0)); // v1model 0, psa 1, pna 2
+        p4SwitchHelper.SetDeviceAttribute("SwitchRate", UintegerValue(100000));
         // ChannelType
         NS_LOG_INFO("*** P4 switch configuration: " << p4JsonPath << ", " << flowTablePath);
 
