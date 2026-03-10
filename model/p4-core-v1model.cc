@@ -366,8 +366,7 @@ P4CoreV1model::ScheduleEgressIfNeeded(uint32_t port)
     // will call EventDrivenEgressDequeue() when the link is free.
     if (pstate.busy)
     {
-        NS_LOG_DEBUG("Port " << port << " busy until " << pstate.busyUntil.GetNanoSeconds()
-                             << " ns – deferring to PortTxComplete");
+        NS_LOG_DEBUG("Port " << port << " busy (awaiting PhyTxEnd) – deferring to PortTxComplete");
         return;
     }
 
@@ -565,22 +564,19 @@ P4CoreV1model::EventDrivenEgressDequeue(uint32_t port)
         return;
     }
 
-    // ---- Model link serialisation delay ----
-    // Compute how long it takes to put this packet on the wire at m_linkRateBps.
-    int pkt_bytes = static_cast<int>(bm_packet->get_data_size());
-    uint64_t tx_ns = (m_linkRateBps > 0)
-                         ? (static_cast<uint64_t>(pkt_bytes) * 8ULL * 1000000000ULL / m_linkRateBps)
-                         : 0ULL;
-    Time txDelay = NanoSeconds(tx_ns);
-
-    // Mark port busy until serialisation finishes.
-    pstate.busy = true;
-    pstate.busyUntil = Simulator::Now() + txDelay;
-
-    NS_LOG_DEBUG("Port " << out_port << ": transmitting " << pkt_bytes << " B, tx delay = " << tx_ns
-                         << " ns, free at " << pstate.busyUntil.GetNanoSeconds() << " ns");
-
     // Hand the packet off to the ns-3 network stack.
+    // The port NetDevice will serialise the packet onto the wire at its own
+    // configured DataRate.  Its PhyTxEnd trace fires when done and triggers
+    // P4SwitchNetDevice::OnPortTxEnd → PortTxComplete(out_port), which clears
+    // pstate.busy and schedules the next dequeue.  We must mark the port busy
+    // *before* calling SendNs3Packet so that any re-entrant Enqueue() call
+    // (e.g. from an egress clone) correctly sees the port as occupied.
+    size_t pkt_bytes = bm_packet->get_data_size();
+    pstate.busy = true;
+
+    NS_LOG_DEBUG("Port " << out_port << ": handing " << pkt_bytes
+                         << " B to NetDevice – waiting for PhyTxEnd");
+
     uint16_t protocol = RegisterAccess::get_ns_protocol(bm_packet.get());
     int addr_index = RegisterAccess::get_ns_address(bm_packet.get());
     Ptr<Packet> ns_packet = this->ConvertToNs3Packet(std::move(bm_packet));
@@ -591,12 +587,8 @@ P4CoreV1model::EventDrivenEgressDequeue(uint32_t port)
                                      static_cast<int>(out_port),
                                      protocol,
                                      m_destinationList[addr_index]);
-
-    // Schedule PortTxComplete to fire after the serialisation delay.
-    Simulator::Schedule(txDelay,
-                        &P4CoreV1model::PortTxComplete,
-                        this,
-                        static_cast<uint32_t>(out_port));
+    // PortTxComplete will be called via the PhyTxEnd callback wired in
+    // P4SwitchNetDevice::DoInitialize / AddBridgePort.
 }
 
 void

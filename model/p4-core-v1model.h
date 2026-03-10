@@ -343,19 +343,21 @@ bool m_firstPacket;
 /**
  * @brief Per-port transmission state.
  *
- * busy/busyUntil model the link serialisation delay;
+ * busy is set when a packet has been handed to the NetDevice and cleared
+ * when the device signals PhyTxEnd via PortTxComplete().
  * pendingEvent allows cancellation of a stale dequeue timer.
  */
 struct PortTxState
 {
     bool busy{false};
-    Time busyUntil{Time(0)};
     EventId pendingEvent{};
 };
 
 std::unordered_map<uint32_t, PortTxState> m_portTxState;
 
-uint64_t m_linkRateBps{1000000000ULL}; ///< Link rate for tx-delay modelling (default 1 Gbps)
+/// Physical link rate read from port 0 at startup; used for logging/diagnostics only.
+/// Actual serialisation delay is now modelled by the port NetDevice itself.
+uint64_t m_linkRateBps{1000000000ULL};
 }; // namespace ns3
 
 } // namespace ns3
