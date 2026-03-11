@@ -233,7 +233,7 @@ main(int argc, char* argv[])
 
     // set default network link parameter
     CsmaHelper csma;
-    csma.SetChannelAttribute("DataRate", StringValue(ns3_link_rate));
+    csma.SetChannelAttribute("DataRate", StringValue(linkRate));
     csma.SetChannelAttribute("Delay", TimeValue(MilliSeconds(0.01)));
 
     NetDeviceContainer hostDevices;
@@ -325,7 +325,7 @@ main(int argc, char* argv[])
                                         // safe default for this simple test.
 
         for (uint32_t i = 0; i < switchNum; ++i)
-            p4Helper.Install(switches.Get(i), switchDevices);
+            p4Helper.Install(switchNode.Get(i), switchDevices);
     }
     else
     {
@@ -370,7 +370,7 @@ main(int argc, char* argv[])
     ptr_app1->TraceConnectWithoutContext("Tx", MakeCallback(&TxCallback));
     sinkApp1.Get(0)->TraceConnectWithoutContext("Rx", MakeCallback(&RxCallback));
 
-    if (enableTracePcap)
+    if (enablePcap)
     {
         csma.EnablePcapAll("p4-psa-ipv4-forwarding");
     }

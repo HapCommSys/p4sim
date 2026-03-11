@@ -173,7 +173,7 @@ main(int argc, char* argv[])
     uint32_t clientIndex = 0;          ///< Index of the sending host.
     uint32_t serverIndex = 1;          ///< Index of the receiving host.
     uint16_t serverPort = 9093;        ///< UDP destination port on the server.
-    uint32_t switchRate = 100000;      ///< P4 switch processing rate in packets per second.
+    uint32_t switchRate = 10000;       ///< P4 switch processing rate in packets per second.
     double flowDuration = 3.0;         ///< Duration of the OnOff flow (s).
     double simDuration = 20.0;         ///< Total simulation time (s).
     int model = 0;                     ///< 0 = P4 PSA switch;  1 = standard NS-3 bridge (baseline).
@@ -233,7 +233,7 @@ main(int argc, char* argv[])
 
     // set default network link parameter
     CsmaHelper csma;
-    csma.SetChannelAttribute("DataRate", StringValue(ns3_link_rate));
+    csma.SetChannelAttribute("DataRate", StringValue(linkRate));
     csma.SetChannelAttribute("Delay", TimeValue(MilliSeconds(0.01)));
 
     NetDeviceContainer hostDevices;
@@ -320,7 +320,7 @@ main(int argc, char* argv[])
         p4Helper.SetDeviceAttribute("SwitchRate", UintegerValue(switchRate));
 
         for (uint32_t i = 0; i < switchNum; ++i)
-            p4Helper.Install(switches.Get(i), switchDevices);
+            p4Helper.Install(switchNode.Get(i), switchDevices);
     }
     else
     {
@@ -366,7 +366,7 @@ main(int argc, char* argv[])
     ptr_app1->TraceConnectWithoutContext("Tx", MakeCallback(&TxCallback));
     sinkApp1.Get(0)->TraceConnectWithoutContext("Rx", MakeCallback(&RxCallback));
 
-    if (enableTracePcap)
+    if (enablePcap)
     {
         csma.EnablePcapAll("p4-psa-ipv4-forwarding");
     }
