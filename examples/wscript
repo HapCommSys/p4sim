@@ -6,6 +6,9 @@ def build(bld):
     csma_deps  = base_deps + ['csma']
 
     # =================== V1model Architecture ===================
+    # 2 hosts, 1 switch - Calculator example with custom header parsing
+    obj = bld.create_ns3_program('p4-calc', csma_deps)
+    obj.source = 'p4-calc.cc'
 
     # 2 hosts, 1 switch — IPv4 forwarding
     obj = bld.create_ns3_program('p4-v1model-ipv4-forwarding', csma_deps)

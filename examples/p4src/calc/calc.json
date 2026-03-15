@@ -1,0 +1,2827 @@
+{
+    "header_types": [
+        {
+            "name": "scalars_0",
+            "id": 0,
+            "fields": [
+                [
+                    "tmp",
+                    8,
+                    false
+                ],
+                [
+                    "tmp_1",
+                    8,
+                    false
+                ],
+                [
+                    "tmp_3",
+                    8,
+                    false
+                ],
+                [
+                    "tmp_6",
+                    128,
+                    false
+                ],
+                [
+                    "tmp_7",
+                    128,
+                    false
+                ],
+                [
+                    "tmp_8",
+                    128,
+                    false
+                ],
+                [
+                    "tmp_5",
+                    48,
+                    false
+                ]
+            ]
+        },
+        {
+            "name": "p4calc_t",
+            "id": 1,
+            "fields": [
+                [
+                    "p",
+                    8,
+                    false
+                ],
+                [
+                    "four",
+                    8,
+                    false
+                ],
+                [
+                    "ver",
+                    8,
+                    false
+                ],
+                [
+                    "op",
+                    8,
+                    false
+                ],
+                [
+                    "operand_a",
+                    32,
+                    false
+                ],
+                [
+                    "operand_b",
+                    32,
+                    false
+                ],
+                [
+                    "res",
+                    32,
+                    false
+                ]
+            ]
+        },
+        {
+            "name": "standard_metadata",
+            "id": 2,
+            "fields": [
+                [
+                    "ingress_port",
+                    9,
+                    false
+                ],
+                [
+                    "egress_spec",
+                    9,
+                    false
+                ],
+                [
+                    "egress_port",
+                    9,
+                    false
+                ],
+                [
+                    "instance_type",
+                    32,
+                    false
+                ],
+                [
+                    "packet_length",
+                    32,
+                    false
+                ],
+                [
+                    "enq_timestamp",
+                    32,
+                    false
+                ],
+                [
+                    "enq_qdepth",
+                    19,
+                    false
+                ],
+                [
+                    "deq_timedelta",
+                    32,
+                    false
+                ],
+                [
+                    "deq_qdepth",
+                    19,
+                    false
+                ],
+                [
+                    "ingress_global_timestamp",
+                    48,
+                    false
+                ],
+                [
+                    "egress_global_timestamp",
+                    48,
+                    false
+                ],
+                [
+                    "mcast_grp",
+                    16,
+                    false
+                ],
+                [
+                    "egress_rid",
+                    16,
+                    false
+                ],
+                [
+                    "checksum_error",
+                    1,
+                    false
+                ],
+                [
+                    "parser_error",
+                    32,
+                    false
+                ],
+                [
+                    "priority",
+                    3,
+                    false
+                ],
+                [
+                    "_padding",
+                    3,
+                    false
+                ]
+            ]
+        },
+        {
+            "name": "ethernet_t",
+            "id": 3,
+            "fields": [
+                [
+                    "dstAddr",
+                    48,
+                    false
+                ],
+                [
+                    "srcAddr",
+                    48,
+                    false
+                ],
+                [
+                    "etherType",
+                    16,
+                    false
+                ]
+            ]
+        }
+    ],
+    "headers": [
+        {
+            "name": "tmp_0",
+            "id": 0,
+            "header_type": "p4calc_t",
+            "metadata": false,
+            "pi_omit": true
+        },
+        {
+            "name": "tmp_2",
+            "id": 1,
+            "header_type": "p4calc_t",
+            "metadata": false,
+            "pi_omit": true
+        },
+        {
+            "name": "tmp_4",
+            "id": 2,
+            "header_type": "p4calc_t",
+            "metadata": false,
+            "pi_omit": true
+        },
+        {
+            "name": "scalars",
+            "id": 3,
+            "header_type": "scalars_0",
+            "metadata": true,
+            "pi_omit": true
+        },
+        {
+            "name": "standard_metadata",
+            "id": 4,
+            "header_type": "standard_metadata",
+            "metadata": true,
+            "pi_omit": true
+        },
+        {
+            "name": "ethernet",
+            "id": 5,
+            "header_type": "ethernet_t",
+            "metadata": false,
+            "pi_omit": true
+        },
+        {
+            "name": "p4calc",
+            "id": 6,
+            "header_type": "p4calc_t",
+            "metadata": false,
+            "pi_omit": true
+        }
+    ],
+    "header_stacks": [],
+    "header_union_types": [],
+    "header_unions": [],
+    "header_union_stacks": [],
+    "field_lists": [],
+    "errors": [
+        [
+            "NoError",
+            0
+        ],
+        [
+            "PacketTooShort",
+            1
+        ],
+        [
+            "NoMatch",
+            2
+        ],
+        [
+            "StackOutOfBounds",
+            3
+        ],
+        [
+            "HeaderTooShort",
+            4
+        ],
+        [
+            "ParserTimeout",
+            5
+        ],
+        [
+            "ParserInvalidArgument",
+            6
+        ]
+    ],
+    "enums": [],
+    "parsers": [
+        {
+            "name": "parser",
+            "id": 0,
+            "init_state": "start",
+            "parse_states": [
+                {
+                    "name": "start",
+                    "id": 0,
+                    "parser_ops": [
+                        {
+                            "parameters": [
+                                {
+                                    "type": "regular",
+                                    "value": "ethernet"
+                                }
+                            ],
+                            "op": "extract"
+                        }
+                    ],
+                    "transitions": [
+                        {
+                            "type": "hexstr",
+                            "value": "0x1234",
+                            "mask": null,
+                            "next_state": "check_p4calc"
+                        },
+                        {
+                            "type": "default",
+                            "value": null,
+                            "mask": null,
+                            "next_state": null
+                        }
+                    ],
+                    "transition_key": [
+                        {
+                            "type": "field",
+                            "value": [
+                                "ethernet",
+                                "etherType"
+                            ]
+                        }
+                    ]
+                },
+                {
+                    "name": "check_p4calc",
+                    "id": 1,
+                    "parser_ops": [
+                        {
+                            "parameters": [
+                                {
+                                    "type": "field",
+                                    "value": [
+                                        "scalars",
+                                        "tmp_6"
+                                    ]
+                                },
+                                {
+                                    "type": "lookahead",
+                                    "value": [
+                                        0,
+                                        128
+                                    ]
+                                }
+                            ],
+                            "op": "set"
+                        },
+                        {
+                            "parameters": [
+                                {
+                                    "parameters": [
+                                        {
+                                            "type": "header",
+                                            "value": "tmp_0"
+                                        }
+                                    ],
+                                    "op": "add_header"
+                                }
+                            ],
+                            "op": "primitive"
+                        },
+                        {
+                            "parameters": [
+                                {
+                                    "type": "field",
+                                    "value": [
+                                        "tmp_0",
+                                        "p"
+                                    ]
+                                },
+                                {
+                                    "type": "expression",
+                                    "value": {
+                                        "type": "expression",
+                                        "value": {
+                                            "op": "&",
+                                            "left": {
+                                                "type": "expression",
+                                                "value": {
+                                                    "op": "&",
+                                                    "left": {
+                                                        "type": "expression",
+                                                        "value": {
+                                                            "op": ">>",
+                                                            "left": {
+                                                                "type": "field",
+                                                                "value": [
+                                                                    "scalars",
+                                                                    "tmp_6"
+                                                                ]
+                                                            },
+                                                            "right": {
+                                                                "type": "hexstr",
+                                                                "value": "0x78"
+                                                            }
+                                                        }
+                                                    },
+                                                    "right": {
+                                                        "type": "hexstr",
+                                                        "value": "0xffffffffffffffffffffffffffffffff"
+                                                    }
+                                                }
+                                            },
+                                            "right": {
+                                                "type": "hexstr",
+                                                "value": "0xff"
+                                            }
+                                        }
+                                    }
+                                }
+                            ],
+                            "op": "set"
+                        },
+                        {
+                            "parameters": [
+                                {
+                                    "type": "field",
+                                    "value": [
+                                        "tmp_0",
+                                        "four"
+                                    ]
+                                },
+                                {
+                                    "type": "expression",
+                                    "value": {
+                                        "type": "expression",
+                                        "value": {
+                                            "op": "&",
+                                            "left": {
+                                                "type": "expression",
+                                                "value": {
+                                                    "op": "&",
+                                                    "left": {
+                                                        "type": "expression",
+                                                        "value": {
+                                                            "op": ">>",
+                                                            "left": {
+                                                                "type": "field",
+                                                                "value": [
+                                                                    "scalars",
+                                                                    "tmp_6"
+                                                                ]
+                                                            },
+                                                            "right": {
+                                                                "type": "hexstr",
+                                                                "value": "0x70"
+                                                            }
+                                                        }
+                                                    },
+                                                    "right": {
+                                                        "type": "hexstr",
+                                                        "value": "0xffffffffffffffffffffffffffffffff"
+                                                    }
+                                                }
+                                            },
+                                            "right": {
+                                                "type": "hexstr",
+                                                "value": "0xff"
+                                            }
+                                        }
+                                    }
+                                }
+                            ],
+                            "op": "set"
+                        },
+                        {
+                            "parameters": [
+                                {
+                                    "type": "field",
+                                    "value": [
+                                        "tmp_0",
+                                        "ver"
+                                    ]
+                                },
+                                {
+                                    "type": "expression",
+                                    "value": {
+                                        "type": "expression",
+                                        "value": {
+                                            "op": "&",
+                                            "left": {
+                                                "type": "expression",
+                                                "value": {
+                                                    "op": "&",
+                                                    "left": {
+                                                        "type": "expression",
+                                                        "value": {
+                                                            "op": ">>",
+                                                            "left": {
+                                                                "type": "field",
+                                                                "value": [
+                                                                    "scalars",
+                                                                    "tmp_6"
+                                                                ]
+                                                            },
+                                                            "right": {
+                                                                "type": "hexstr",
+                                                                "value": "0x68"
+                                                            }
+                                                        }
+                                                    },
+                                                    "right": {
+                                                        "type": "hexstr",
+                                                        "value": "0xffffffffffffffffffffffffffffffff"
+                                                    }
+                                                }
+                                            },
+                                            "right": {
+                                                "type": "hexstr",
+                                                "value": "0xff"
+                                            }
+                                        }
+                                    }
+                                }
+                            ],
+                            "op": "set"
+                        },
+                        {
+                            "parameters": [
+                                {
+                                    "type": "field",
+                                    "value": [
+                                        "tmp_0",
+                                        "op"
+                                    ]
+                                },
+                                {
+                                    "type": "expression",
+                                    "value": {
+                                        "type": "expression",
+                                        "value": {
+                                            "op": "&",
+                                            "left": {
+                                                "type": "expression",
+                                                "value": {
+                                                    "op": "&",
+                                                    "left": {
+                                                        "type": "expression",
+                                                        "value": {
+                                                            "op": ">>",
+                                                            "left": {
+                                                                "type": "field",
+                                                                "value": [
+                                                                    "scalars",
+                                                                    "tmp_6"
+                                                                ]
+                                                            },
+                                                            "right": {
+                                                                "type": "hexstr",
+                                                                "value": "0x60"
+                                                            }
+                                                        }
+                                                    },
+                                                    "right": {
+                                                        "type": "hexstr",
+                                                        "value": "0xffffffffffffffffffffffffffffffff"
+                                                    }
+                                                }
+                                            },
+                                            "right": {
+                                                "type": "hexstr",
+                                                "value": "0xff"
+                                            }
+                                        }
+                                    }
+                                }
+                            ],
+                            "op": "set"
+                        },
+                        {
+                            "parameters": [
+                                {
+                                    "type": "field",
+                                    "value": [
+                                        "tmp_0",
+                                        "operand_a"
+                                    ]
+                                },
+                                {
+                                    "type": "expression",
+                                    "value": {
+                                        "type": "expression",
+                                        "value": {
+                                            "op": "&",
+                                            "left": {
+                                                "type": "expression",
+                                                "value": {
+                                                    "op": "&",
+                                                    "left": {
+                                                        "type": "expression",
+                                                        "value": {
+                                                            "op": ">>",
+                                                            "left": {
+                                                                "type": "field",
+                                                                "value": [
+                                                                    "scalars",
+                                                                    "tmp_6"
+                                                                ]
+                                                            },
+                                                            "right": {
+                                                                "type": "hexstr",
+                                                                "value": "0x40"
+                                                            }
+                                                        }
+                                                    },
+                                                    "right": {
+                                                        "type": "hexstr",
+                                                        "value": "0xffffffffffffffffffffffffffffffff"
+                                                    }
+                                                }
+                                            },
+                                            "right": {
+                                                "type": "hexstr",
+                                                "value": "0xffffffff"
+                                            }
+                                        }
+                                    }
+                                }
+                            ],
+                            "op": "set"
+                        },
+                        {
+                            "parameters": [
+                                {
+                                    "type": "field",
+                                    "value": [
+                                        "tmp_0",
+                                        "operand_b"
+                                    ]
+                                },
+                                {
+                                    "type": "expression",
+                                    "value": {
+                                        "type": "expression",
+                                        "value": {
+                                            "op": "&",
+                                            "left": {
+                                                "type": "expression",
+                                                "value": {
+                                                    "op": "&",
+                                                    "left": {
+                                                        "type": "expression",
+                                                        "value": {
+                                                            "op": ">>",
+                                                            "left": {
+                                                                "type": "field",
+                                                                "value": [
+                                                                    "scalars",
+                                                                    "tmp_6"
+                                                                ]
+                                                            },
+                                                            "right": {
+                                                                "type": "hexstr",
+                                                                "value": "0x20"
+                                                            }
+                                                        }
+                                                    },
+                                                    "right": {
+                                                        "type": "hexstr",
+                                                        "value": "0xffffffffffffffffffffffffffffffff"
+                                                    }
+                                                }
+                                            },
+                                            "right": {
+                                                "type": "hexstr",
+                                                "value": "0xffffffff"
+                                            }
+                                        }
+                                    }
+                                }
+                            ],
+                            "op": "set"
+                        },
+                        {
+                            "parameters": [
+                                {
+                                    "type": "field",
+                                    "value": [
+                                        "tmp_0",
+                                        "res"
+                                    ]
+                                },
+                                {
+                                    "type": "expression",
+                                    "value": {
+                                        "type": "expression",
+                                        "value": {
+                                            "op": "&",
+                                            "left": {
+                                                "type": "field",
+                                                "value": [
+                                                    "scalars",
+                                                    "tmp_6"
+                                                ]
+                                            },
+                                            "right": {
+                                                "type": "hexstr",
+                                                "value": "0xffffffff"
+                                            }
+                                        }
+                                    }
+                                }
+                            ],
+                            "op": "set"
+                        },
+                        {
+                            "parameters": [
+                                {
+                                    "type": "field",
+                                    "value": [
+                                        "scalars",
+                                        "tmp_7"
+                                    ]
+                                },
+                                {
+                                    "type": "lookahead",
+                                    "value": [
+                                        0,
+                                        128
+                                    ]
+                                }
+                            ],
+                            "op": "set"
+                        },
+                        {
+                            "parameters": [
+                                {
+                                    "parameters": [
+                                        {
+                                            "type": "header",
+                                            "value": "tmp_2"
+                                        }
+                                    ],
+                                    "op": "add_header"
+                                }
+                            ],
+                            "op": "primitive"
+                        },
+                        {
+                            "parameters": [
+                                {
+                                    "type": "field",
+                                    "value": [
+                                        "tmp_2",
+                                        "p"
+                                    ]
+                                },
+                                {
+                                    "type": "expression",
+                                    "value": {
+                                        "type": "expression",
+                                        "value": {
+                                            "op": "&",
+                                            "left": {
+                                                "type": "expression",
+                                                "value": {
+                                                    "op": "&",
+                                                    "left": {
+                                                        "type": "expression",
+                                                        "value": {
+                                                            "op": ">>",
+                                                            "left": {
+                                                                "type": "field",
+                                                                "value": [
+                                                                    "scalars",
+                                                                    "tmp_7"
+                                                                ]
+                                                            },
+                                                            "right": {
+                                                                "type": "hexstr",
+                                                                "value": "0x78"
+                                                            }
+                                                        }
+                                                    },
+                                                    "right": {
+                                                        "type": "hexstr",
+                                                        "value": "0xffffffffffffffffffffffffffffffff"
+                                                    }
+                                                }
+                                            },
+                                            "right": {
+                                                "type": "hexstr",
+                                                "value": "0xff"
+                                            }
+                                        }
+                                    }
+                                }
+                            ],
+                            "op": "set"
+                        },
+                        {
+                            "parameters": [
+                                {
+                                    "type": "field",
+                                    "value": [
+                                        "tmp_2",
+                                        "four"
+                                    ]
+                                },
+                                {
+                                    "type": "expression",
+                                    "value": {
+                                        "type": "expression",
+                                        "value": {
+                                            "op": "&",
+                                            "left": {
+                                                "type": "expression",
+                                                "value": {
+                                                    "op": "&",
+                                                    "left": {
+                                                        "type": "expression",
+                                                        "value": {
+                                                            "op": ">>",
+                                                            "left": {
+                                                                "type": "field",
+                                                                "value": [
+                                                                    "scalars",
+                                                                    "tmp_7"
+                                                                ]
+                                                            },
+                                                            "right": {
+                                                                "type": "hexstr",
+                                                                "value": "0x70"
+                                                            }
+                                                        }
+                                                    },
+                                                    "right": {
+                                                        "type": "hexstr",
+                                                        "value": "0xffffffffffffffffffffffffffffffff"
+                                                    }
+                                                }
+                                            },
+                                            "right": {
+                                                "type": "hexstr",
+                                                "value": "0xff"
+                                            }
+                                        }
+                                    }
+                                }
+                            ],
+                            "op": "set"
+                        },
+                        {
+                            "parameters": [
+                                {
+                                    "type": "field",
+                                    "value": [
+                                        "tmp_2",
+                                        "ver"
+                                    ]
+                                },
+                                {
+                                    "type": "expression",
+                                    "value": {
+                                        "type": "expression",
+                                        "value": {
+                                            "op": "&",
+                                            "left": {
+                                                "type": "expression",
+                                                "value": {
+                                                    "op": "&",
+                                                    "left": {
+                                                        "type": "expression",
+                                                        "value": {
+                                                            "op": ">>",
+                                                            "left": {
+                                                                "type": "field",
+                                                                "value": [
+                                                                    "scalars",
+                                                                    "tmp_7"
+                                                                ]
+                                                            },
+                                                            "right": {
+                                                                "type": "hexstr",
+                                                                "value": "0x68"
+                                                            }
+                                                        }
+                                                    },
+                                                    "right": {
+                                                        "type": "hexstr",
+                                                        "value": "0xffffffffffffffffffffffffffffffff"
+                                                    }
+                                                }
+                                            },
+                                            "right": {
+                                                "type": "hexstr",
+                                                "value": "0xff"
+                                            }
+                                        }
+                                    }
+                                }
+                            ],
+                            "op": "set"
+                        },
+                        {
+                            "parameters": [
+                                {
+                                    "type": "field",
+                                    "value": [
+                                        "tmp_2",
+                                        "op"
+                                    ]
+                                },
+                                {
+                                    "type": "expression",
+                                    "value": {
+                                        "type": "expression",
+                                        "value": {
+                                            "op": "&",
+                                            "left": {
+                                                "type": "expression",
+                                                "value": {
+                                                    "op": "&",
+                                                    "left": {
+                                                        "type": "expression",
+                                                        "value": {
+                                                            "op": ">>",
+                                                            "left": {
+                                                                "type": "field",
+                                                                "value": [
+                                                                    "scalars",
+                                                                    "tmp_7"
+                                                                ]
+                                                            },
+                                                            "right": {
+                                                                "type": "hexstr",
+                                                                "value": "0x60"
+                                                            }
+                                                        }
+                                                    },
+                                                    "right": {
+                                                        "type": "hexstr",
+                                                        "value": "0xffffffffffffffffffffffffffffffff"
+                                                    }
+                                                }
+                                            },
+                                            "right": {
+                                                "type": "hexstr",
+                                                "value": "0xff"
+                                            }
+                                        }
+                                    }
+                                }
+                            ],
+                            "op": "set"
+                        },
+                        {
+                            "parameters": [
+                                {
+                                    "type": "field",
+                                    "value": [
+                                        "tmp_2",
+                                        "operand_a"
+                                    ]
+                                },
+                                {
+                                    "type": "expression",
+                                    "value": {
+                                        "type": "expression",
+                                        "value": {
+                                            "op": "&",
+                                            "left": {
+                                                "type": "expression",
+                                                "value": {
+                                                    "op": "&",
+                                                    "left": {
+                                                        "type": "expression",
+                                                        "value": {
+                                                            "op": ">>",
+                                                            "left": {
+                                                                "type": "field",
+                                                                "value": [
+                                                                    "scalars",
+                                                                    "tmp_7"
+                                                                ]
+                                                            },
+                                                            "right": {
+                                                                "type": "hexstr",
+                                                                "value": "0x40"
+                                                            }
+                                                        }
+                                                    },
+                                                    "right": {
+                                                        "type": "hexstr",
+                                                        "value": "0xffffffffffffffffffffffffffffffff"
+                                                    }
+                                                }
+                                            },
+                                            "right": {
+                                                "type": "hexstr",
+                                                "value": "0xffffffff"
+                                            }
+                                        }
+                                    }
+                                }
+                            ],
+                            "op": "set"
+                        },
+                        {
+                            "parameters": [
+                                {
+                                    "type": "field",
+                                    "value": [
+                                        "tmp_2",
+                                        "operand_b"
+                                    ]
+                                },
+                                {
+                                    "type": "expression",
+                                    "value": {
+                                        "type": "expression",
+                                        "value": {
+                                            "op": "&",
+                                            "left": {
+                                                "type": "expression",
+                                                "value": {
+                                                    "op": "&",
+                                                    "left": {
+                                                        "type": "expression",
+                                                        "value": {
+                                                            "op": ">>",
+                                                            "left": {
+                                                                "type": "field",
+                                                                "value": [
+                                                                    "scalars",
+                                                                    "tmp_7"
+                                                                ]
+                                                            },
+                                                            "right": {
+                                                                "type": "hexstr",
+                                                                "value": "0x20"
+                                                            }
+                                                        }
+                                                    },
+                                                    "right": {
+                                                        "type": "hexstr",
+                                                        "value": "0xffffffffffffffffffffffffffffffff"
+                                                    }
+                                                }
+                                            },
+                                            "right": {
+                                                "type": "hexstr",
+                                                "value": "0xffffffff"
+                                            }
+                                        }
+                                    }
+                                }
+                            ],
+                            "op": "set"
+                        },
+                        {
+                            "parameters": [
+                                {
+                                    "type": "field",
+                                    "value": [
+                                        "tmp_2",
+                                        "res"
+                                    ]
+                                },
+                                {
+                                    "type": "expression",
+                                    "value": {
+                                        "type": "expression",
+                                        "value": {
+                                            "op": "&",
+                                            "left": {
+                                                "type": "field",
+                                                "value": [
+                                                    "scalars",
+                                                    "tmp_7"
+                                                ]
+                                            },
+                                            "right": {
+                                                "type": "hexstr",
+                                                "value": "0xffffffff"
+                                            }
+                                        }
+                                    }
+                                }
+                            ],
+                            "op": "set"
+                        },
+                        {
+                            "parameters": [
+                                {
+                                    "type": "field",
+                                    "value": [
+                                        "scalars",
+                                        "tmp_8"
+                                    ]
+                                },
+                                {
+                                    "type": "lookahead",
+                                    "value": [
+                                        0,
+                                        128
+                                    ]
+                                }
+                            ],
+                            "op": "set"
+                        },
+                        {
+                            "parameters": [
+                                {
+                                    "parameters": [
+                                        {
+                                            "type": "header",
+                                            "value": "tmp_4"
+                                        }
+                                    ],
+                                    "op": "add_header"
+                                }
+                            ],
+                            "op": "primitive"
+                        },
+                        {
+                            "parameters": [
+                                {
+                                    "type": "field",
+                                    "value": [
+                                        "tmp_4",
+                                        "p"
+                                    ]
+                                },
+                                {
+                                    "type": "expression",
+                                    "value": {
+                                        "type": "expression",
+                                        "value": {
+                                            "op": "&",
+                                            "left": {
+                                                "type": "expression",
+                                                "value": {
+                                                    "op": "&",
+                                                    "left": {
+                                                        "type": "expression",
+                                                        "value": {
+                                                            "op": ">>",
+                                                            "left": {
+                                                                "type": "field",
+                                                                "value": [
+                                                                    "scalars",
+                                                                    "tmp_8"
+                                                                ]
+                                                            },
+                                                            "right": {
+                                                                "type": "hexstr",
+                                                                "value": "0x78"
+                                                            }
+                                                        }
+                                                    },
+                                                    "right": {
+                                                        "type": "hexstr",
+                                                        "value": "0xffffffffffffffffffffffffffffffff"
+                                                    }
+                                                }
+                                            },
+                                            "right": {
+                                                "type": "hexstr",
+                                                "value": "0xff"
+                                            }
+                                        }
+                                    }
+                                }
+                            ],
+                            "op": "set"
+                        },
+                        {
+                            "parameters": [
+                                {
+                                    "type": "field",
+                                    "value": [
+                                        "tmp_4",
+                                        "four"
+                                    ]
+                                },
+                                {
+                                    "type": "expression",
+                                    "value": {
+                                        "type": "expression",
+                                        "value": {
+                                            "op": "&",
+                                            "left": {
+                                                "type": "expression",
+                                                "value": {
+                                                    "op": "&",
+                                                    "left": {
+                                                        "type": "expression",
+                                                        "value": {
+                                                            "op": ">>",
+                                                            "left": {
+                                                                "type": "field",
+                                                                "value": [
+                                                                    "scalars",
+                                                                    "tmp_8"
+                                                                ]
+                                                            },
+                                                            "right": {
+                                                                "type": "hexstr",
+                                                                "value": "0x70"
+                                                            }
+                                                        }
+                                                    },
+                                                    "right": {
+                                                        "type": "hexstr",
+                                                        "value": "0xffffffffffffffffffffffffffffffff"
+                                                    }
+                                                }
+                                            },
+                                            "right": {
+                                                "type": "hexstr",
+                                                "value": "0xff"
+                                            }
+                                        }
+                                    }
+                                }
+                            ],
+                            "op": "set"
+                        },
+                        {
+                            "parameters": [
+                                {
+                                    "type": "field",
+                                    "value": [
+                                        "tmp_4",
+                                        "ver"
+                                    ]
+                                },
+                                {
+                                    "type": "expression",
+                                    "value": {
+                                        "type": "expression",
+                                        "value": {
+                                            "op": "&",
+                                            "left": {
+                                                "type": "expression",
+                                                "value": {
+                                                    "op": "&",
+                                                    "left": {
+                                                        "type": "expression",
+                                                        "value": {
+                                                            "op": ">>",
+                                                            "left": {
+                                                                "type": "field",
+                                                                "value": [
+                                                                    "scalars",
+                                                                    "tmp_8"
+                                                                ]
+                                                            },
+                                                            "right": {
+                                                                "type": "hexstr",
+                                                                "value": "0x68"
+                                                            }
+                                                        }
+                                                    },
+                                                    "right": {
+                                                        "type": "hexstr",
+                                                        "value": "0xffffffffffffffffffffffffffffffff"
+                                                    }
+                                                }
+                                            },
+                                            "right": {
+                                                "type": "hexstr",
+                                                "value": "0xff"
+                                            }
+                                        }
+                                    }
+                                }
+                            ],
+                            "op": "set"
+                        },
+                        {
+                            "parameters": [
+                                {
+                                    "type": "field",
+                                    "value": [
+                                        "tmp_4",
+                                        "op"
+                                    ]
+                                },
+                                {
+                                    "type": "expression",
+                                    "value": {
+                                        "type": "expression",
+                                        "value": {
+                                            "op": "&",
+                                            "left": {
+                                                "type": "expression",
+                                                "value": {
+                                                    "op": "&",
+                                                    "left": {
+                                                        "type": "expression",
+                                                        "value": {
+                                                            "op": ">>",
+                                                            "left": {
+                                                                "type": "field",
+                                                                "value": [
+                                                                    "scalars",
+                                                                    "tmp_8"
+                                                                ]
+                                                            },
+                                                            "right": {
+                                                                "type": "hexstr",
+                                                                "value": "0x60"
+                                                            }
+                                                        }
+                                                    },
+                                                    "right": {
+                                                        "type": "hexstr",
+                                                        "value": "0xffffffffffffffffffffffffffffffff"
+                                                    }
+                                                }
+                                            },
+                                            "right": {
+                                                "type": "hexstr",
+                                                "value": "0xff"
+                                            }
+                                        }
+                                    }
+                                }
+                            ],
+                            "op": "set"
+                        },
+                        {
+                            "parameters": [
+                                {
+                                    "type": "field",
+                                    "value": [
+                                        "tmp_4",
+                                        "operand_a"
+                                    ]
+                                },
+                                {
+                                    "type": "expression",
+                                    "value": {
+                                        "type": "expression",
+                                        "value": {
+                                            "op": "&",
+                                            "left": {
+                                                "type": "expression",
+                                                "value": {
+                                                    "op": "&",
+                                                    "left": {
+                                                        "type": "expression",
+                                                        "value": {
+                                                            "op": ">>",
+                                                            "left": {
+                                                                "type": "field",
+                                                                "value": [
+                                                                    "scalars",
+                                                                    "tmp_8"
+                                                                ]
+                                                            },
+                                                            "right": {
+                                                                "type": "hexstr",
+                                                                "value": "0x40"
+                                                            }
+                                                        }
+                                                    },
+                                                    "right": {
+                                                        "type": "hexstr",
+                                                        "value": "0xffffffffffffffffffffffffffffffff"
+                                                    }
+                                                }
+                                            },
+                                            "right": {
+                                                "type": "hexstr",
+                                                "value": "0xffffffff"
+                                            }
+                                        }
+                                    }
+                                }
+                            ],
+                            "op": "set"
+                        },
+                        {
+                            "parameters": [
+                                {
+                                    "type": "field",
+                                    "value": [
+                                        "tmp_4",
+                                        "operand_b"
+                                    ]
+                                },
+                                {
+                                    "type": "expression",
+                                    "value": {
+                                        "type": "expression",
+                                        "value": {
+                                            "op": "&",
+                                            "left": {
+                                                "type": "expression",
+                                                "value": {
+                                                    "op": "&",
+                                                    "left": {
+                                                        "type": "expression",
+                                                        "value": {
+                                                            "op": ">>",
+                                                            "left": {
+                                                                "type": "field",
+                                                                "value": [
+                                                                    "scalars",
+                                                                    "tmp_8"
+                                                                ]
+                                                            },
+                                                            "right": {
+                                                                "type": "hexstr",
+                                                                "value": "0x20"
+                                                            }
+                                                        }
+                                                    },
+                                                    "right": {
+                                                        "type": "hexstr",
+                                                        "value": "0xffffffffffffffffffffffffffffffff"
+                                                    }
+                                                }
+                                            },
+                                            "right": {
+                                                "type": "hexstr",
+                                                "value": "0xffffffff"
+                                            }
+                                        }
+                                    }
+                                }
+                            ],
+                            "op": "set"
+                        },
+                        {
+                            "parameters": [
+                                {
+                                    "type": "field",
+                                    "value": [
+                                        "tmp_4",
+                                        "res"
+                                    ]
+                                },
+                                {
+                                    "type": "expression",
+                                    "value": {
+                                        "type": "expression",
+                                        "value": {
+                                            "op": "&",
+                                            "left": {
+                                                "type": "field",
+                                                "value": [
+                                                    "scalars",
+                                                    "tmp_8"
+                                                ]
+                                            },
+                                            "right": {
+                                                "type": "hexstr",
+                                                "value": "0xffffffff"
+                                            }
+                                        }
+                                    }
+                                }
+                            ],
+                            "op": "set"
+                        },
+                        {
+                            "parameters": [
+                                {
+                                    "type": "field",
+                                    "value": [
+                                        "scalars",
+                                        "tmp"
+                                    ]
+                                },
+                                {
+                                    "type": "expression",
+                                    "value": {
+                                        "type": "expression",
+                                        "value": {
+                                            "op": "&",
+                                            "left": {
+                                                "type": "expression",
+                                                "value": {
+                                                    "op": "&",
+                                                    "left": {
+                                                        "type": "expression",
+                                                        "value": {
+                                                            "op": ">>",
+                                                            "left": {
+                                                                "type": "field",
+                                                                "value": [
+                                                                    "scalars",
+                                                                    "tmp_6"
+                                                                ]
+                                                            },
+                                                            "right": {
+                                                                "type": "hexstr",
+                                                                "value": "0x78"
+                                                            }
+                                                        }
+                                                    },
+                                                    "right": {
+                                                        "type": "hexstr",
+                                                        "value": "0xffffffffffffffffffffffffffffffff"
+                                                    }
+                                                }
+                                            },
+                                            "right": {
+                                                "type": "hexstr",
+                                                "value": "0xff"
+                                            }
+                                        }
+                                    }
+                                }
+                            ],
+                            "op": "set"
+                        },
+                        {
+                            "parameters": [
+                                {
+                                    "type": "field",
+                                    "value": [
+                                        "scalars",
+                                        "tmp_1"
+                                    ]
+                                },
+                                {
+                                    "type": "expression",
+                                    "value": {
+                                        "type": "expression",
+                                        "value": {
+                                            "op": "&",
+                                            "left": {
+                                                "type": "expression",
+                                                "value": {
+                                                    "op": "&",
+                                                    "left": {
+                                                        "type": "expression",
+                                                        "value": {
+                                                            "op": ">>",
+                                                            "left": {
+                                                                "type": "field",
+                                                                "value": [
+                                                                    "scalars",
+                                                                    "tmp_7"
+                                                                ]
+                                                            },
+                                                            "right": {
+                                                                "type": "hexstr",
+                                                                "value": "0x70"
+                                                            }
+                                                        }
+                                                    },
+                                                    "right": {
+                                                        "type": "hexstr",
+                                                        "value": "0xffffffffffffffffffffffffffffffff"
+                                                    }
+                                                }
+                                            },
+                                            "right": {
+                                                "type": "hexstr",
+                                                "value": "0xff"
+                                            }
+                                        }
+                                    }
+                                }
+                            ],
+                            "op": "set"
+                        },
+                        {
+                            "parameters": [
+                                {
+                                    "type": "field",
+                                    "value": [
+                                        "scalars",
+                                        "tmp_3"
+                                    ]
+                                },
+                                {
+                                    "type": "expression",
+                                    "value": {
+                                        "type": "expression",
+                                        "value": {
+                                            "op": "&",
+                                            "left": {
+                                                "type": "expression",
+                                                "value": {
+                                                    "op": "&",
+                                                    "left": {
+                                                        "type": "expression",
+                                                        "value": {
+                                                            "op": ">>",
+                                                            "left": {
+                                                                "type": "field",
+                                                                "value": [
+                                                                    "scalars",
+                                                                    "tmp_8"
+                                                                ]
+                                                            },
+                                                            "right": {
+                                                                "type": "hexstr",
+                                                                "value": "0x68"
+                                                            }
+                                                        }
+                                                    },
+                                                    "right": {
+                                                        "type": "hexstr",
+                                                        "value": "0xffffffffffffffffffffffffffffffff"
+                                                    }
+                                                }
+                                            },
+                                            "right": {
+                                                "type": "hexstr",
+                                                "value": "0xff"
+                                            }
+                                        }
+                                    }
+                                }
+                            ],
+                            "op": "set"
+                        }
+                    ],
+                    "transitions": [
+                        {
+                            "type": "hexstr",
+                            "value": "0x503401",
+                            "mask": null,
+                            "next_state": "parse_p4calc"
+                        },
+                        {
+                            "type": "default",
+                            "value": null,
+                            "mask": null,
+                            "next_state": null
+                        }
+                    ],
+                    "transition_key": [
+                        {
+                            "type": "field",
+                            "value": [
+                                "scalars",
+                                "tmp"
+                            ]
+                        },
+                        {
+                            "type": "field",
+                            "value": [
+                                "scalars",
+                                "tmp_1"
+                            ]
+                        },
+                        {
+                            "type": "field",
+                            "value": [
+                                "scalars",
+                                "tmp_3"
+                            ]
+                        }
+                    ]
+                },
+                {
+                    "name": "parse_p4calc",
+                    "id": 2,
+                    "parser_ops": [
+                        {
+                            "parameters": [
+                                {
+                                    "type": "regular",
+                                    "value": "p4calc"
+                                }
+                            ],
+                            "op": "extract"
+                        }
+                    ],
+                    "transitions": [
+                        {
+                            "type": "default",
+                            "value": null,
+                            "mask": null,
+                            "next_state": null
+                        }
+                    ],
+                    "transition_key": []
+                }
+            ]
+        }
+    ],
+    "parse_vsets": [],
+    "deparsers": [
+        {
+            "name": "deparser",
+            "id": 0,
+            "source_info": {
+                "filename": "calc.p4",
+                "line": 239,
+                "column": 8,
+                "source_fragment": "MyDeparser"
+            },
+            "order": [
+                "ethernet",
+                "p4calc"
+            ],
+            "primitives": []
+        }
+    ],
+    "meter_arrays": [],
+    "counter_arrays": [],
+    "register_arrays": [],
+    "calculations": [],
+    "learn_lists": [],
+    "actions": [
+        {
+            "name": "MyIngress.operation_add",
+            "id": 0,
+            "runtime_data": [],
+            "primitives": [
+                {
+                    "op": "assign",
+                    "parameters": [
+                        {
+                            "type": "field",
+                            "value": [
+                                "p4calc",
+                                "res"
+                            ]
+                        },
+                        {
+                            "type": "expression",
+                            "value": {
+                                "type": "expression",
+                                "value": {
+                                    "op": "&",
+                                    "left": {
+                                        "type": "expression",
+                                        "value": {
+                                            "op": "+",
+                                            "left": {
+                                                "type": "field",
+                                                "value": [
+                                                    "p4calc",
+                                                    "operand_a"
+                                                ]
+                                            },
+                                            "right": {
+                                                "type": "field",
+                                                "value": [
+                                                    "p4calc",
+                                                    "operand_b"
+                                                ]
+                                            }
+                                        }
+                                    },
+                                    "right": {
+                                        "type": "hexstr",
+                                        "value": "0xffffffff"
+                                    }
+                                }
+                            }
+                        }
+                    ],
+                    "source_info": {
+                        "filename": "calc.p4",
+                        "line": 152,
+                        "column": 8,
+                        "source_fragment": "hdr.p4calc.res = result"
+                    }
+                },
+                {
+                    "op": "assign",
+                    "parameters": [
+                        {
+                            "type": "field",
+                            "value": [
+                                "scalars",
+                                "tmp_5"
+                            ]
+                        },
+                        {
+                            "type": "field",
+                            "value": [
+                                "ethernet",
+                                "dstAddr"
+                            ]
+                        }
+                    ],
+                    "source_info": {
+                        "filename": "calc.p4",
+                        "line": 155,
+                        "column": 8,
+                        "source_fragment": "tmp = hdr.ethernet.dstAddr"
+                    }
+                },
+                {
+                    "op": "assign",
+                    "parameters": [
+                        {
+                            "type": "field",
+                            "value": [
+                                "ethernet",
+                                "dstAddr"
+                            ]
+                        },
+                        {
+                            "type": "field",
+                            "value": [
+                                "ethernet",
+                                "srcAddr"
+                            ]
+                        }
+                    ],
+                    "source_info": {
+                        "filename": "calc.p4",
+                        "line": 156,
+                        "column": 8,
+                        "source_fragment": "hdr.ethernet.dstAddr = hdr.ethernet.srcAddr"
+                    }
+                },
+                {
+                    "op": "assign",
+                    "parameters": [
+                        {
+                            "type": "field",
+                            "value": [
+                                "ethernet",
+                                "srcAddr"
+                            ]
+                        },
+                        {
+                            "type": "field",
+                            "value": [
+                                "scalars",
+                                "tmp_5"
+                            ]
+                        }
+                    ],
+                    "source_info": {
+                        "filename": "calc.p4",
+                        "line": 157,
+                        "column": 8,
+                        "source_fragment": "hdr.ethernet.srcAddr = tmp"
+                    }
+                },
+                {
+                    "op": "assign",
+                    "parameters": [
+                        {
+                            "type": "field",
+                            "value": [
+                                "standard_metadata",
+                                "egress_spec"
+                            ]
+                        },
+                        {
+                            "type": "field",
+                            "value": [
+                                "standard_metadata",
+                                "ingress_port"
+                            ]
+                        }
+                    ],
+                    "source_info": {
+                        "filename": "calc.p4",
+                        "line": 160,
+                        "column": 8,
+                        "source_fragment": "standard_metadata.egress_spec = standard_metadata.ingress_port"
+                    }
+                }
+            ]
+        },
+        {
+            "name": "MyIngress.operation_sub",
+            "id": 1,
+            "runtime_data": [],
+            "primitives": [
+                {
+                    "op": "assign",
+                    "parameters": [
+                        {
+                            "type": "field",
+                            "value": [
+                                "p4calc",
+                                "res"
+                            ]
+                        },
+                        {
+                            "type": "expression",
+                            "value": {
+                                "type": "expression",
+                                "value": {
+                                    "op": "&",
+                                    "left": {
+                                        "type": "expression",
+                                        "value": {
+                                            "op": "-",
+                                            "left": {
+                                                "type": "field",
+                                                "value": [
+                                                    "p4calc",
+                                                    "operand_a"
+                                                ]
+                                            },
+                                            "right": {
+                                                "type": "field",
+                                                "value": [
+                                                    "p4calc",
+                                                    "operand_b"
+                                                ]
+                                            }
+                                        }
+                                    },
+                                    "right": {
+                                        "type": "hexstr",
+                                        "value": "0xffffffff"
+                                    }
+                                }
+                            }
+                        }
+                    ],
+                    "source_info": {
+                        "filename": "calc.p4",
+                        "line": 152,
+                        "column": 8,
+                        "source_fragment": "hdr.p4calc.res = result"
+                    }
+                },
+                {
+                    "op": "assign",
+                    "parameters": [
+                        {
+                            "type": "field",
+                            "value": [
+                                "scalars",
+                                "tmp_5"
+                            ]
+                        },
+                        {
+                            "type": "field",
+                            "value": [
+                                "ethernet",
+                                "dstAddr"
+                            ]
+                        }
+                    ],
+                    "source_info": {
+                        "filename": "calc.p4",
+                        "line": 155,
+                        "column": 8,
+                        "source_fragment": "tmp = hdr.ethernet.dstAddr"
+                    }
+                },
+                {
+                    "op": "assign",
+                    "parameters": [
+                        {
+                            "type": "field",
+                            "value": [
+                                "ethernet",
+                                "dstAddr"
+                            ]
+                        },
+                        {
+                            "type": "field",
+                            "value": [
+                                "ethernet",
+                                "srcAddr"
+                            ]
+                        }
+                    ],
+                    "source_info": {
+                        "filename": "calc.p4",
+                        "line": 156,
+                        "column": 8,
+                        "source_fragment": "hdr.ethernet.dstAddr = hdr.ethernet.srcAddr"
+                    }
+                },
+                {
+                    "op": "assign",
+                    "parameters": [
+                        {
+                            "type": "field",
+                            "value": [
+                                "ethernet",
+                                "srcAddr"
+                            ]
+                        },
+                        {
+                            "type": "field",
+                            "value": [
+                                "scalars",
+                                "tmp_5"
+                            ]
+                        }
+                    ],
+                    "source_info": {
+                        "filename": "calc.p4",
+                        "line": 157,
+                        "column": 8,
+                        "source_fragment": "hdr.ethernet.srcAddr = tmp"
+                    }
+                },
+                {
+                    "op": "assign",
+                    "parameters": [
+                        {
+                            "type": "field",
+                            "value": [
+                                "standard_metadata",
+                                "egress_spec"
+                            ]
+                        },
+                        {
+                            "type": "field",
+                            "value": [
+                                "standard_metadata",
+                                "ingress_port"
+                            ]
+                        }
+                    ],
+                    "source_info": {
+                        "filename": "calc.p4",
+                        "line": 160,
+                        "column": 8,
+                        "source_fragment": "standard_metadata.egress_spec = standard_metadata.ingress_port"
+                    }
+                }
+            ]
+        },
+        {
+            "name": "MyIngress.operation_and",
+            "id": 2,
+            "runtime_data": [],
+            "primitives": [
+                {
+                    "op": "assign",
+                    "parameters": [
+                        {
+                            "type": "field",
+                            "value": [
+                                "p4calc",
+                                "res"
+                            ]
+                        },
+                        {
+                            "type": "expression",
+                            "value": {
+                                "type": "expression",
+                                "value": {
+                                    "op": "&",
+                                    "left": {
+                                        "type": "field",
+                                        "value": [
+                                            "p4calc",
+                                            "operand_a"
+                                        ]
+                                    },
+                                    "right": {
+                                        "type": "field",
+                                        "value": [
+                                            "p4calc",
+                                            "operand_b"
+                                        ]
+                                    }
+                                }
+                            }
+                        }
+                    ],
+                    "source_info": {
+                        "filename": "calc.p4",
+                        "line": 152,
+                        "column": 8,
+                        "source_fragment": "hdr.p4calc.res = result"
+                    }
+                },
+                {
+                    "op": "assign",
+                    "parameters": [
+                        {
+                            "type": "field",
+                            "value": [
+                                "scalars",
+                                "tmp_5"
+                            ]
+                        },
+                        {
+                            "type": "field",
+                            "value": [
+                                "ethernet",
+                                "dstAddr"
+                            ]
+                        }
+                    ],
+                    "source_info": {
+                        "filename": "calc.p4",
+                        "line": 155,
+                        "column": 8,
+                        "source_fragment": "tmp = hdr.ethernet.dstAddr"
+                    }
+                },
+                {
+                    "op": "assign",
+                    "parameters": [
+                        {
+                            "type": "field",
+                            "value": [
+                                "ethernet",
+                                "dstAddr"
+                            ]
+                        },
+                        {
+                            "type": "field",
+                            "value": [
+                                "ethernet",
+                                "srcAddr"
+                            ]
+                        }
+                    ],
+                    "source_info": {
+                        "filename": "calc.p4",
+                        "line": 156,
+                        "column": 8,
+                        "source_fragment": "hdr.ethernet.dstAddr = hdr.ethernet.srcAddr"
+                    }
+                },
+                {
+                    "op": "assign",
+                    "parameters": [
+                        {
+                            "type": "field",
+                            "value": [
+                                "ethernet",
+                                "srcAddr"
+                            ]
+                        },
+                        {
+                            "type": "field",
+                            "value": [
+                                "scalars",
+                                "tmp_5"
+                            ]
+                        }
+                    ],
+                    "source_info": {
+                        "filename": "calc.p4",
+                        "line": 157,
+                        "column": 8,
+                        "source_fragment": "hdr.ethernet.srcAddr = tmp"
+                    }
+                },
+                {
+                    "op": "assign",
+                    "parameters": [
+                        {
+                            "type": "field",
+                            "value": [
+                                "standard_metadata",
+                                "egress_spec"
+                            ]
+                        },
+                        {
+                            "type": "field",
+                            "value": [
+                                "standard_metadata",
+                                "ingress_port"
+                            ]
+                        }
+                    ],
+                    "source_info": {
+                        "filename": "calc.p4",
+                        "line": 160,
+                        "column": 8,
+                        "source_fragment": "standard_metadata.egress_spec = standard_metadata.ingress_port"
+                    }
+                }
+            ]
+        },
+        {
+            "name": "MyIngress.operation_or",
+            "id": 3,
+            "runtime_data": [],
+            "primitives": [
+                {
+                    "op": "assign",
+                    "parameters": [
+                        {
+                            "type": "field",
+                            "value": [
+                                "p4calc",
+                                "res"
+                            ]
+                        },
+                        {
+                            "type": "expression",
+                            "value": {
+                                "type": "expression",
+                                "value": {
+                                    "op": "|",
+                                    "left": {
+                                        "type": "field",
+                                        "value": [
+                                            "p4calc",
+                                            "operand_a"
+                                        ]
+                                    },
+                                    "right": {
+                                        "type": "field",
+                                        "value": [
+                                            "p4calc",
+                                            "operand_b"
+                                        ]
+                                    }
+                                }
+                            }
+                        }
+                    ],
+                    "source_info": {
+                        "filename": "calc.p4",
+                        "line": 152,
+                        "column": 8,
+                        "source_fragment": "hdr.p4calc.res = result"
+                    }
+                },
+                {
+                    "op": "assign",
+                    "parameters": [
+                        {
+                            "type": "field",
+                            "value": [
+                                "scalars",
+                                "tmp_5"
+                            ]
+                        },
+                        {
+                            "type": "field",
+                            "value": [
+                                "ethernet",
+                                "dstAddr"
+                            ]
+                        }
+                    ],
+                    "source_info": {
+                        "filename": "calc.p4",
+                        "line": 155,
+                        "column": 8,
+                        "source_fragment": "tmp = hdr.ethernet.dstAddr"
+                    }
+                },
+                {
+                    "op": "assign",
+                    "parameters": [
+                        {
+                            "type": "field",
+                            "value": [
+                                "ethernet",
+                                "dstAddr"
+                            ]
+                        },
+                        {
+                            "type": "field",
+                            "value": [
+                                "ethernet",
+                                "srcAddr"
+                            ]
+                        }
+                    ],
+                    "source_info": {
+                        "filename": "calc.p4",
+                        "line": 156,
+                        "column": 8,
+                        "source_fragment": "hdr.ethernet.dstAddr = hdr.ethernet.srcAddr"
+                    }
+                },
+                {
+                    "op": "assign",
+                    "parameters": [
+                        {
+                            "type": "field",
+                            "value": [
+                                "ethernet",
+                                "srcAddr"
+                            ]
+                        },
+                        {
+                            "type": "field",
+                            "value": [
+                                "scalars",
+                                "tmp_5"
+                            ]
+                        }
+                    ],
+                    "source_info": {
+                        "filename": "calc.p4",
+                        "line": 157,
+                        "column": 8,
+                        "source_fragment": "hdr.ethernet.srcAddr = tmp"
+                    }
+                },
+                {
+                    "op": "assign",
+                    "parameters": [
+                        {
+                            "type": "field",
+                            "value": [
+                                "standard_metadata",
+                                "egress_spec"
+                            ]
+                        },
+                        {
+                            "type": "field",
+                            "value": [
+                                "standard_metadata",
+                                "ingress_port"
+                            ]
+                        }
+                    ],
+                    "source_info": {
+                        "filename": "calc.p4",
+                        "line": 160,
+                        "column": 8,
+                        "source_fragment": "standard_metadata.egress_spec = standard_metadata.ingress_port"
+                    }
+                }
+            ]
+        },
+        {
+            "name": "MyIngress.operation_xor",
+            "id": 4,
+            "runtime_data": [],
+            "primitives": [
+                {
+                    "op": "assign",
+                    "parameters": [
+                        {
+                            "type": "field",
+                            "value": [
+                                "p4calc",
+                                "res"
+                            ]
+                        },
+                        {
+                            "type": "expression",
+                            "value": {
+                                "type": "expression",
+                                "value": {
+                                    "op": "^",
+                                    "left": {
+                                        "type": "field",
+                                        "value": [
+                                            "p4calc",
+                                            "operand_a"
+                                        ]
+                                    },
+                                    "right": {
+                                        "type": "field",
+                                        "value": [
+                                            "p4calc",
+                                            "operand_b"
+                                        ]
+                                    }
+                                }
+                            }
+                        }
+                    ],
+                    "source_info": {
+                        "filename": "calc.p4",
+                        "line": 152,
+                        "column": 8,
+                        "source_fragment": "hdr.p4calc.res = result"
+                    }
+                },
+                {
+                    "op": "assign",
+                    "parameters": [
+                        {
+                            "type": "field",
+                            "value": [
+                                "scalars",
+                                "tmp_5"
+                            ]
+                        },
+                        {
+                            "type": "field",
+                            "value": [
+                                "ethernet",
+                                "dstAddr"
+                            ]
+                        }
+                    ],
+                    "source_info": {
+                        "filename": "calc.p4",
+                        "line": 155,
+                        "column": 8,
+                        "source_fragment": "tmp = hdr.ethernet.dstAddr"
+                    }
+                },
+                {
+                    "op": "assign",
+                    "parameters": [
+                        {
+                            "type": "field",
+                            "value": [
+                                "ethernet",
+                                "dstAddr"
+                            ]
+                        },
+                        {
+                            "type": "field",
+                            "value": [
+                                "ethernet",
+                                "srcAddr"
+                            ]
+                        }
+                    ],
+                    "source_info": {
+                        "filename": "calc.p4",
+                        "line": 156,
+                        "column": 8,
+                        "source_fragment": "hdr.ethernet.dstAddr = hdr.ethernet.srcAddr"
+                    }
+                },
+                {
+                    "op": "assign",
+                    "parameters": [
+                        {
+                            "type": "field",
+                            "value": [
+                                "ethernet",
+                                "srcAddr"
+                            ]
+                        },
+                        {
+                            "type": "field",
+                            "value": [
+                                "scalars",
+                                "tmp_5"
+                            ]
+                        }
+                    ],
+                    "source_info": {
+                        "filename": "calc.p4",
+                        "line": 157,
+                        "column": 8,
+                        "source_fragment": "hdr.ethernet.srcAddr = tmp"
+                    }
+                },
+                {
+                    "op": "assign",
+                    "parameters": [
+                        {
+                            "type": "field",
+                            "value": [
+                                "standard_metadata",
+                                "egress_spec"
+                            ]
+                        },
+                        {
+                            "type": "field",
+                            "value": [
+                                "standard_metadata",
+                                "ingress_port"
+                            ]
+                        }
+                    ],
+                    "source_info": {
+                        "filename": "calc.p4",
+                        "line": 160,
+                        "column": 8,
+                        "source_fragment": "standard_metadata.egress_spec = standard_metadata.ingress_port"
+                    }
+                }
+            ]
+        },
+        {
+            "name": "MyIngress.operation_drop",
+            "id": 5,
+            "runtime_data": [],
+            "primitives": [
+                {
+                    "op": "drop",
+                    "parameters": [],
+                    "source_info": {
+                        "filename": "calc.p4",
+                        "line": 184,
+                        "column": 8,
+                        "source_fragment": "mark_to_drop(standard_metadata)"
+                    }
+                }
+            ]
+        },
+        {
+            "name": "MyIngress.operation_drop",
+            "id": 6,
+            "runtime_data": [],
+            "primitives": [
+                {
+                    "op": "drop",
+                    "parameters": [],
+                    "source_info": {
+                        "filename": "calc.p4",
+                        "line": 184,
+                        "column": 8,
+                        "source_fragment": "mark_to_drop(standard_metadata)"
+                    }
+                }
+            ]
+        }
+    ],
+    "pipelines": [
+        {
+            "name": "ingress",
+            "id": 0,
+            "source_info": {
+                "filename": "calc.p4",
+                "line": 144,
+                "column": 8,
+                "source_fragment": "MyIngress"
+            },
+            "init_table": "node_2",
+            "tables": [
+                {
+                    "name": "MyIngress.calculate",
+                    "id": 0,
+                    "source_info": {
+                        "filename": "calc.p4",
+                        "line": 187,
+                        "column": 10,
+                        "source_fragment": "calculate"
+                    },
+                    "key": [
+                        {
+                            "match_type": "exact",
+                            "name": "hdr.p4calc.op",
+                            "target": [
+                                "p4calc",
+                                "op"
+                            ],
+                            "mask": null
+                        }
+                    ],
+                    "match_type": "exact",
+                    "type": "simple",
+                    "max_size": 5,
+                    "with_counters": false,
+                    "support_timeout": false,
+                    "direct_meters": null,
+                    "action_ids": [
+                        0,
+                        1,
+                        2,
+                        3,
+                        4,
+                        5
+                    ],
+                    "actions": [
+                        "MyIngress.operation_add",
+                        "MyIngress.operation_sub",
+                        "MyIngress.operation_and",
+                        "MyIngress.operation_or",
+                        "MyIngress.operation_xor",
+                        "MyIngress.operation_drop"
+                    ],
+                    "base_default_next": null,
+                    "next_tables": {
+                        "MyIngress.operation_add": null,
+                        "MyIngress.operation_sub": null,
+                        "MyIngress.operation_and": null,
+                        "MyIngress.operation_or": null,
+                        "MyIngress.operation_xor": null,
+                        "MyIngress.operation_drop": null
+                    },
+                    "default_entry": {
+                        "action_id": 5,
+                        "action_const": true,
+                        "action_data": [],
+                        "action_entry_const": true
+                    },
+                    "entries": [
+                        {
+                            "source_info": {
+                                "filename": "calc.p4",
+                                "line": 201,
+                                "column": 12,
+                                "source_fragment": "P4CALC_PLUS : operation_add()"
+                            },
+                            "match_key": [
+                                {
+                                    "match_type": "exact",
+                                    "key": "0x2b"
+                                }
+                            ],
+                            "action_entry": {
+                                "action_id": 0,
+                                "action_data": []
+                            },
+                            "priority": 1
+                        },
+                        {
+                            "source_info": {
+                                "filename": "calc.p4",
+                                "line": 202,
+                                "column": 12,
+                                "source_fragment": "P4CALC_MINUS: operation_sub()"
+                            },
+                            "match_key": [
+                                {
+                                    "match_type": "exact",
+                                    "key": "0x2d"
+                                }
+                            ],
+                            "action_entry": {
+                                "action_id": 1,
+                                "action_data": []
+                            },
+                            "priority": 2
+                        },
+                        {
+                            "source_info": {
+                                "filename": "calc.p4",
+                                "line": 203,
+                                "column": 12,
+                                "source_fragment": "P4CALC_AND : operation_and()"
+                            },
+                            "match_key": [
+                                {
+                                    "match_type": "exact",
+                                    "key": "0x26"
+                                }
+                            ],
+                            "action_entry": {
+                                "action_id": 2,
+                                "action_data": []
+                            },
+                            "priority": 3
+                        },
+                        {
+                            "source_info": {
+                                "filename": "calc.p4",
+                                "line": 204,
+                                "column": 12,
+                                "source_fragment": "P4CALC_OR : operation_or()"
+                            },
+                            "match_key": [
+                                {
+                                    "match_type": "exact",
+                                    "key": "0x7c"
+                                }
+                            ],
+                            "action_entry": {
+                                "action_id": 3,
+                                "action_data": []
+                            },
+                            "priority": 4
+                        },
+                        {
+                            "source_info": {
+                                "filename": "calc.p4",
+                                "line": 205,
+                                "column": 12,
+                                "source_fragment": "P4CALC_CARET: operation_xor()"
+                            },
+                            "match_key": [
+                                {
+                                    "match_type": "exact",
+                                    "key": "0x5e"
+                                }
+                            ],
+                            "action_entry": {
+                                "action_id": 4,
+                                "action_data": []
+                            },
+                            "priority": 5
+                        }
+                    ]
+                },
+                {
+                    "name": "tbl_operation_drop",
+                    "id": 1,
+                    "source_info": {
+                        "filename": "calc.p4",
+                        "line": 214,
+                        "column": 12,
+                        "source_fragment": "operation_drop()"
+                    },
+                    "key": [],
+                    "match_type": "exact",
+                    "type": "simple",
+                    "max_size": 1024,
+                    "with_counters": false,
+                    "support_timeout": false,
+                    "direct_meters": null,
+                    "action_ids": [
+                        6
+                    ],
+                    "actions": [
+                        "MyIngress.operation_drop"
+                    ],
+                    "base_default_next": null,
+                    "next_tables": {
+                        "MyIngress.operation_drop": null
+                    },
+                    "default_entry": {
+                        "action_id": 6,
+                        "action_const": true,
+                        "action_data": [],
+                        "action_entry_const": true
+                    }
+                }
+            ],
+            "action_profiles": [],
+            "conditionals": [
+                {
+                    "name": "node_2",
+                    "id": 0,
+                    "source_info": {
+                        "filename": "calc.p4",
+                        "line": 211,
+                        "column": 12,
+                        "source_fragment": "hdr.p4calc.isValid()"
+                    },
+                    "expression": {
+                        "type": "expression",
+                        "value": {
+                            "op": "d2b",
+                            "left": null,
+                            "right": {
+                                "type": "field",
+                                "value": [
+                                    "p4calc",
+                                    "$valid$"
+                                ]
+                            }
+                        }
+                    },
+                    "true_next": "MyIngress.calculate",
+                    "false_next": "tbl_operation_drop"
+                }
+            ]
+        },
+        {
+            "name": "egress",
+            "id": 1,
+            "source_info": {
+                "filename": "calc.p4",
+                "line": 222,
+                "column": 8,
+                "source_fragment": "MyEgress"
+            },
+            "init_table": null,
+            "tables": [],
+            "action_profiles": [],
+            "conditionals": []
+        }
+    ],
+    "checksums": [],
+    "force_arith": [],
+    "extern_instances": [],
+    "field_aliases": [
+        [
+            "queueing_metadata.enq_timestamp",
+            [
+                "standard_metadata",
+                "enq_timestamp"
+            ]
+        ],
+        [
+            "queueing_metadata.enq_qdepth",
+            [
+                "standard_metadata",
+                "enq_qdepth"
+            ]
+        ],
+        [
+            "queueing_metadata.deq_timedelta",
+            [
+                "standard_metadata",
+                "deq_timedelta"
+            ]
+        ],
+        [
+            "queueing_metadata.deq_qdepth",
+            [
+                "standard_metadata",
+                "deq_qdepth"
+            ]
+        ],
+        [
+            "intrinsic_metadata.ingress_global_timestamp",
+            [
+                "standard_metadata",
+                "ingress_global_timestamp"
+            ]
+        ],
+        [
+            "intrinsic_metadata.egress_global_timestamp",
+            [
+                "standard_metadata",
+                "egress_global_timestamp"
+            ]
+        ],
+        [
+            "intrinsic_metadata.mcast_grp",
+            [
+                "standard_metadata",
+                "mcast_grp"
+            ]
+        ],
+        [
+            "intrinsic_metadata.egress_rid",
+            [
+                "standard_metadata",
+                "egress_rid"
+            ]
+        ],
+        [
+            "intrinsic_metadata.priority",
+            [
+                "standard_metadata",
+                "priority"
+            ]
+        ]
+    ],
+    "program": "calc.p4",
+    "__meta__": {
+        "version": [
+            2,
+            23
+        ],
+        "compiler": "https://github.com/p4lang/p4c"
+    }
+}
