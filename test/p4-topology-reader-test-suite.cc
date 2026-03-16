@@ -1,6 +1,7 @@
 #include "ns3/test.h"
 #include "ns3/log.h"
 #include "ns3/p4-topology-reader-helper.h"
+#include "ns3/format-utils.h"
 
 using namespace ns3;
 
@@ -44,17 +45,21 @@ private:
     NS_TEST_ASSERT_MSG_EQ (switchCount, 2, "There should be 2 switches in the topology.");
 
     // Validate if the link was created successfully
-    NS_TEST_ASSERT_MSG_EQ (reader->LinksSize (), 7, "Topology contains no links.");
+    NS_TEST_ASSERT_MSG_EQ (reader->LinksSize (), 7, "Topology contains incorrect number of links.");
   }
 
   // Helper function to get filename from arguments or use a default
   std::string
   GetFileNameFromArgsOrDefault ()
   {
+     std::string p4SrcDir = GetP4SimDir();
+     std::cout<<p4SrcDir<<std::endl;
     std::string defaultFileName =
-        "/home/p4/workdir/ns3.39/contrib/p4sim/test/p4src/topology-files/dumbbell-topo.txt";
+       p4SrcDir  +
+      "/test/p4src/topology-files/dumbbell-topo.txt";
 
     const char *envFileName = std::getenv ("TOPOLOGY_FILE");
+
     if (envFileName != nullptr)
       {
         return std::string (envFileName);
