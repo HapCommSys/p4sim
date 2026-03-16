@@ -53,7 +53,7 @@
 
 using namespace ns3;
 
-NS_LOG_COMPONENT_DEFINE("P4BasicExample");
+NS_LOG_COMPONENT_DEFINE("P4BasicControllerExample");
 
 unsigned long start = getTickCount();
 double global_start_time = 1.0;
