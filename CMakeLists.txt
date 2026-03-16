@@ -99,9 +99,9 @@ build_lib(
         ${third_party_libs}
     TEST_SOURCES # equivalent to module_test.source
         test/p4-controller-test-suite.cc
-        # test/p4sim-test-suite.cc
-        # test/format-utils-test-suite.cc
-        # test/p4-topology-reader-test-suite.cc
-        # test/p4-p2p-channel-test-suite.cc
+         test/p4sim-test-suite.cc
+         test/format-utils-test-suite.cc
+         test/p4-topology-reader-test-suite.cc
+         test/p4-p2p-channel-test-suite.cc
         ${examples_as_tests_sources}
 )

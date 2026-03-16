@@ -4,7 +4,7 @@
 
 using namespace ns3;
 
-// NS_LOG_COMPONENT_DEFINE ("P4TopoReaderTest");
+ NS_LOG_COMPONENT_DEFINE ("P4TopoReaderTest");
 
 // Define a TestCase for the P4 topology reader
 class P4TopologyReaderTestCase : public TestCase
@@ -52,7 +52,7 @@ private:
   GetFileNameFromArgsOrDefault ()
   {
     std::string defaultFileName =
-        "/home/p4/workdir/ns3.35/contrib/p4sim/test/topology-files/dumbbell-topo.txt";
+        "/home/p4/workdir/ns3.39/contrib/p4sim/test/p4src/topology-files/dumbbell-topo.txt";
 
     const char *envFileName = std::getenv ("TOPOLOGY_FILE");
     if (envFileName != nullptr)

@@ -1,0 +1,10 @@
+2 6 7
+0 h 0 s 1000Mbps 0.1ms
+1 h 0 s 1000Mbps 0.1ms
+2 h 0 s 1000Mbps 0.1ms
+3 h 1 s 1000Mbps 0.1ms
+4 h 1 s 1000Mbps 0.1ms
+5 h 1 s 1000Mbps 0.1ms
+0 s 1 s 1000Mbps 0.1ms
+0 BASIC
+1 BASIC

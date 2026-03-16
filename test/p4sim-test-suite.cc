@@ -1,7 +1,3 @@
-
-// Include a header file from your module to test.
-#include "ns3/p4sim.h"
-
 // An essential include is test.h
 #include "ns3/test.h"
 #include "ns3/log.h"
