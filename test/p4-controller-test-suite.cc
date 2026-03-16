@@ -7,6 +7,7 @@
 #include "ns3/p4-core-v1model.h"
 #include "ns3/p4-helper.h"
 #include "ns3/p4-topology-reader-helper.h"
+#include "ns3/format-utils.h"
 #include "ns3/test.h"
 
 using namespace ns3;
@@ -41,9 +42,13 @@ void P4ControllerCheckFlowEntryTestCase::DoRun() {
   // std::string appDataRate = "3Mbps"; // Default application data rate
   // std::string ns3_link_rate = "1000Mbps";
 
+  std::string p4SrcDir = GetP4ExamplePath() + "/simple_v1model";
+  std::string p4JsonPath = p4SrcDir + "/simple_v1model.json";
+  std::string flowTablePath = p4SrcDir + "/flowtable_0.txt";
+  std::string topoInput = p4SrcDir + "/topo.txt";
+
   P4TopologyReaderHelper p4TopoHelper;
-  p4TopoHelper.SetFileName("/home/p4/workdir/ns3.39/contrib/p4sim/examples/"
-                           "p4src/simple_v1model/topo.txt");
+  p4TopoHelper.SetFileName(topoInput);
   p4TopoHelper.SetFileType("CsmaTopo");
 
   // Get the topology reader, and read the file, load in the m_linksList.
@@ -74,11 +79,9 @@ void P4ControllerCheckFlowEntryTestCase::DoRun() {
   // Set up the P4 switch helper
   P4Helper p4Helper;
   p4Helper.SetDeviceAttribute(
-      "JsonPath", StringValue("/home/p4/workdir/ns3.39/contrib/p4sim/test/"
-                              "p4src/simple_v1model/simple_v1model.json"));
+      "JsonPath", StringValue(p4JsonPath));
   p4Helper.SetDeviceAttribute(
-      "FlowTablePath", StringValue("/home/p4/workdir/ns3.39/contrib/p4sim/test/"
-                                   "p4src/simple_v1model/flowtable_0.txt"));
+      "FlowTablePath", StringValue(flowTablePath));
   p4Helper.SetDeviceAttribute("ChannelType", UintegerValue(0));
   p4Helper.SetDeviceAttribute("P4SwitchArch", UintegerValue(0)); // v1model
 
@@ -164,10 +167,15 @@ void P4ControllerCheckFlowEntryTestCase::DoRun() {
 void P4ControllerActionProfileTestCase::DoRun() {
   // std::string appDataRate = "3Mbps"; // Default application data rate
   // std::string ns3_link_rate = "1000Mbps";
+  
+  std::string p4SrcDir = GetP4TestPath() + "/action_profile_v1model";
+  std::string p4JsonPath = p4SrcDir + "/action-profile.json";
+  
+  std::string flowTablePath = p4SrcDir + "/flowtable_0.txt";
+  std::string topoInput = p4SrcDir + "/topo.txt";
 
   P4TopologyReaderHelper p4TopoHelper;
-  p4TopoHelper.SetFileName("/home/p4/workdir/ns3.39/contrib/p4sim/examples/"
-                           "p4src/simple_v1model/topo.txt");
+  p4TopoHelper.SetFileName(topoInput);
   p4TopoHelper.SetFileType("CsmaTopo");
 
   // Get the topology reader, and read the file, load in the m_linksList.
@@ -199,11 +207,9 @@ void P4ControllerActionProfileTestCase::DoRun() {
   P4Helper p4Helper;
   p4Helper.SetDeviceAttribute(
       "JsonPath",
-      StringValue("/home/p4/workdir/ns3.39/contrib/p4sim/test/p4src/"
-                  "action_profile_v1model/action-profile.json"));
+      StringValue(p4JsonPath));
   p4Helper.SetDeviceAttribute(
-      "FlowTablePath", StringValue("/home/p4/workdir/ns3.39/contrib/p4sim/test/"
-                                   "p4src/simple_v1model/flowtable_0.txt"));
+      "FlowTablePath", StringValue(flowTablePath));
   p4Helper.SetDeviceAttribute("ChannelType", UintegerValue(0));
   p4Helper.SetDeviceAttribute("P4SwitchArch", UintegerValue(0)); // v1model
 

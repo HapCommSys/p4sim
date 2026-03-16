@@ -212,6 +212,21 @@ std::string GetP4SimDir();
  */
 std::string GetP4ExamplePath();
 
+/**
+ * @brief Get the path to the P4Sim test/p4src directory.
+ *
+ * Convenience function that returns GetP4SimDir() + "/test/p4src".
+ * Use this as a base path and append specific test subdirectories.
+ *
+ * Example:
+ *   GetP4TestPath() => "/home/user/ns3/contrib/p4sim/test/p4src"
+ *   GetP4TestPath() + "/simple_v1model" => ".../p4src/simple_v1model"
+ *
+ * @return The full absolute path to test/p4src.
+ */
+std::string
+GetP4TestPath();
+
 } // namespace ns3
 
 #endif /* FORMAT_UTILS_H */

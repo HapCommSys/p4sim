@@ -158,10 +158,10 @@ FormatUtilsTestCase::TestHexCharToInt ()
 void
 FormatUtilsTestCase::TestHexStrToBytes ()
 {
-  NS_TEST_ASSERT_MSG_EQ (HexStrToBytes ("0x0a010001"), "\x0a\x01\x00\x01",
+  NS_TEST_ASSERT_MSG_EQ (HexStrToBytes ("0x0a010001"), (std::string ("\x0a\x01\x00\x01", 4)),
                          "HexStrToBytes failed for valid input");
 
-  NS_TEST_ASSERT_MSG_EQ (HexStrToBytes ("ff00"), "\xff\x00",
+  NS_TEST_ASSERT_MSG_EQ (HexStrToBytes ("ff00"), (std::string ("\xff\x00", 2)),
                          "HexStrToBytes failed for short input");
 
   NS_TEST_EXPECT_MSG_EQ (HexStrToBytes ("0x123"), "",
@@ -178,7 +178,7 @@ FormatUtilsTestCase::TestHexStrToBytes ()
 void
 FormatUtilsTestCase::TestIpStrToBytes ()
 {
-  NS_TEST_ASSERT_MSG_EQ (IpStrToBytes ("10.1.0.1"), "\x0a\x01\x00\x01",
+  NS_TEST_ASSERT_MSG_EQ (IpStrToBytes ("10.1.0.1"), (std::string ("\x0a\x01\x00\x01", 4)),
                          "IpStrToBytes failed for valid IP address");
 }
 
@@ -188,7 +188,7 @@ FormatUtilsTestCase::TestIpStrToBytes ()
 void
 FormatUtilsTestCase::TestUint32IpToHex ()
 {
-  NS_TEST_ASSERT_MSG_EQ (Uint32IpToHex (167772161), "0x0a010001",
+  NS_TEST_ASSERT_MSG_EQ (Uint32IpToHex (167837697), "0x0a010001",
                          "Uint32IpToHex failed for valid input");
   NS_TEST_ASSERT_MSG_EQ (Uint32IpToHex (0), "0x00000000", "Uint32IpToHex failed for zero input");
 }
@@ -199,7 +199,7 @@ FormatUtilsTestCase::TestUint32IpToHex ()
 void
 FormatUtilsTestCase::TestIntToBytes ()
 {
-  NS_TEST_ASSERT_MSG_EQ (IntToBytes ("123", 16), "\x00\x7b", "IntToBytes failed for 16-bit width");
+  NS_TEST_ASSERT_MSG_EQ (IntToBytes ("123", 16), (std::string ("\x00\x7b", 2)), "IntToBytes failed for 16-bit width");
   NS_TEST_ASSERT_MSG_EQ (IntToBytes ("255", 8), "\xff", "IntToBytes failed for 8-bit width");
 }
 

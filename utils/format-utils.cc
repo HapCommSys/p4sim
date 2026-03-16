@@ -330,21 +330,22 @@ IntToBytes(const std::string& inputStr, int bitWidth)
     std::vector<unsigned int> byte_array;
     std::string res;
     unsigned int input_num = std::stoi(inputStr); // assume decimal 10
+    int byteWidth = (bitWidth + 7) / 8;
 
     while (input_num > 0)
     {
         byte_array.push_back(input_num % 256);
         input_num = input_num / 256;
-        bitWidth--;
+        byteWidth--;
     }
-    if (bitWidth < 0)
+    if (byteWidth < 0)
     {
         std::cout << "UIn_BadParamError: too large parameter!" << std::endl;
     }
-    while (bitWidth > 0)
+    while (byteWidth > 0)
     {
         byte_array.push_back(0);
-        bitWidth--;
+        byteWidth--;
     }
     std::reverse(byte_array.begin(), byte_array.end());
 
@@ -406,5 +407,12 @@ GetP4ExamplePath()
 {
     return GetP4SimDir() + "/examples/p4src";
 }
+
+std::string
+GetP4TestPath()
+{
+    return GetP4SimDir() + "/test/p4src";
+}
+
 
 } // namespace ns3
