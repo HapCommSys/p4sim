@@ -106,16 +106,18 @@ DecodeP4CalcFrame(Ptr<const Packet> packet)
     uint32_t opB = ReadBe32(&calcBytes[8]);
     uint32_t result = ReadBe32(&calcBytes[12]);
 
-    NS_LOG_INFO("P4Calc RX: op=0x" << std::hex << static_cast<uint32_t>(op) << std::dec
-                                   << " opA=" << opA << " opB=" << opB << " result=" << result);
+    NS_LOG_INFO("P4Calc RX : op = 0x " << std::hex << static_cast<uint32_t>(op) << std::dec
+                                       << " opA=" << opA << " opB=" << opB << " result=" << result);
 }
 
 void
-SendTestPacket(Ptr<NetDevice> sender, Ptr<Packet> packet, Address dst, uint16_t protocol)
+SendTestPacket(Ptr<NetDevice> sender,
+               Ptr<Packet> packet,
+               Mac48Address src,
+               Mac48Address dst,
+               uint16_t protocol)
 {
-    bool ok = sender->Send(packet, dst, protocol);
-    NS_LOG_INFO("SendTestPacket status=" << ok << ", dst=" << ConvertMacToHex(dst)
-                                         << ", protocol=0x" << std::hex << protocol);
+    sender->SendFrom(packet, src, dst, protocol);
 }
 
 // ============================ data struct ============================
@@ -378,14 +380,15 @@ main(int argc, char* argv[])
     Ptr<NetDevice> switchIngressDevice =
         switchNodes[hostNodes[0].linkSwitchIndex].switchDevices.Get(hostNodes[0].linkSwitchPort);
 
-    hostTxDevice->TraceConnectWithoutContext("PromiscSniffer", MakeCallback(&DecodeP4CalcFrame));
+    hostTxDevice->TraceConnectWithoutContext("MacRx", MakeCallback(&DecodeP4CalcFrame));
 
     // Send from host 0 to switch after simulation starts.
     Simulator::Schedule(Seconds(global_start_time + 0.1),
                         &SendTestPacket,
                         hostTxDevice,
                         testPacket->Copy(),
-                        switchIngressDevice->GetAddress(),
+                        Mac48Address::ConvertFrom(hostTxDevice->GetAddress()),
+                        Mac48Address::ConvertFrom(switchIngressDevice->GetAddress()),
                         static_cast<uint16_t>(0x1234));
 
     Simulator::Stop(Seconds(global_stop_time));

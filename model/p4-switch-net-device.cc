@@ -469,11 +469,17 @@ void P4SwitchNetDevice::SendNs3Packet(Ptr<Packet> packetOut, int outPort,
     // std::cout << "* Switch Port (out)*** Send from Device: " << std::endl;
     // packetOut->Print(std::cout);
     // std::cout << "packet length: " << packetOut->GetSize() << std::endl;
+    Address src = eeh_1.GetSource();
+    Address dst = eeh_1.GetDestination();
+    NS_LOG_DEBUG("* Reconstructed Ethernet header: Source MAC: "
+                 << Mac48Address::ConvertFrom(src)
+                 << ", Destination MAC: " << Mac48Address::ConvertFrom(dst)
+                 << ", Protocol: 0x" << std::hex << protocol << std::dec);
 
     if (outPort != 511) {
       NS_LOG_DEBUG("EgressPortNum: " << outPort);
       Ptr<NetDevice> outNetDevice = GetBridgePort(outPort);
-      outNetDevice->Send(packetOut, destination, protocol);
+      outNetDevice->SendFrom(packetOut, src, dst, protocol);
     }
   } else
     NS_LOG_DEBUG("Null Packet!");
