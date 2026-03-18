@@ -1,6 +1,1 @@
 table_set_default calculate operation_drop
-table_add calculate operation_add 0x2b =>
-table_add calculate operation_sub 0x2d =>
-table_add calculate operation_and 0x26 =>
-table_add calculate operation_or 0x7c =>
-table_add calculate operation_xor 0x5e =>
