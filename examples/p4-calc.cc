@@ -30,7 +30,7 @@
 
 using namespace ns3;
 
-NS_LOG_COMPONENT_DEFINE("p4-calc");
+NS_LOG_COMPONENT_DEFINE("P4Calculator");
 
 // Convert IP address to hexadecimal format
 std::string
@@ -139,7 +139,7 @@ struct HostNodeC_t
 int
 main(int argc, char* argv[])
 {
-    LogComponentEnable("p4-calc", LOG_LEVEL_INFO);
+    LogComponentEnable("P4Calculator", LOG_LEVEL_INFO);
     ns3::PacketMetadata::Enable(); // Enable packet metadata tracing support
 
     // simulation parameters

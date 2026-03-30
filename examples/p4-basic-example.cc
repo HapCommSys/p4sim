@@ -190,7 +190,6 @@ main(int argc, char* argv[])
     LogComponentEnable("P4BasicExample", LOG_LEVEL_INFO);
 
     // ============================ parameters ============================
-    int running_number = 0;
     uint16_t pktSize = 1000;           // in Bytes. 1458 to prevent fragments, default 512
     std::string appDataRate = "3Mbps"; // Default application data rate
     std::string ns3_link_rate = "1000Mbps";
@@ -205,7 +204,6 @@ main(int argc, char* argv[])
 
     // ============================  command line ============================
     CommandLine cmd;
-    cmd.AddValue("runnum", "running number in loops", running_number);
     cmd.AddValue("pktSize", "Packet size in bytes (default 1000)", pktSize);
     cmd.AddValue("appDataRate", "Application data rate in bps (default 1Mbps)", appDataRate);
     cmd.AddValue("pcap", "Trace packet pacp [true] or not[false]", enableTracePcap);

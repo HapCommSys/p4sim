@@ -193,7 +193,8 @@ PrintFinalThroughput()
     std::cout << "  TX: " << totalTxBytes << " bytes  (" << first_packet_send_time_tx << "s -> "
               << last_packet_send_time_tx << "s,  elapsed=" << send_time << "s)" << std::endl;
     std::cout << "  RX: " << totalRxBytes << " bytes  (" << first_packet_received_time_rx << "s -> "
-              << last_packet_received_time_rx << "s,  elapsed=" << elapsed_time << "s)" << std::endl;
+              << last_packet_received_time_rx << "s,  elapsed=" << elapsed_time << "s)"
+              << std::endl;
     std::cout << "  TX Throughput: " << finalTxThroughput << " Mbps" << std::endl;
     std::cout << "  RX Throughput: " << finalRxThroughput << " Mbps" << std::endl;
     std::cout << "  ** [MAC Layer]" << std::endl;
@@ -227,7 +228,6 @@ main(int argc, char* argv[])
     double simDuration = 20.0;         ///< Total simulation time (s).
     int model = 0;          ///< 0 = P4 V1Model switch;  1 = standard NS-3 bridge (baseline).
     bool enablePcap = true; ///< Enable PCAP trace output.
-    int runnum = 0;         ///< Run index for batch experiments.
 
     // Paths resolved via P4SIM_DIR environment variable (portable).
     std::string p4SrcDir = GetP4ExamplePath() + "/simple_v1model";
@@ -252,7 +252,6 @@ main(int argc, char* argv[])
     cmd.AddValue("simDuration", "Total simulation duration (s, default 20)", simDuration);
     cmd.AddValue("model", "Switch model: 0=P4 V1Model, 1=NS-3 bridge baseline", model);
     cmd.AddValue("pcap", "Enable PCAP packet capture (true/false)", enablePcap);
-    cmd.AddValue("runnum", "Run index used for batch experiments", runnum);
     cmd.Parse(argc, argv);
 
     // Apply runtime-configurable timing after parsing

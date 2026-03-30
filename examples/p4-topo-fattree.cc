@@ -98,12 +98,12 @@ main(int argc, char* argv[])
     LogComponentEnable("P4TopoFattree", LOG_LEVEL_INFO);
     LogComponentEnable("P4TopologyReader", LOG_LEVEL_INFO);
 
-    int running_number = 0;
     int podNum = 2;
     bool enableBuildTableEntry = true;
     uint16_t pktSize = 1000; // in Bytes. 1458 to prevent fragments, default 512
     int model = 0;
     std::string appDataRate = "1Mbps"; // Default application data rate
+    uint32_t maxBytes = 1000;
     bool enableTracePcap = false;
 
     // Use P4SIM_DIR environment variable for portable paths
@@ -115,12 +115,14 @@ main(int argc, char* argv[])
 
     // ============================  command line ============================
     CommandLine cmd;
-    cmd.AddValue("runnum", "running number in loops", running_number);
     cmd.AddValue("podnum", "Numbers of built tree topo levels", podNum);
     cmd.AddValue("tableEntry", "Build the table entry [true] or not[false]", enableBuildTableEntry);
     cmd.AddValue("model", "running simulation with p4switch: 0, with ns-3 bridge: 1", model);
     cmd.AddValue("pktSize", "Packet size in bytes (default 1000)", pktSize);
     cmd.AddValue("appDataRate", "Application data rate in bps (default 1Mbps)", appDataRate);
+    cmd.AddValue("maxBytes",
+                 "Maximum bytes to send per flow, 0 = unlimited (default 1000)",
+                 maxBytes);
     cmd.AddValue("pcap", "Trace packet pacp [true] or not[false]", enableTracePcap);
     cmd.Parse(argc, argv);
 
@@ -400,7 +402,7 @@ main(int argc, char* argv[])
         OnOffHelper onOff = OnOffHelper("ns3::UdpSocketFactory", dst);
         onOff.SetAttribute("PacketSize", UintegerValue(pktSize));
         onOff.SetAttribute("DataRate", StringValue(appDataRate));
-        onOff.SetAttribute("MaxBytes", UintegerValue(1000));
+        onOff.SetAttribute("MaxBytes", UintegerValue(maxBytes));
 
         apps = onOff.Install(hosts.Get(i));
         apps.Start(Seconds(client_start_time));

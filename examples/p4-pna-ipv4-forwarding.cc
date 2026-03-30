@@ -225,7 +225,6 @@ main(int argc, char* argv[])
     LogComponentEnable("P4PnaIpv4Forwarding", LOG_LEVEL_INFO);
 
     // ---- tuneable parameters ----
-    int runNum = 0;
     int model = 0;           // 0 = P4 PNA switch, 1 = ns-3 BridgeHelper
     uint16_t pktSize = 1000; // bytes per UDP payload
     uint32_t clientIndex = 0;
@@ -251,7 +250,6 @@ main(int argc, char* argv[])
 
     // ---- command line ----
     CommandLine cmd;
-    cmd.AddValue("runnum", "Run index used in loop experiments", runNum);
     cmd.AddValue("model", "0 = P4 PNA switch,  1 = ns-3 BridgeHelper", model);
     cmd.AddValue("pktSize", "UDP payload size in bytes", pktSize);
     cmd.AddValue("appDataRate", "OnOff application data rate", appDataRate);

@@ -182,8 +182,6 @@ main(int argc, char* argv[])
     Packet::EnablePrinting();
 
     // ============================ parameters ============================
-
-    int running_number = 0;
     uint16_t pktSize = 1000; // in Bytes. 1458 to prevent fragments, default 512
     std::string appDataRate[] = {"1Mbps", "4Mbps"}; // Default application data rate
     std::string ns3_link_rate = "100Mbps";
@@ -198,7 +196,6 @@ main(int argc, char* argv[])
 
     // ============================  command line ============================
     CommandLine cmd;
-    cmd.AddValue("runnum", "running number in loops", running_number);
     cmd.AddValue("pktSize", "Packet size in bytes (default 1000)", pktSize);
     cmd.AddValue("pcap", "Trace packet pacp [true] or not[false]", enableTracePcap);
     cmd.Parse(argc, argv);
@@ -442,7 +439,10 @@ main(int argc, char* argv[])
     app2.Stop(Seconds(client_stop_time));
 
     // Enable pcap tracing
-    p4p2phelper.EnablePcapAll("p4-basic-tunnel");
+    if (enableTracePcap)
+    {
+        p4p2phelper.EnablePcapAll("p4-basic-tunnel");
+    }
 
     // Run simulation
     NS_LOG_INFO("Running simulation...");

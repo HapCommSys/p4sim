@@ -231,7 +231,7 @@ main(int argc, char* argv[])
     double simDuration = 20.0;         ///< Total simulation time (s).
     int model = 0;                     ///< 0 = P4 PSA switch;  1 = standard NS-3 bridge (baseline).
     bool enablePcap = true;            ///< Enable PCAP trace output.
-    int runnum = 0;                    ///< Run index for batch experiments.
+    int seednum = 1;                   ///< Run index for batch experiments.
 
     // Paths resolved via P4SIM_DIR environment variable (portable).
     std::string p4SrcDir = GetP4ExamplePath() + "/simple_psa";
@@ -257,8 +257,14 @@ main(int argc, char* argv[])
                  switchRate);
     cmd.AddValue("model", "Switch model: 0=P4 PSA, 1=NS-3 bridge baseline", model);
     cmd.AddValue("pcap", "Enable PCAP packet capture (true/false)", enablePcap);
-    cmd.AddValue("runnum", "Run index used for batch experiments", runnum);
+    cmd.AddValue("seednum", "Run index used for batch experiments", seednum);
     cmd.Parse(argc, argv);
+
+    // Apply runtime-configurable timing after parsing
+    client_stop_time = client_start_time + flowDuration;
+    sink_stop_time = client_stop_time + 5.0;
+
+    RngSeedManager::SetRun(seednum); // Set the random seed for reproducibility
 
     // ============================ topo -> network ============================
 
@@ -386,9 +392,9 @@ main(int argc, char* argv[])
     }
 
     // === Configuration for Link: h0 -----> h1 ===
-    unsigned int serverI = 1;
-    unsigned int clientI = 0;
-    uint16_t servPort = 9093; // UDP port for the server
+    unsigned int serverI = serverIndex;
+    unsigned int clientI = clientIndex;
+    uint16_t servPort = serverPort;
 
     // === Retrieve Server Address ===
     Ptr<Node> node = terminals.Get(serverI);
@@ -451,7 +457,7 @@ main(int argc, char* argv[])
     // Run simulation
     NS_LOG_INFO("Running simulation...");
     unsigned long simulate_start = getTickCount();
-    Simulator::Stop(Seconds(global_stop_time));
+    Simulator::Stop(Seconds(simDuration));
     Simulator::Run();
     Simulator::Destroy();
 
