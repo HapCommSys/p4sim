@@ -45,7 +45,7 @@ class DummySwitchHelper
      * \param n1 attribute name
      * \param v1 attribute value
      */
-    void SetDeviceAttribute(std::string n1, const AttributeValue& v1);
+    void SetDeviceAttribute(const std::string& n1, const AttributeValue& v1);
 
     /**
      * \brief Install a DummySwitchNetDevice on a node.
@@ -58,7 +58,7 @@ class DummySwitchHelper
      * \return the created DummySwitchNetDevice
      */
     Ptr<DummySwitchNetDevice> Install(Ptr<Node> node,
-                                      NetDeviceContainer portDevices);
+                                      const NetDeviceContainer& portDevices);
 
     /**
      * \brief Install a DummySwitchNetDevice on a node (by name).
@@ -66,8 +66,8 @@ class DummySwitchHelper
      * \param portDevices the NetDevices to add as switch ports
      * \return the created DummySwitchNetDevice
      */
-    Ptr<DummySwitchNetDevice> Install(std::string nodeName,
-                                      NetDeviceContainer portDevices);
+    Ptr<DummySwitchNetDevice> Install(const std::string& nodeName,
+                                      const NetDeviceContainer& portDevices);
 
   private:
     ObjectFactory m_deviceFactory; //!< Factory for creating DummySwitchNetDevice

@@ -34,15 +34,16 @@ DummySwitchHelper::DummySwitchHelper()
 }
 
 void
-DummySwitchHelper::SetDeviceAttribute(std::string n1, const AttributeValue& v1)
+DummySwitchHelper::SetDeviceAttribute(const std::string& n1, const AttributeValue& v1)
 {
     NS_LOG_FUNCTION(this << n1);
     m_deviceFactory.Set(n1, v1);
 }
 
 Ptr<DummySwitchNetDevice>
-DummySwitchHelper::Install(Ptr<Node> node, NetDeviceContainer portDevices)
+DummySwitchHelper::Install(Ptr<Node> node, const NetDeviceContainer& portDevices)
 {
+    NS_ASSERT_MSG(node != nullptr, "Invalid node pointer passed to DummySwitchHelper::Install");
     NS_LOG_FUNCTION(this << node);
 
     Ptr<DummySwitchNetDevice> dev = m_deviceFactory.Create<DummySwitchNetDevice>();
@@ -59,10 +60,12 @@ DummySwitchHelper::Install(Ptr<Node> node, NetDeviceContainer portDevices)
 }
 
 Ptr<DummySwitchNetDevice>
-DummySwitchHelper::Install(std::string nodeName, NetDeviceContainer portDevices)
+DummySwitchHelper::Install(const std::string& nodeName, const NetDeviceContainer& portDevices)
 {
     NS_LOG_FUNCTION(this << nodeName);
     Ptr<Node> node = Names::Find<Node>(nodeName);
+    NS_ASSERT_MSG(node != nullptr,
+                  "DummySwitchHelper::Install: node '" << nodeName << "' not found");
     return Install(node, portDevices);
 }
 

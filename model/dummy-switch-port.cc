@@ -21,6 +21,7 @@
 
 #include "ns3/log.h"
 #include "ns3/queue-disc.h"
+#include "ns3/queue-item.h"
 #include "ns3/uinteger.h"
 
 namespace ns3
@@ -28,6 +29,51 @@ namespace ns3
 
 NS_LOG_COMPONENT_DEFINE("DummySwitchPort");
 NS_OBJECT_ENSURE_REGISTERED(DummySwitchPort);
+
+// =============================================================================
+// DummySwitchQueueItem — concrete QueueDiscItem for L2 switch forwarding
+// =============================================================================
+
+/**
+ * \brief A minimal concrete QueueDiscItem for use in DummySwitchPort.
+ *
+ * ns3::QueueDiscItem is abstract (pure virtual AddHeader() and Mark()).
+ * This subclass provides trivial implementations since the dummy switch
+ * operates at L2 and does not need to manipulate headers or support ECN
+ * marking.
+ */
+class DummySwitchQueueItem : public QueueDiscItem
+{
+  public:
+    /**
+     * \brief Construct a DummySwitchQueueItem.
+     * \param p       the packet
+     * \param addr    the destination MAC address
+     * \param protocol the L3 protocol number (EtherType)
+     */
+    DummySwitchQueueItem(Ptr<Packet> p, const Address& addr, uint16_t protocol)
+        : QueueDiscItem(p, addr, protocol)
+    {
+    }
+
+    /** No header manipulation needed for L2 forwarding. */
+    void AddHeader() override
+    {
+    }
+
+    /**
+     * \brief ECN marking is not supported by the dummy switch.
+     * \return always false
+     */
+    bool Mark() override
+    {
+        return false;
+    }
+};
+
+// =============================================================================
+// DummySwitchPort implementation
+// =============================================================================
 
 TypeId
 DummySwitchPort::GetTypeId()
@@ -93,6 +139,10 @@ DummySwitchPort::SetTrafficManager(Ptr<QueueDisc> qdisc)
 {
     NS_LOG_FUNCTION(this << qdisc);
     m_egressTm = qdisc;
+    if (qdisc && !qdisc->IsInitialized())
+    {
+        qdisc->Initialize();
+    }
     NS_LOG_INFO("Port " << m_portId << ": Traffic manager "
                         << (qdisc ? "attached" : "detached"));
 }
@@ -143,20 +193,30 @@ DummySwitchPort::EnqueueEgress(Ptr<Packet> packet,
 
     if (m_egressTm)
     {
-        // Enqueue through the traffic manager
+        // Wrap packet in a QueueDiscItem and enqueue through the traffic manager
+        Ptr<DummySwitchQueueItem> item =
+            Create<DummySwitchQueueItem>(packet, dest, protocolNumber);
+
         NS_LOG_DEBUG("Port " << m_portId << ": enqueueing packet (size "
-                             << packet->GetSize() << ") into traffic manager");
-        // NOTE: Full QueueDisc integration requires QueueDiscItem wrapping.
-        // For the skeleton, we bypass the TM and send directly, but log
-        // that the TM is present.
-        NS_LOG_INFO("Port " << m_portId << ": TM present ("
-                            << m_egressTm->GetInstanceTypeId().GetName()
-                            << "), forwarding packet directly for now");
+                             << packet->GetSize() << ") into traffic manager ("
+                             << m_egressTm->GetInstanceTypeId().GetName() << ")");
+
+        bool enqueued = m_egressTm->Enqueue(item);
+        if (!enqueued)
+        {
+            NS_LOG_DEBUG("Port " << m_portId
+                                 << ": traffic manager dropped packet (queue full)");
+            return false;
+        }
+
+        // Immediately try to dequeue and transmit
+        TransmitFromQueue();
+        return true;
     }
 
-    // Send directly on the underlying NetDevice
+    // No traffic manager — send directly on the underlying NetDevice
     NS_LOG_DEBUG("Port " << m_portId << ": sending packet (size "
-                         << packet->GetSize() << ") on " 
+                         << packet->GetSize() << ") on "
                          << m_netDevice->GetInstanceTypeId().GetName());
 
     return m_netDevice->Send(packet, dest, protocolNumber);
@@ -166,10 +226,26 @@ void
 DummySwitchPort::TransmitFromQueue()
 {
     NS_LOG_FUNCTION(this);
-    // Placeholder: will be used when full QueueDisc integration is implemented.
-    // The QueueDisc dequeue callback would invoke this method to actually
-    // transmit the packet on the underlying NetDevice.
-    NS_LOG_DEBUG("Port " << m_portId << ": TransmitFromQueue called (placeholder)");
+
+    if (!m_egressTm || !m_netDevice)
+    {
+        return;
+    }
+
+    // Dequeue all available packets and transmit them
+    Ptr<QueueDiscItem> item = m_egressTm->Dequeue();
+    while (item)
+    {
+        Ptr<Packet> packet = item->GetPacket();
+        Address dest = item->GetAddress();
+        uint16_t protocol = item->GetProtocol();
+
+        NS_LOG_DEBUG("Port " << m_portId << ": dequeued packet (size "
+                             << packet->GetSize() << ") from traffic manager");
+
+        m_netDevice->Send(packet, dest, protocol);
+        item = m_egressTm->Dequeue();
+    }
 }
 
 } // namespace ns3
