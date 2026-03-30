@@ -33,7 +33,7 @@
 
 using namespace ns3;
 
-NS_LOG_COMPONENT_DEFINE("SpineLeafTopology");
+NS_LOG_COMPONENT_DEFINE("P4SpineLeafTopo");
 
 unsigned long start = getTickCount();
 double global_start_time = 1.0;
@@ -255,11 +255,9 @@ CalculateThroughput()
 int
 main(int argc, char* argv[])
 {
-    LogComponentEnable("SpineLeafTopology", LOG_LEVEL_INFO);
+    LogComponentEnable("P4SpineLeafTopo", LOG_LEVEL_INFO);
 
-    int running_number = 0;
-    uint16_t pktSize = 1000; // in Bytes. 1458 to prevent fragments, default 512
-    int model = 0;
+    uint16_t pktSize = 1000;            // in Bytes. 1458 to prevent fragments, default 512
     std::string appDataRate = "10Mbps"; // Default application data rate
     bool enableTracePcap = false;
 
@@ -272,11 +270,9 @@ main(int argc, char* argv[])
 
     // ============================  command line ============================
     CommandLine cmd;
-    cmd.AddValue("runnum", "running number in loops", running_number);
-    cmd.AddValue("model", "running simulation with p4switch: 0, with ns-3 bridge: 1", model);
     cmd.AddValue("pktSize", "Packet size in bytes (default 1000)", pktSize);
     cmd.AddValue("appDataRate", "Application data rate in bps (default 1Mbps)", appDataRate);
-    cmd.AddValue("pcap", "Trace packet pacp [true] or not[false]", enableTracePcap);
+    cmd.AddValue("pcap", "Trace packet pcap [true] or not[false]", enableTracePcap);
     cmd.Parse(argc, argv);
 
     // ============================ topo -> network ============================

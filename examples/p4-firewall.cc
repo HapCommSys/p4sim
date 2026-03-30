@@ -53,7 +53,7 @@
 
 using namespace ns3;
 
-NS_LOG_COMPONENT_DEFINE("P4BasicExample");
+NS_LOG_COMPONENT_DEFINE("P4Firewall");
 
 unsigned long start = getTickCount();
 double global_start_time = 1.0;
@@ -124,7 +124,7 @@ struct HostNodeC_t
 int
 main(int argc, char* argv[])
 {
-    LogComponentEnable("P4BasicExample", LOG_LEVEL_INFO);
+    LogComponentEnable("P4Firewall", LOG_LEVEL_INFO);
 
     // ============================ parameters ============================
     uint16_t pktSize = 1000;           // in Bytes. 1458 to prevent fragments, default 512

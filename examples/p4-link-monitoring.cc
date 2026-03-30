@@ -95,12 +95,10 @@ main(int argc, char* argv[])
     LogComponentEnable("P4LinkMonitoring", LOG_LEVEL_INFO);
 
     // ============================ parameters ============================
-
-    int running_number = 0;
     uint16_t pktSize = 512;              // in Bytes. 1458 to prevent fragments, default 512
     std::string appDataRate = "4096bps"; // Default application data rate
     std::string ns3_link_rate = "1000Mbps";
-    bool enableTracePcap = true;
+    bool enableTracePcap = false;
 
     // Use P4SIM_DIR environment variable for portable paths
     std::string p4SrcDir = GetP4ExamplePath() + "/link_monitor";
@@ -111,7 +109,6 @@ main(int argc, char* argv[])
 
     // ============================  command line ============================
     CommandLine cmd;
-    cmd.AddValue("runnum", "running number in loops", running_number);
     cmd.AddValue("pktSize", "Packet size in bytes (default 1000)", pktSize);
     cmd.AddValue("pcap", "Trace packet pacp [true] or not[false]", enableTracePcap);
     cmd.Parse(argc, argv);
@@ -344,7 +341,10 @@ main(int argc, char* argv[])
     app1.Stop(Seconds(30));
 
     // Enable pcap tracing
-    p4p2phelper.EnablePcapAll("p4-link-monitoring");
+    if (enableTracePcap)
+    {
+        p4p2phelper.EnablePcapAll("p4-link-monitoring");
+    }
 
     // Run simulation
     NS_LOG_INFO("Running simulation...");

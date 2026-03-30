@@ -41,6 +41,7 @@
 #include "ns3/bridge-helper.h"
 #include "ns3/core-module.h"
 #include "ns3/csma-helper.h"
+#include "ns3/csma-net-device.h"
 #include "ns3/format-utils.h"
 #include "ns3/internet-module.h"
 #include "ns3/network-module.h"
@@ -62,16 +63,22 @@ double client_stop_time = client_start_time + 3;
 double sink_stop_time = client_stop_time + 5;
 double global_stop_time = sink_stop_time + 5;
 
-bool first_tx = true;
-bool first_rx = true;
-int counter_sender_10 = 10;
-int counter_receiver_10 = 10;
 double first_packet_send_time_tx = 0.0;
 double last_packet_send_time_tx = 0.0;
 double first_packet_received_time_rx = 0.0;
 double last_packet_received_time_rx = 0.0;
 uint64_t totalTxBytes = 0;
 uint64_t totalRxBytes = 0;
+
+// MAC-layer stats (data packets only, ARP <= 64 bytes skipped)
+uint64_t macTxBytes = 0;
+uint64_t macRxBytes = 0;
+double firstMacTxTime = 0.0;
+double lastMacTxTime = 0.0;
+double firstMacRxTime = 0.0;
+double lastMacRxTime = 0.0;
+bool firstMacTx = true;
+bool firstMacRx = true;
 
 // Convert IP address to hexadecimal format
 std::string
@@ -104,44 +111,67 @@ ConvertMacToHex(Address macAddr)
     return hexStream.str();
 }
 
-void
-TxCallback(Ptr<const Packet> packet)
+static void
+TxDropTrace(std::string label, Ptr<const Packet> p)
 {
-    if (first_tx)
+    NS_LOG_DEBUG(Simulator::Now().GetSeconds()
+                 << "s [" << label << "][DROP] size=" << p->GetSize());
+}
+
+static void
+MacTxTrace(std::string label, Ptr<const Packet> p)
+{
+    double now = Simulator::Now().GetSeconds();
+    NS_LOG_DEBUG(now << "s [" << label << "][MacTx] size=" << p->GetSize());
+    if (label == "TX-host" && p->GetSize() > 64)
     {
-        // here we just simple jump the first 10 pkts (include some of ARP packets)
-        first_packet_send_time_tx = Simulator::Now().GetSeconds();
-        counter_sender_10--;
-        if (counter_sender_10 == 0)
+        if (firstMacTx)
         {
-            first_tx = false;
+            firstMacTxTime = now;
+            firstMacTx = false;
         }
+        lastMacTxTime = now;
+        macTxBytes += p->GetSize();
     }
-    else
+}
+
+static void
+MacRxTrace(std::string label, Ptr<const Packet> p)
+{
+    double now = Simulator::Now().GetSeconds();
+    NS_LOG_DEBUG(now << "s [" << label << "][MacRx] size=" << p->GetSize());
+    if (label == "RX-host" && p->GetSize() > 64)
     {
-        totalTxBytes += packet->GetSize();
-        last_packet_send_time_tx = Simulator::Now().GetSeconds();
+        if (firstMacRx)
+        {
+            firstMacRxTime = now;
+            firstMacRx = false;
+        }
+        lastMacRxTime = now;
+        macRxBytes += p->GetSize();
     }
 }
 
 void
-RxCallback(Ptr<const Packet> packet, const Address& addr)
+TxCallback(uint32_t dataSize, Ptr<const Packet> packet)
 {
-    if (first_rx)
-    {
-        // here we just simple jump the first 10 pkts (include some of ARP packets)
+    if (packet->GetSize() != dataSize)
+        return; // skip ARP and other non-data packets
+    if (first_packet_send_time_tx == 0.0)
+        first_packet_send_time_tx = Simulator::Now().GetSeconds();
+    totalTxBytes += packet->GetSize();
+    last_packet_send_time_tx = Simulator::Now().GetSeconds();
+}
+
+void
+RxCallback(uint32_t dataSize, Ptr<const Packet> packet, const Address& addr)
+{
+    if (packet->GetSize() != dataSize)
+        return; // skip ARP and other non-data packets
+    if (first_packet_received_time_rx == 0.0)
         first_packet_received_time_rx = Simulator::Now().GetSeconds();
-        counter_receiver_10--;
-        if (counter_receiver_10 == 0)
-        {
-            first_rx = false;
-        }
-    }
-    else
-    {
-        totalRxBytes += packet->GetSize();
-        last_packet_received_time_rx = Simulator::Now().GetSeconds();
-    }
+    totalRxBytes += packet->GetSize();
+    last_packet_received_time_rx = Simulator::Now().GetSeconds();
 }
 
 void
@@ -150,21 +180,35 @@ PrintFinalThroughput()
     double send_time = last_packet_send_time_tx - first_packet_send_time_tx;
     double elapsed_time = last_packet_received_time_rx - first_packet_received_time_rx;
 
-    double finalTxThroughput = (totalTxBytes * 8.0) / (send_time * 1e6);
-    double finalRxThroughput = (totalRxBytes * 8.0) / (elapsed_time * 1e6);
-    std::cout << "client_start_time: " << first_packet_send_time_tx
-              << "client_stop_time: " << last_packet_send_time_tx
-              << "sink_start_time: " << first_packet_received_time_rx
-              << "sink_stop_time: " << last_packet_received_time_rx << std::endl;
+    double finalTxThroughput = (send_time > 0) ? (totalTxBytes * 8.0) / (send_time * 1e6) : 0.0;
+    double finalRxThroughput =
+        (elapsed_time > 0) ? (totalRxBytes * 8.0) / (elapsed_time * 1e6) : 0.0;
+    double pktDeliveryRatio =
+        (totalTxBytes > 0) ? (double)totalRxBytes / totalTxBytes * 100.0 : 0.0;
+
+    double macTxTime = lastMacTxTime - firstMacTxTime;
+    double macRxTime = lastMacRxTime - firstMacRxTime;
+    double macTxThroughput = (macTxTime > 0) ? (macTxBytes * 8.0) / (macTxTime * 1e6) : 0.0;
+    double macRxThroughput = (macRxTime > 0) ? (macRxBytes * 8.0) / (macRxTime * 1e6) : 0.0;
 
     std::cout << "======================================" << std::endl;
     std::cout << "Final Simulation Results:" << std::endl;
-    std::cout << "Total Transmitted Bytes: " << totalTxBytes << " bytes in time " << send_time
+    std::cout << "  ** [App Layer]" << std::endl;
+    std::cout << "  PDR: " << pktDeliveryRatio << "%" << std::endl;
+    std::cout << "  TX: " << totalTxBytes << " bytes  (" << first_packet_send_time_tx << "s -> "
+              << last_packet_send_time_tx << "s,  elapsed=" << send_time << "s)" << std::endl;
+    std::cout << "  RX: " << totalRxBytes << " bytes  (" << first_packet_received_time_rx << "s -> "
+              << last_packet_received_time_rx << "s,  elapsed=" << elapsed_time << "s)"
               << std::endl;
-    std::cout << "Total Received Bytes: " << totalRxBytes << " bytes in time " << elapsed_time
-              << std::endl;
-    std::cout << "Final Transmitted Throughput: " << finalTxThroughput << " Mbps" << std::endl;
-    std::cout << "Final Received Throughput: " << finalRxThroughput << " Mbps" << std::endl;
+    std::cout << "  TX Throughput: " << finalTxThroughput << " Mbps" << std::endl;
+    std::cout << "  RX Throughput: " << finalRxThroughput << " Mbps" << std::endl;
+    std::cout << "  ** [MAC Layer]" << std::endl;
+    std::cout << "  TX-host MacTx: " << macTxBytes << " bytes  (" << firstMacTxTime << "s -> "
+              << lastMacTxTime << "s,  elapsed=" << macTxTime << "s)" << std::endl;
+    std::cout << "  RX-host MacRx: " << macRxBytes << " bytes  (" << firstMacRxTime << "s -> "
+              << lastMacRxTime << "s,  elapsed=" << macRxTime << "s)" << std::endl;
+    std::cout << "  MAC TX Throughput: " << macTxThroughput << " Mbps" << std::endl;
+    std::cout << "  MAC RX Throughput: " << macRxThroughput << " Mbps" << std::endl;
     std::cout << "======================================" << std::endl;
 }
 
@@ -190,7 +234,6 @@ main(int argc, char* argv[])
     LogComponentEnable("P4BasicExample", LOG_LEVEL_INFO);
 
     // ============================ parameters ============================
-    int running_number = 0;
     uint16_t pktSize = 1000;           // in Bytes. 1458 to prevent fragments, default 512
     std::string appDataRate = "3Mbps"; // Default application data rate
     std::string ns3_link_rate = "1000Mbps";
@@ -205,7 +248,6 @@ main(int argc, char* argv[])
 
     // ============================  command line ============================
     CommandLine cmd;
-    cmd.AddValue("runnum", "running number in loops", running_number);
     cmd.AddValue("pktSize", "Packet size in bytes (default 1000)", pktSize);
     cmd.AddValue("appDataRate", "Application data rate in bps (default 1Mbps)", appDataRate);
     cmd.AddValue("pcap", "Trace packet pacp [true] or not[false]", enableTracePcap);
@@ -406,8 +448,33 @@ main(int argc, char* argv[])
     // === Setup Tracing ===
     Ptr<OnOffApplication> ptr_app1 =
         DynamicCast<OnOffApplication>(terminals.Get(clientI)->GetApplication(0));
-    ptr_app1->TraceConnectWithoutContext("Tx", MakeCallback(&TxCallback));
-    sinkApp1.Get(0)->TraceConnectWithoutContext("Rx", MakeCallback(&RxCallback));
+    ptr_app1->TraceConnectWithoutContext("Tx", MakeBoundCallback(&TxCallback, (uint32_t)pktSize));
+    sinkApp1.Get(0)->TraceConnectWithoutContext("Rx",
+                                                MakeBoundCallback(&RxCallback, (uint32_t)pktSize));
+
+    // Attach MAC-level traces to the sender NIC
+    Ptr<CsmaNetDevice> txDev = DynamicCast<CsmaNetDevice>(terminals.Get(clientI)->GetDevice(0));
+    if (txDev)
+    {
+        txDev->TraceConnectWithoutContext("MacTx",
+                                          MakeBoundCallback(&MacTxTrace, std::string("TX-host")));
+        txDev->TraceConnectWithoutContext("MacRx",
+                                          MakeBoundCallback(&MacRxTrace, std::string("TX-host")));
+        txDev->TraceConnectWithoutContext("MacTxDrop",
+                                          MakeBoundCallback(&TxDropTrace, std::string("TX-host")));
+    }
+
+    // Attach MAC-level traces to the receiver NIC
+    Ptr<CsmaNetDevice> rxDev = DynamicCast<CsmaNetDevice>(terminals.Get(serverI)->GetDevice(0));
+    if (rxDev)
+    {
+        rxDev->TraceConnectWithoutContext("MacTx",
+                                          MakeBoundCallback(&MacTxTrace, std::string("RX-host")));
+        rxDev->TraceConnectWithoutContext("MacRx",
+                                          MakeBoundCallback(&MacRxTrace, std::string("RX-host")));
+        rxDev->TraceConnectWithoutContext("MacTxDrop",
+                                          MakeBoundCallback(&TxDropTrace, std::string("RX-host")));
+    }
 
     if (enableTracePcap)
     {
