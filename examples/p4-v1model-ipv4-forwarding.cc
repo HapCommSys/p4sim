@@ -175,33 +175,32 @@ PrintFinalThroughput()
     double send_time = last_packet_send_time_tx - first_packet_send_time_tx;
     double elapsed_time = last_packet_received_time_rx - first_packet_received_time_rx;
 
-    // Both TX and RX throughput use send_time as denominator:
-    // RX elapsed_time can be shorter than send_time when the last sent packet
-    // is still in flight (pipeline effect), which would inflate RX throughput.
-    // Using send_time gives a fair apples-to-apples comparison.
-    double finalTxThroughput = (totalTxBytes * 8.0) / (send_time * 1e6);
-    double finalRxThroughput = (totalRxBytes * 8.0) / (send_time * 1e6);
+    double finalTxThroughput = (send_time > 0) ? (totalTxBytes * 8.0) / (send_time * 1e6) : 0.0;
+    double finalRxThroughput =
+        (elapsed_time > 0) ? (totalRxBytes * 8.0) / (elapsed_time * 1e6) : 0.0;
     double pktDeliveryRatio =
         (totalTxBytes > 0) ? (double)totalRxBytes / totalTxBytes * 100.0 : 0.0;
 
     double macTxTime = lastMacTxTime - firstMacTxTime;
-    // double macRxTime = lastMacRxTime - firstMacRxTime;
+    double macRxTime = lastMacRxTime - firstMacRxTime;
     double macTxThroughput = (macTxTime > 0) ? (macTxBytes * 8.0) / (macTxTime * 1e6) : 0.0;
-    double macRxThroughput = (macTxTime > 0) ? (macRxBytes * 8.0) / (macTxTime * 1e6) : 0.0;
+    double macRxThroughput = (macRxTime > 0) ? (macRxBytes * 8.0) / (macRxTime * 1e6) : 0.0;
 
     std::cout << "======================================" << std::endl;
     std::cout << "Final Simulation Results:" << std::endl;
-    std::cout << "  ** [App Layer]  (window = send_time = " << send_time << "s)" << std::endl;
-    std::cout << "  TX: " << totalTxBytes << " bytes  |  RX: " << totalRxBytes
-              << " bytes  |  PDR: " << pktDeliveryRatio << "%" << std::endl;
+    std::cout << "  ** [App Layer]" << std::endl;
+    std::cout << "  PDR: " << pktDeliveryRatio << "%" << std::endl;
+    std::cout << "  TX: " << totalTxBytes << " bytes  (" << first_packet_send_time_tx << "s -> "
+              << last_packet_send_time_tx << "s,  elapsed=" << send_time << "s)" << std::endl;
+    std::cout << "  RX: " << totalRxBytes << " bytes  (" << first_packet_received_time_rx << "s -> "
+              << last_packet_received_time_rx << "s,  elapsed=" << elapsed_time << "s)" << std::endl;
     std::cout << "  TX Throughput: " << finalTxThroughput << " Mbps" << std::endl;
-    std::cout << "  RX Throughput: " << finalRxThroughput << " Mbps  "
-              << "(RX elapsed=" << elapsed_time << "s)" << std::endl;
-    std::cout << "  ** [MAC Layer]  (window = macTxTime = " << macTxTime << "s)" << std::endl;
-    std::cout << "  TX-host MacTx: " << macTxBytes << " bytes" << "  (" << firstMacTxTime << "s -> "
-              << lastMacTxTime << "s)" << std::endl;
-    std::cout << "  RX-host MacRx: " << macRxBytes << " bytes" << "  (" << firstMacRxTime << "s -> "
-              << lastMacRxTime << "s)" << std::endl;
+    std::cout << "  RX Throughput: " << finalRxThroughput << " Mbps" << std::endl;
+    std::cout << "  ** [MAC Layer]" << std::endl;
+    std::cout << "  TX-host MacTx: " << macTxBytes << " bytes  (" << firstMacTxTime << "s -> "
+              << lastMacTxTime << "s,  elapsed=" << macTxTime << "s)" << std::endl;
+    std::cout << "  RX-host MacRx: " << macRxBytes << " bytes  (" << firstMacRxTime << "s -> "
+              << lastMacRxTime << "s,  elapsed=" << macRxTime << "s)" << std::endl;
     std::cout << "  MAC TX Throughput: " << macTxThroughput << " Mbps" << std::endl;
     std::cout << "  MAC RX Throughput: " << macRxThroughput << " Mbps" << std::endl;
     std::cout << "======================================" << std::endl;
@@ -450,7 +449,7 @@ main(int argc, char* argv[])
 
     if (enablePcap)
     {
-        csma.EnablePcapAll("p4-psa-ipv4-forwarding");
+        csma.EnablePcapAll("p4-v1model-ipv4-forwarding");
     }
 
     // Run simulation
