@@ -36,6 +36,7 @@
 #include "ns3/internet-module.h"
 #include "ns3/network-module.h"
 #include "ns3/p4-helper.h"
+#include "ns3/p4-net-builder.h"
 #include "ns3/p4-topology-reader-helper.h"
 
 #include <filesystem>
@@ -140,6 +141,22 @@ ConvertMacToHex(Address macAddr)
         hexStream << std::hex << std::setfill('0') << std::setw(2) << static_cast<int>(buffer[i]);
     }
     return hexStream.str();
+}
+
+static void
+LogNodeAddresses(const NodeContainer& terminals)
+{
+    NS_LOG_INFO("Node IP and MAC addresses:");
+    for (uint32_t i = 0; i < terminals.GetN(); ++i)
+    {
+        Ptr<Node> node = terminals.Get(i);
+        Ptr<Ipv4> ipv4Proto = node->GetObject<Ipv4>();
+        Ipv4Address ipAddr = ipv4Proto->GetAddress(1, 0).GetLocal();
+        Mac48Address mac = Mac48Address::ConvertFrom(node->GetDevice(0)->GetAddress());
+        NS_LOG_INFO("Node " << i << ": IP = " << ipAddr << ", MAC = " << mac);
+        NS_LOG_INFO("Node " << i << ": IP = " << ConvertIpToHex(ipAddr)
+                            << ", MAC = " << ConvertMacToHex(mac));
+    }
 }
 
 void
@@ -287,37 +304,9 @@ main(int argc, char* argv[])
     csma.SetChannelAttribute("DataRate", StringValue(linkRate));
     csma.SetChannelAttribute("Delay", StringValue(linkDelay));
 
-    NetDeviceContainer hostDevices;
-    NetDeviceContainer switchDevices;
-    P4TopologyReader::ConstLinksIterator_t iter;
-    for (iter = topoReader->LinksBegin(); iter != topoReader->LinksEnd(); iter++)
-    {
-        NetDeviceContainer link =
-            csma.Install(NodeContainer(iter->GetFromNode(), iter->GetToNode()));
-
-        if (iter->GetFromType() == 's' && iter->GetToType() == 's')
-        {
-            switchDevices.Add(link.Get(0));
-            switchDevices.Add(link.Get(1));
-        }
-        else if (iter->GetFromType() == 's' && iter->GetToType() == 'h')
-        {
-            switchDevices.Add(link.Get(0));
-            hostDevices.Add(link.Get(1));
-        }
-        else if (iter->GetFromType() == 'h' && iter->GetToType() == 's')
-        {
-            hostDevices.Add(link.Get(0));
-            switchDevices.Add(link.Get(1));
-        }
-        else
-        {
-            NS_LOG_ERROR("link error!");
-            abort();
-        }
-    }
-
-    // ========================Print the Channel Type and NetDevice Type========================
+    std::vector<SwitchNodeC_t> switchNodes(switchNum);
+    std::vector<HostNodeC_t> hostNodes(hostNum);
+    BuildNetworkFromTopology(topoReader, csma, switchNodes, hostNodes);
 
     // Install the Internet stack
     InternetStackHelper internet;
@@ -336,30 +325,7 @@ main(int argc, char* argv[])
         hostIpv4[i] = Uint32IpToHex(terminalInterfaces[i].GetAddress(0).Get());
     }
 
-    //===============================  Print IP and MAC addresses===============================
-    NS_LOG_INFO("Node IP and MAC addresses:");
-    for (uint32_t i = 0; i < terminals.GetN(); ++i)
-    {
-        Ptr<Node> node = terminals.Get(i);
-        Ptr<Ipv4> ipv4 = node->GetObject<Ipv4>();
-        Ptr<NetDevice> netDevice = node->GetDevice(0);
-
-        // Get the IP address
-        Ipv4Address ipAddr =
-            ipv4->GetAddress(1, 0)
-                .GetLocal(); // Interface index 1 corresponds to the first assigned IP
-
-        // Get the MAC address
-        Ptr<NetDevice> device = node->GetDevice(0); // Assuming the first device is the desired one
-        Mac48Address mac = Mac48Address::ConvertFrom(device->GetAddress());
-
-        NS_LOG_INFO("Node " << i << ": IP = " << ipAddr << ", MAC = " << mac);
-
-        // Convert to hexadecimal
-        std::string ipHex = ConvertIpToHex(ipAddr);
-        std::string macHex = ConvertMacToHex(mac);
-        NS_LOG_INFO("Node " << i << ": IP = " << ipHex << ", MAC = " << macHex);
-    }
+    LogNodeAddresses(terminals);
 
     // Bridge or P4 switch configuration
     if (model == 0)
@@ -376,14 +342,14 @@ main(int argc, char* argv[])
                                         // safe default for this simple test.
 
         for (uint32_t i = 0; i < switchNum; ++i)
-            p4Helper.Install(switchNode.Get(i), switchDevices);
+            p4Helper.Install(switchNode.Get(i), switchNodes[i].switchDevices);
     }
     else
     {
         BridgeHelper bridge;
         for (unsigned int i = 0; i < switchNum; i++)
         {
-            bridge.Install(switchNode.Get(i), switchDevices);
+            bridge.Install(switchNode.Get(i), switchNodes[i].switchDevices);
         }
     }
 

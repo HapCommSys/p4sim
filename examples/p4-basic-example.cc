@@ -46,6 +46,7 @@
 #include "ns3/internet-module.h"
 #include "ns3/network-module.h"
 #include "ns3/p4-helper.h"
+#include "ns3/p4-net-builder.h"
 #include "ns3/p4-topology-reader-helper.h"
 
 #include <filesystem>
@@ -109,6 +110,22 @@ ConvertMacToHex(Address macAddr)
         hexStream << std::hex << std::setfill('0') << std::setw(2) << static_cast<int>(buffer[i]);
     }
     return hexStream.str();
+}
+
+static void
+LogNodeAddresses(const NodeContainer& terminals)
+{
+    NS_LOG_INFO("Node IP and MAC addresses:");
+    for (uint32_t i = 0; i < terminals.GetN(); ++i)
+    {
+        Ptr<Node> node = terminals.Get(i);
+        Ptr<Ipv4> ipv4Proto = node->GetObject<Ipv4>();
+        Ipv4Address ipAddr = ipv4Proto->GetAddress(1, 0).GetLocal();
+        Mac48Address mac = Mac48Address::ConvertFrom(node->GetDevice(0)->GetAddress());
+        NS_LOG_INFO("Node " << i << ": IP = " << ipAddr << ", MAC = " << mac);
+        NS_LOG_INFO("Node " << i << ": IP = " << ConvertIpToHex(ipAddr)
+                            << ", MAC = " << ConvertMacToHex(mac));
+    }
 }
 
 static void
@@ -212,21 +229,31 @@ PrintFinalThroughput()
     std::cout << "======================================" << std::endl;
 }
 
-// ============================ data struct ============================
-struct SwitchNodeC_t
+static void
+AttachCsmaMacTraces(const NodeContainer& terminals, uint32_t clientI, uint32_t serverI)
 {
-    NetDeviceContainer switchDevices;
-    std::vector<std::string> switchPortInfos;
-};
+    Ptr<CsmaNetDevice> txDev = DynamicCast<CsmaNetDevice>(terminals.Get(clientI)->GetDevice(0));
+    if (txDev)
+    {
+        txDev->TraceConnectWithoutContext("MacTx",
+                                          MakeBoundCallback(&MacTxTrace, std::string("TX-host")));
+        txDev->TraceConnectWithoutContext("MacRx",
+                                          MakeBoundCallback(&MacRxTrace, std::string("TX-host")));
+        txDev->TraceConnectWithoutContext("MacTxDrop",
+                                          MakeBoundCallback(&TxDropTrace, std::string("TX-host")));
+    }
 
-struct HostNodeC_t
-{
-    NetDeviceContainer hostDevice;
-    Ipv4InterfaceContainer hostIpv4;
-    unsigned int linkSwitchIndex;
-    unsigned int linkSwitchPort;
-    std::string hostIpv4Str;
-};
+    Ptr<CsmaNetDevice> rxDev = DynamicCast<CsmaNetDevice>(terminals.Get(serverI)->GetDevice(0));
+    if (rxDev)
+    {
+        rxDev->TraceConnectWithoutContext("MacTx",
+                                          MakeBoundCallback(&MacTxTrace, std::string("RX-host")));
+        rxDev->TraceConnectWithoutContext("MacRx",
+                                          MakeBoundCallback(&MacRxTrace, std::string("RX-host")));
+        rxDev->TraceConnectWithoutContext("MacTxDrop",
+                                          MakeBoundCallback(&TxDropTrace, std::string("RX-host")));
+    }
+}
 
 int
 main(int argc, char* argv[])
@@ -283,84 +310,9 @@ main(int argc, char* argv[])
     csma.SetChannelAttribute("DataRate", StringValue(ns3_link_rate));
     csma.SetChannelAttribute("Delay", TimeValue(MilliSeconds(0.01)));
 
-    // NetDeviceContainer hostDevices;
-    // NetDeviceContainer switchDevices;
-    P4TopologyReader::ConstLinksIterator_t iter;
-    SwitchNodeC_t switchNodes[switchNum];
-    HostNodeC_t hostNodes[hostNum];
-    unsigned int fromIndex, toIndex;
-    std::string dataRate, delay;
-    for (iter = topoReader->LinksBegin(); iter != topoReader->LinksEnd(); iter++)
-    {
-        if (iter->GetAttributeFailSafe("DataRate", dataRate))
-            csma.SetChannelAttribute("DataRate", StringValue(dataRate));
-        if (iter->GetAttributeFailSafe("Delay", delay))
-            csma.SetChannelAttribute("Delay", StringValue(delay));
-
-        fromIndex = iter->GetFromIndex();
-        toIndex = iter->GetToIndex();
-        NetDeviceContainer link =
-            csma.Install(NodeContainer(iter->GetFromNode(), iter->GetToNode()));
-
-        if (iter->GetFromType() == 's' && iter->GetToType() == 's')
-        {
-            NS_LOG_INFO("*** Link from  switch " << fromIndex << " to  switch " << toIndex
-                                                 << " with data rate " << dataRate << " and delay "
-                                                 << delay);
-
-            unsigned int fromSwitchPortNumber = switchNodes[fromIndex].switchDevices.GetN();
-            unsigned int toSwitchPortNumber = switchNodes[toIndex].switchDevices.GetN();
-            switchNodes[fromIndex].switchDevices.Add(link.Get(0));
-            switchNodes[fromIndex].switchPortInfos.push_back("s" + UintToString(toIndex) + "_" +
-                                                             UintToString(toSwitchPortNumber));
-
-            switchNodes[toIndex].switchDevices.Add(link.Get(1));
-            switchNodes[toIndex].switchPortInfos.push_back("s" + UintToString(fromIndex) + "_" +
-                                                           UintToString(fromSwitchPortNumber));
-        }
-        else
-        {
-            if (iter->GetFromType() == 's' && iter->GetToType() == 'h')
-            {
-                NS_LOG_INFO("*** Link from switch " << fromIndex << " to  host" << toIndex
-                                                    << " with data rate " << dataRate
-                                                    << " and delay " << delay);
-
-                unsigned int fromSwitchPortNumber = switchNodes[fromIndex].switchDevices.GetN();
-                switchNodes[fromIndex].switchDevices.Add(link.Get(0));
-                switchNodes[fromIndex].switchPortInfos.push_back("h" +
-                                                                 UintToString(toIndex - switchNum));
-
-                hostNodes[toIndex - switchNum].hostDevice.Add(link.Get(1));
-                hostNodes[toIndex - switchNum].linkSwitchIndex = fromIndex;
-                hostNodes[toIndex - switchNum].linkSwitchPort = fromSwitchPortNumber;
-            }
-            else
-            {
-                if (iter->GetFromType() == 'h' && iter->GetToType() == 's')
-                {
-                    NS_LOG_INFO("*** Link from host " << fromIndex << " to  switch" << toIndex
-                                                      << " with data rate " << dataRate
-                                                      << " and delay " << delay);
-                    unsigned int toSwitchPortNumber = switchNodes[toIndex].switchDevices.GetN();
-                    switchNodes[toIndex].switchDevices.Add(link.Get(1));
-                    switchNodes[toIndex].switchPortInfos.push_back(
-                        "h" + UintToString(fromIndex - switchNum));
-
-                    hostNodes[fromIndex - switchNum].hostDevice.Add(link.Get(0));
-                    hostNodes[fromIndex - switchNum].linkSwitchIndex = toIndex;
-                    hostNodes[fromIndex - switchNum].linkSwitchPort = toSwitchPortNumber;
-                }
-                else
-                {
-                    NS_LOG_ERROR("link error!");
-                    abort();
-                }
-            }
-        }
-    }
-
-    // ========================Print the Channel Type and NetDevice Type========================
+    std::vector<SwitchNodeC_t> switchNodes(switchNum);
+    std::vector<HostNodeC_t> hostNodes(hostNum);
+    BuildNetworkFromTopology(topoReader, csma, switchNodes, hostNodes);
 
     InternetStackHelper internet;
     internet.Install(terminals);
@@ -377,32 +329,9 @@ main(int argc, char* argv[])
         hostIpv4[i] = Uint32IpToHex(terminalInterfaces[i].GetAddress(0).Get());
     }
 
-    //===============================  Print IP and MAC addresses===============================
-    NS_LOG_INFO("Node IP and MAC addresses:");
-    for (uint32_t i = 0; i < terminals.GetN(); ++i)
-    {
-        Ptr<Node> node = terminals.Get(i);
-        Ptr<Ipv4> ipv4 = node->GetObject<Ipv4>();
-        Ptr<NetDevice> netDevice = node->GetDevice(0);
+    LogNodeAddresses(terminals);
 
-        // Get the IP address
-        Ipv4Address ipAddr =
-            ipv4->GetAddress(1, 0)
-                .GetLocal(); // Interface index 1 corresponds to the first assigned IP
-
-        // Get the MAC address
-        Ptr<NetDevice> device = node->GetDevice(0); // Assuming the first device is the desired one
-        Mac48Address mac = Mac48Address::ConvertFrom(device->GetAddress());
-
-        NS_LOG_INFO("Node " << i << ": IP = " << ipAddr << ", MAC = " << mac);
-
-        // Convert to hexadecimal
-        std::string ipHex = ConvertIpToHex(ipAddr);
-        std::string macHex = ConvertMacToHex(mac);
-        NS_LOG_INFO("Node " << i << ": IP = " << ipHex << ", MAC = " << macHex);
-    }
-
-    // Bridge or P4 switch configuration
+    // P4 switch configuration
     P4Helper p4SwitchHelper;
     p4SwitchHelper.SetDeviceAttribute("JsonPath", StringValue(p4JsonPath));
     p4SwitchHelper.SetDeviceAttribute("ChannelType", UintegerValue(0));
@@ -452,29 +381,7 @@ main(int argc, char* argv[])
     sinkApp1.Get(0)->TraceConnectWithoutContext("Rx",
                                                 MakeBoundCallback(&RxCallback, (uint32_t)pktSize));
 
-    // Attach MAC-level traces to the sender NIC
-    Ptr<CsmaNetDevice> txDev = DynamicCast<CsmaNetDevice>(terminals.Get(clientI)->GetDevice(0));
-    if (txDev)
-    {
-        txDev->TraceConnectWithoutContext("MacTx",
-                                          MakeBoundCallback(&MacTxTrace, std::string("TX-host")));
-        txDev->TraceConnectWithoutContext("MacRx",
-                                          MakeBoundCallback(&MacRxTrace, std::string("TX-host")));
-        txDev->TraceConnectWithoutContext("MacTxDrop",
-                                          MakeBoundCallback(&TxDropTrace, std::string("TX-host")));
-    }
-
-    // Attach MAC-level traces to the receiver NIC
-    Ptr<CsmaNetDevice> rxDev = DynamicCast<CsmaNetDevice>(terminals.Get(serverI)->GetDevice(0));
-    if (rxDev)
-    {
-        rxDev->TraceConnectWithoutContext("MacTx",
-                                          MakeBoundCallback(&MacTxTrace, std::string("RX-host")));
-        rxDev->TraceConnectWithoutContext("MacRx",
-                                          MakeBoundCallback(&MacRxTrace, std::string("RX-host")));
-        rxDev->TraceConnectWithoutContext("MacTxDrop",
-                                          MakeBoundCallback(&TxDropTrace, std::string("RX-host")));
-    }
+    AttachCsmaMacTraces(terminals, clientI, serverI);
 
     if (enableTracePcap)
     {

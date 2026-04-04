@@ -90,6 +90,7 @@ build_lib(
         helper/p4-topology-reader-helper.h
         helper/p4-p2p-helper.h
         helper/build-flowtable-helper.h
+        helper/p4-net-builder.h
     LIBRARIES_TO_LINK 
         ${libcore} 
         ${libnetwork}  

@@ -26,6 +26,7 @@
 #include "ns3/network-module.h"
 #include "ns3/p4-helper.h"
 #include "ns3/p4-p2p-helper.h"
+#include "ns3/p4-net-builder.h"
 #include "ns3/p4-topology-reader-helper.h"
 
 #include <filesystem>
@@ -43,21 +44,6 @@ double client_stop_time = client_start_time + 60;
 double sink_stop_time = client_stop_time + 5;
 double global_stop_time = sink_stop_time + 5;
 
-// ============================ data struct ============================
-struct SwitchNodeC_t
-{
-    NetDeviceContainer switchDevices;
-    std::vector<std::string> switchPortInfos;
-};
-
-struct HostNodeC_t
-{
-    NetDeviceContainer hostDevice;
-    Ipv4InterfaceContainer hostIpv4;
-    unsigned int linkSwitchIndex;
-    unsigned int linkSwitchPort;
-    std::string hostIpv4Str;
-};
 
 struct SwitchInfoTracing
 {
@@ -308,8 +294,8 @@ main(int argc, char* argv[])
     p4p2p.SetChannelAttribute("Delay", TimeValue(NanoSeconds(10)));
 
     P4TopologyReader::ConstLinksIterator_t iter;
-    SwitchNodeC_t switchNodes[switchNum];
-    HostNodeC_t hostNodes[hostNum];
+    std::vector<SwitchNodeC_t> switchNodes(switchNum);
+    std::vector<HostNodeC_t> hostNodes(hostNum);
     unsigned int fromIndex, toIndex;
     std::string dataRate, delay;
     for (iter = topoReader->LinksBegin(); iter != topoReader->LinksEnd(); iter++)
