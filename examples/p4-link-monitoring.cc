@@ -31,6 +31,7 @@
 #include "ns3/p4-helper.h"
 #include "ns3/p4-p2p-channel.h"
 #include "ns3/p4-p2p-helper.h"
+#include "ns3/p4-net-builder.h"
 #include "ns3/p4-topology-reader-helper.h"
 #include "ns3/packet-sink-helper.h"
 #include "ns3/packet.h"
@@ -73,21 +74,6 @@ ConvertMacToHex(Address macAddr)
     return hexStream.str();
 }
 
-// ============================ data struct ============================
-struct SwitchNodeC_t
-{
-    NetDeviceContainer switchDevices;
-    std::vector<std::string> switchPortInfos;
-};
-
-struct HostNodeC_t
-{
-    NetDeviceContainer hostDevice;
-    Ipv4InterfaceContainer hostIpv4;
-    unsigned int linkSwitchIndex;
-    unsigned int linkSwitchPort;
-    std::string hostIpv4Str;
-};
 
 int
 main(int argc, char* argv[])
@@ -141,75 +127,9 @@ main(int argc, char* argv[])
     P4PointToPointHelper p4p2phelper;
     p4p2phelper.SetChannelAttribute("Delay", TimeValue(MilliSeconds(0.01)));
 
-    P4TopologyReader::ConstLinksIterator_t iter;
-    SwitchNodeC_t switchNodes[switchNum];
-    HostNodeC_t hostNodes[hostNum];
-    unsigned int fromIndex, toIndex;
-    std::string dataRate, delay;
-    for (iter = topoReader->LinksBegin(); iter != topoReader->LinksEnd(); iter++)
-    {
-        fromIndex = iter->GetFromIndex();
-        toIndex = iter->GetToIndex();
-        NetDeviceContainer link =
-            p4p2phelper.Install(NodeContainer(iter->GetFromNode(), iter->GetToNode()));
-
-        if (iter->GetFromType() == 's' && iter->GetToType() == 's')
-        {
-            NS_LOG_INFO("*** Link from  switch " << fromIndex << " to  switch " << toIndex
-                                                 << " with data rate " << dataRate << " and delay "
-                                                 << delay);
-
-            unsigned int fromSwitchPortNumber = switchNodes[fromIndex].switchDevices.GetN();
-            unsigned int toSwitchPortNumber = switchNodes[toIndex].switchDevices.GetN();
-            switchNodes[fromIndex].switchDevices.Add(link.Get(0));
-            switchNodes[fromIndex].switchPortInfos.push_back("s" + UintToString(toIndex) + "_" +
-                                                             UintToString(toSwitchPortNumber));
-
-            switchNodes[toIndex].switchDevices.Add(link.Get(1));
-            switchNodes[toIndex].switchPortInfos.push_back("s" + UintToString(fromIndex) + "_" +
-                                                           UintToString(fromSwitchPortNumber));
-        }
-        else
-        {
-            if (iter->GetFromType() == 's' && iter->GetToType() == 'h')
-            {
-                NS_LOG_INFO("*** Link from switch " << fromIndex << " to  host" << toIndex
-                                                    << " with data rate " << dataRate
-                                                    << " and delay " << delay);
-
-                unsigned int fromSwitchPortNumber = switchNodes[fromIndex].switchDevices.GetN();
-                switchNodes[fromIndex].switchDevices.Add(link.Get(0));
-                switchNodes[fromIndex].switchPortInfos.push_back("h" +
-                                                                 UintToString(toIndex - switchNum));
-
-                hostNodes[toIndex - switchNum].hostDevice.Add(link.Get(1));
-                hostNodes[toIndex - switchNum].linkSwitchIndex = fromIndex;
-                hostNodes[toIndex - switchNum].linkSwitchPort = fromSwitchPortNumber;
-            }
-            else
-            {
-                if (iter->GetFromType() == 'h' && iter->GetToType() == 's')
-                {
-                    NS_LOG_INFO("*** Link from host " << fromIndex << " to  switch" << toIndex
-                                                      << " with data rate " << dataRate
-                                                      << " and delay " << delay);
-                    unsigned int toSwitchPortNumber = switchNodes[toIndex].switchDevices.GetN();
-                    switchNodes[toIndex].switchDevices.Add(link.Get(1));
-                    switchNodes[toIndex].switchPortInfos.push_back(
-                        "h" + UintToString(fromIndex - switchNum));
-
-                    hostNodes[fromIndex - switchNum].hostDevice.Add(link.Get(0));
-                    hostNodes[fromIndex - switchNum].linkSwitchIndex = toIndex;
-                    hostNodes[fromIndex - switchNum].linkSwitchPort = toSwitchPortNumber;
-                }
-                else
-                {
-                    NS_LOG_ERROR("link error!");
-                    abort();
-                }
-            }
-        }
-    }
+    std::vector<SwitchNodeC_t> switchNodes(switchNum);
+    std::vector<HostNodeC_t> hostNodes(hostNum);
+    BuildNetworkFromTopology(topoReader, p4p2phelper, switchNodes, hostNodes);
     // ======================== Print the Channel Type and NetDevice Type ========================
 
     InternetStackHelper internet;
