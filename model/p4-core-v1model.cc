@@ -793,7 +793,7 @@ void P4CoreV1model::CalculatePacketsPerSecond() {
   size_t input_buffer_size = input_buffer->get_size();
   log_stream << "Input buffer size: " << input_buffer_size << "\n";
 
-  uint32_t port_number = m_switchNetDevice->GetNBridgePorts();
+  uint32_t port_number = m_switchNetDevice->GetNPorts();
 
   for (size_t i = 0; i < static_cast<size_t>(port_number); i++) {
     size_t queue_size = egress_buffer.size(i);
