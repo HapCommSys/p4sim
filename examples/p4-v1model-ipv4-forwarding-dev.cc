@@ -24,8 +24,11 @@
  *                                              ├── P4SwitchNetDevice (switch)
  *   host1 ──[SwitchedEthernetChannel port 1]──┘
  *
- * Each host has a P4SwitchNetDevice in NIC / passthrough mode.
+ * Each host has a plain SwitchedEthernetHostDevice (no P4 NIC).
  * The switch runs a V1model P4 program that does IPv4 LPM forwarding.
+ * Two separate helpers are used:
+ *   - P4Helper        : installs P4SwitchNetDevice on the switch node
+ *   - SwitchedEthernetHelper : creates channels and installs host NICs
  *
  * Topology (model == 1, NS-3 bridge baseline):
  *
@@ -44,6 +47,8 @@
 #include "ns3/network-module.h"
 #include "ns3/p4-helper.h"
 #include "ns3/p4-switch-net-device.h"
+#include "ns3/switched-ethernet-helper.h"
+#include "ns3/switched-ethernet-host-device.h"
 
 #include <filesystem>
 #include <iomanip>
@@ -82,9 +87,9 @@ ConvertIpToHex(Ipv4Address ipAddr)
 {
     std::ostringstream hexStream;
     uint32_t ip = ipAddr.Get();
-    hexStream << "0x" << std::hex << std::setfill('0') << std::setw(2)
-              << ((ip >> 24) & 0xFF) << std::setw(2) << ((ip >> 16) & 0xFF)
-              << std::setw(2) << ((ip >> 8) & 0xFF) << std::setw(2) << (ip & 0xFF);
+    hexStream << "0x" << std::hex << std::setfill('0') << std::setw(2) << ((ip >> 24) & 0xFF)
+              << std::setw(2) << ((ip >> 16) & 0xFF) << std::setw(2) << ((ip >> 8) & 0xFF)
+              << std::setw(2) << (ip & 0xFF);
     return hexStream.str();
 }
 
@@ -115,7 +120,11 @@ MacTxTrace(std::string label, Ptr<const Packet> p)
     NS_LOG_DEBUG(now << "s [" << label << "][MacTx] size=" << p->GetSize());
     if (label == "TX-host" && p->GetSize() > 64)
     {
-        if (firstMacTx) { firstMacTxTime = now; firstMacTx = false; }
+        if (firstMacTx)
+        {
+            firstMacTxTime = now;
+            firstMacTx = false;
+        }
         lastMacTxTime = now;
         macTxBytes += p->GetSize();
     }
@@ -128,7 +137,11 @@ MacRxTrace(std::string label, Ptr<const Packet> p)
     NS_LOG_DEBUG(now << "s [" << label << "][MacRx] size=" << p->GetSize());
     if (label == "RX-host" && p->GetSize() > 64)
     {
-        if (firstMacRx) { firstMacRxTime = now; firstMacRx = false; }
+        if (firstMacRx)
+        {
+            firstMacRxTime = now;
+            firstMacRx = false;
+        }
         lastMacRxTime = now;
         macRxBytes += p->GetSize();
     }
@@ -143,7 +156,8 @@ LogNodeAddresses(const NodeContainer& terminals)
         Ptr<Node> node = terminals.Get(i);
         Ptr<Ipv4> ipv4Proto = node->GetObject<Ipv4>();
         Ipv4Address ipAddr = ipv4Proto->GetAddress(1, 0).GetLocal();
-        Mac48Address mac = Mac48Address::ConvertFrom(node->GetDevice(0)->GetAddress());
+        // Interface 0 is loopback; interface 1 is the first real NIC.
+        Mac48Address mac = Mac48Address::ConvertFrom(ipv4Proto->GetNetDevice(1)->GetAddress());
         NS_LOG_INFO("Node " << i << ": IP=" << ipAddr << " (" << ConvertIpToHex(ipAddr)
                             << ")  MAC=" << mac << " (" << ConvertMacToHex(mac) << ")");
     }
@@ -152,7 +166,8 @@ LogNodeAddresses(const NodeContainer& terminals)
 void
 TxCallback(uint32_t dataSize, Ptr<const Packet> packet)
 {
-    if (packet->GetSize() != dataSize) return;
+    if (packet->GetSize() != dataSize)
+        return;
     if (first_packet_send_time_tx == 0.0)
         first_packet_send_time_tx = Simulator::Now().GetSeconds();
     totalTxBytes += packet->GetSize();
@@ -162,7 +177,8 @@ TxCallback(uint32_t dataSize, Ptr<const Packet> packet)
 void
 RxCallback(uint32_t dataSize, Ptr<const Packet> packet, const Address& addr)
 {
-    if (packet->GetSize() != dataSize) return;
+    if (packet->GetSize() != dataSize)
+        return;
     if (first_packet_received_time_rx == 0.0)
         first_packet_received_time_rx = Simulator::Now().GetSeconds();
     totalRxBytes += packet->GetSize();
@@ -172,32 +188,32 @@ RxCallback(uint32_t dataSize, Ptr<const Packet> packet, const Address& addr)
 void
 PrintFinalThroughput()
 {
-    double send_time    = last_packet_send_time_tx - first_packet_send_time_tx;
+    double send_time = last_packet_send_time_tx - first_packet_send_time_tx;
     double elapsed_time = last_packet_received_time_rx - first_packet_received_time_rx;
-    double finalTxThroughput = (send_time > 0)    ? totalTxBytes * 8.0 / (send_time * 1e6)    : 0.0;
+    double finalTxThroughput = (send_time > 0) ? totalTxBytes * 8.0 / (send_time * 1e6) : 0.0;
     double finalRxThroughput = (elapsed_time > 0) ? totalRxBytes * 8.0 / (elapsed_time * 1e6) : 0.0;
     double pdr = (totalTxBytes > 0) ? (double)totalRxBytes / totalTxBytes * 100.0 : 0.0;
 
     double macTxTime = lastMacTxTime - firstMacTxTime;
     double macRxTime = lastMacRxTime - firstMacRxTime;
-    double macTxTp   = (macTxTime > 0) ? macTxBytes * 8.0 / (macTxTime * 1e6) : 0.0;
-    double macRxTp   = (macRxTime > 0) ? macRxBytes * 8.0 / (macRxTime * 1e6) : 0.0;
+    double macTxTp = (macTxTime > 0) ? macTxBytes * 8.0 / (macTxTime * 1e6) : 0.0;
+    double macRxTp = (macRxTime > 0) ? macRxBytes * 8.0 / (macRxTime * 1e6) : 0.0;
 
     std::cout << "======================================\n";
     std::cout << "Final Simulation Results:\n";
     std::cout << "  ** [App Layer]\n";
     std::cout << "  PDR: " << pdr << "%\n";
-    std::cout << "  TX: " << totalTxBytes << " bytes  (" << first_packet_send_time_tx
-              << "s -> " << last_packet_send_time_tx << "s, elapsed=" << send_time << "s)\n";
-    std::cout << "  RX: " << totalRxBytes << " bytes  (" << first_packet_received_time_rx
-              << "s -> " << last_packet_received_time_rx << "s, elapsed=" << elapsed_time << "s)\n";
+    std::cout << "  TX: " << totalTxBytes << " bytes  (" << first_packet_send_time_tx << "s -> "
+              << last_packet_send_time_tx << "s, elapsed=" << send_time << "s)\n";
+    std::cout << "  RX: " << totalRxBytes << " bytes  (" << first_packet_received_time_rx << "s -> "
+              << last_packet_received_time_rx << "s, elapsed=" << elapsed_time << "s)\n";
     std::cout << "  TX Throughput: " << finalTxThroughput << " Mbps\n";
     std::cout << "  RX Throughput: " << finalRxThroughput << " Mbps\n";
     std::cout << "  ** [MAC Layer]\n";
-    std::cout << "  TX-host MacTx: " << macTxBytes << " bytes  (" << firstMacTxTime
-              << "s -> " << lastMacTxTime << "s, elapsed=" << macTxTime << "s)\n";
-    std::cout << "  RX-host MacRx: " << macRxBytes << " bytes  (" << firstMacRxTime
-              << "s -> " << lastMacRxTime << "s, elapsed=" << macRxTime << "s)\n";
+    std::cout << "  TX-host MacTx: " << macTxBytes << " bytes  (" << firstMacTxTime << "s -> "
+              << lastMacTxTime << "s, elapsed=" << macTxTime << "s)\n";
+    std::cout << "  RX-host MacRx: " << macRxBytes << " bytes  (" << firstMacRxTime << "s -> "
+              << lastMacRxTime << "s, elapsed=" << macRxTime << "s)\n";
     std::cout << "  MAC TX Throughput: " << macTxTp << " Mbps\n";
     std::cout << "  MAC RX Throughput: " << macRxTp << " Mbps\n";
     std::cout << "======================================\n";
@@ -211,40 +227,40 @@ main(int argc, char* argv[])
     // -----------------------------------------------------------------------
     // Simulation parameters
     // -----------------------------------------------------------------------
-    uint16_t    pktSize      = 1000;
-    std::string appDataRate  = "3Mbps";
-    std::string linkRate     = "1000Mbps";
-    std::string linkDelay    = "0.01ms";
-    uint32_t    clientIndex  = 0;
-    uint32_t    serverIndex  = 1;
-    uint16_t    serverPort   = 9093;
-    uint32_t    switchRate   = 10000;
-    double      flowDuration = 3.0;
-    double      simDuration  = 20.0;
-    int         model        = 0;      // 0 = P4 V1Model, 1 = NS-3 bridge baseline
-    bool        enablePcap   = false;
+    uint16_t pktSize = 1000;
+    std::string appDataRate = "3Mbps";
+    std::string linkRate = "1000Mbps";
+    std::string linkDelay = "0.01ms";
+    uint32_t clientIndex = 0;
+    uint32_t serverIndex = 1;
+    uint16_t serverPort = 9093;
+    uint32_t switchRate = 10000;
+    double flowDuration = 3.0;
+    double simDuration = 20.0;
+    int model = 0; // 0 = P4 V1Model, 1 = NS-3 bridge baseline
+    bool enablePcap = true;
 
-    std::string p4SrcDir      = GetP4ExamplePath() + "/simple_v1model";
-    std::string p4JsonPath    = p4SrcDir + "/simple_v1model.json";
+    std::string p4SrcDir = GetP4ExamplePath() + "/simple_v1model";
+    std::string p4JsonPath = p4SrcDir + "/simple_v1model.json";
     std::string flowTablePath = p4SrcDir + "/flowtable_0.txt";
 
     CommandLine cmd;
-    cmd.AddValue("pktSize",      "Application payload size (bytes)",          pktSize);
-    cmd.AddValue("appDataRate",  "OnOff application data rate",               appDataRate);
-    cmd.AddValue("linkRate",     "Link data rate",                            linkRate);
-    cmd.AddValue("linkDelay",    "Link propagation delay",                    linkDelay);
-    cmd.AddValue("clientIndex",  "Sender host index",                         clientIndex);
-    cmd.AddValue("serverIndex",  "Receiver host index",                       serverIndex);
-    cmd.AddValue("serverPort",   "UDP destination port on the server",        serverPort);
-    cmd.AddValue("switchRate",   "P4 switch processing rate (pps)",           switchRate);
-    cmd.AddValue("flowDuration", "Duration of the traffic flow (s)",          flowDuration);
-    cmd.AddValue("simDuration",  "Total simulation duration (s)",             simDuration);
-    cmd.AddValue("model",        "Switch model: 0=P4 V1Model, 1=bridge",     model);
-    cmd.AddValue("pcap",         "Enable PCAP capture",                       enablePcap);
+    cmd.AddValue("pktSize", "Application payload size (bytes)", pktSize);
+    cmd.AddValue("appDataRate", "OnOff application data rate", appDataRate);
+    cmd.AddValue("linkRate", "Link data rate", linkRate);
+    cmd.AddValue("linkDelay", "Link propagation delay", linkDelay);
+    cmd.AddValue("clientIndex", "Sender host index", clientIndex);
+    cmd.AddValue("serverIndex", "Receiver host index", serverIndex);
+    cmd.AddValue("serverPort", "UDP destination port on the server", serverPort);
+    cmd.AddValue("switchRate", "P4 switch processing rate (pps)", switchRate);
+    cmd.AddValue("flowDuration", "Duration of the traffic flow (s)", flowDuration);
+    cmd.AddValue("simDuration", "Total simulation duration (s)", simDuration);
+    cmd.AddValue("model", "Switch model: 0=P4 V1Model, 1=bridge", model);
+    cmd.AddValue("pcap", "Enable PCAP capture", enablePcap);
     cmd.Parse(argc, argv);
 
     client_stop_time = client_start_time + flowDuration;
-    sink_stop_time   = client_stop_time  + 5.0;
+    sink_stop_time = client_stop_time + 5.0;
 
     // -----------------------------------------------------------------------
     // Create nodes: 2 hosts + 1 switch
@@ -261,6 +277,7 @@ main(int argc, char* argv[])
     // -----------------------------------------------------------------------
     InternetStackHelper internet;
     internet.Install(terminals);
+    internet.Install(switchNode);
 
     // -----------------------------------------------------------------------
     // IP address helper (shared between both models)
@@ -269,7 +286,7 @@ main(int argc, char* argv[])
     ipv4Addr.SetBase("10.1.1.0", "255.255.255.0");
 
     std::vector<Ipv4InterfaceContainer> terminalInterfaces(terminals.GetN());
-    std::vector<std::string>            hostIpv4(terminals.GetN());
+    std::vector<std::string> hostIpv4(terminals.GetN());
 
     // -----------------------------------------------------------------------
     // Model 0 – P4 V1Model switch with new NetDevice architecture
@@ -278,32 +295,34 @@ main(int argc, char* argv[])
     {
         NS_LOG_INFO("*** Switch model: P4 V1Model (" << p4JsonPath << ")");
 
+        // --- Switch: install P4SwitchNetDevice with P4-specific parameters ---
         P4Helper p4;
-        // Switch device attributes (pipeline mode)
-        p4.SetDeviceAttribute("JsonPath",      StringValue(p4JsonPath));
+        p4.SetDeviceAttribute("JsonPath", StringValue(p4JsonPath));
         p4.SetDeviceAttribute("FlowTablePath", StringValue(flowTablePath));
-        p4.SetDeviceAttribute("P4SwitchArch",  UintegerValue(0)); // V1Model
-        p4.SetDeviceAttribute("SwitchRate",    UintegerValue(switchRate));
-        // Channel attributes applied to every switch-port link
-        p4.SetChannelAttribute("DataRate", StringValue(linkRate));
-        p4.SetChannelAttribute("Delay",    StringValue(linkDelay));
+        p4.SetDeviceAttribute("P4SwitchArch", UintegerValue(0)); // V1Model
+        p4.SetDeviceAttribute("SwitchRate", UintegerValue(switchRate));
+        Ptr<P4SwitchNetDevice> sw = DynamicCast<P4SwitchNetDevice>(p4.Install(switchNode).Get(0));
 
-        // Install:
-        //   devs[0]   = P4SwitchNetDevice on switchNode  (switch / pipeline mode)
-        //   devs[1]   = P4SwitchNetDevice on terminals[0] (NIC / passthrough mode)
-        //   devs[2]   = P4SwitchNetDevice on terminals[1] (NIC / passthrough mode)
-        NetDeviceContainer devs = p4.Install(switchNode, terminals);
+        // --- Hosts: connect plain host NICs via SwitchedEthernetHelper ---
+        SwitchedEthernetHelper eth;
+        eth.SetChannelAttribute("DataRate", StringValue(linkRate));
+        eth.SetChannelAttribute("Delay", StringValue(linkDelay));
+        NetDeviceContainer hostDevs = eth.Install(sw, terminals);
 
-        // Assign IP addresses to host NIC devices (devs[1], devs[2], …)
+        // Assign MAC and IP addresses to host devices
         for (uint32_t i = 0; i < terminals.GetN(); ++i)
         {
-            terminalInterfaces[i] = ipv4Addr.Assign(devs.Get(i + 1));
+            std::ostringstream macStr;
+            macStr << "00:00:00:00:00:" << std::hex << std::setfill('0') << std::setw(2) << (i + 1);
+            hostDevs.Get(i)->SetAddress(Mac48Address(macStr.str().c_str()));
+
+            terminalInterfaces[i] = ipv4Addr.Assign(hostDevs.Get(i));
             hostIpv4[i] = Uint32IpToHex(terminalInterfaces[i].GetAddress(0).Get());
         }
 
         if (enablePcap)
         {
-            p4.EnablePcapAll("p4-v1model-ipv4-forwarding");
+            p4.EnablePcap("p4-v1model-ipv4-forwarding", sw);
         }
     }
     // -----------------------------------------------------------------------
@@ -315,25 +334,41 @@ main(int argc, char* argv[])
 
         CsmaHelper csma;
         csma.SetChannelAttribute("DataRate", StringValue(linkRate));
-        csma.SetChannelAttribute("Delay",    StringValue(linkDelay));
+        csma.SetChannelAttribute("Delay", StringValue(linkDelay));
 
-        // Create one CSMA link per host, collect the switch-side ports.
         NetDeviceContainer switchPorts;
+        std::vector<NetDeviceContainer> links(terminals.GetN());
+
         for (uint32_t i = 0; i < terminals.GetN(); ++i)
         {
             NodeContainer pair(switchNode, terminals.Get(i));
-            NetDeviceContainer link = csma.Install(pair);
-            switchPorts.Add(link.Get(0));                    // switch side
-            terminalInterfaces[i] = ipv4Addr.Assign(link.Get(1)); // host side
+            links[i] = csma.Install(pair);
+
+            Ptr<NetDevice> swDev = links[i].Get(0);
+            Ptr<NetDevice> hostDev = links[i].Get(1);
+
+            switchPorts.Add(swDev);
+
+            std::ostringstream macStr;
+            macStr << "00:00:00:00:00:" << std::hex << std::setfill('0') << std::setw(2) << (i + 1);
+            hostDev->SetAddress(Mac48Address(macStr.str().c_str()));
+
+            NetDeviceContainer hostDevContainer;
+            hostDevContainer.Add(hostDev);
+            terminalInterfaces[i] = ipv4Addr.Assign(hostDevContainer);
             hostIpv4[i] = Uint32IpToHex(terminalInterfaces[i].GetAddress(0).Get());
         }
 
         BridgeHelper bridge;
-        bridge.Install(switchNode, switchPorts);
+        NetDeviceContainer bridgeDev = bridge.Install(switchNode, switchPorts);
 
         if (enablePcap)
         {
-            csma.EnablePcapAll("p4-v1model-ipv4-forwarding-bridge");
+            for (uint32_t i = 0; i < terminals.GetN(); ++i)
+            {
+                csma.EnablePcap("sw-port-" + std::to_string(i), links[i].Get(0), true);
+                csma.EnablePcap("host-" + std::to_string(i), links[i].Get(1), true);
+            }
         }
     }
 
@@ -342,9 +377,9 @@ main(int argc, char* argv[])
     // -----------------------------------------------------------------------
     // Applications
     // -----------------------------------------------------------------------
-    Ptr<Node>     serverNode = terminals.Get(serverIndex);
-    Ptr<Ipv4>     serverIpv4 = serverNode->GetObject<Ipv4>();
-    Ipv4Address   serverAddr = serverIpv4->GetAddress(1, 0).GetLocal();
+    Ptr<Node> serverNode = terminals.Get(serverIndex);
+    Ptr<Ipv4> serverIpv4 = serverNode->GetObject<Ipv4>();
+    Ipv4Address serverAddr = serverIpv4->GetAddress(1, 0).GetLocal();
     InetSocketAddress dst(serverAddr, serverPort);
 
     // Packet sink on server
@@ -356,8 +391,8 @@ main(int argc, char* argv[])
     // OnOff source on client
     OnOffHelper onOff("ns3::UdpSocketFactory", dst);
     onOff.SetAttribute("PacketSize", UintegerValue(pktSize));
-    onOff.SetAttribute("DataRate",   StringValue(appDataRate));
-    onOff.SetAttribute("OnTime",  StringValue("ns3::ConstantRandomVariable[Constant=1]"));
+    onOff.SetAttribute("DataRate", StringValue(appDataRate));
+    onOff.SetAttribute("OnTime", StringValue("ns3::ConstantRandomVariable[Constant=1]"));
     onOff.SetAttribute("OffTime", StringValue("ns3::ConstantRandomVariable[Constant=0]"));
 
     ApplicationContainer clientApp = onOff.Install(terminals.Get(clientIndex));
@@ -369,8 +404,8 @@ main(int argc, char* argv[])
     // -----------------------------------------------------------------------
     DynamicCast<OnOffApplication>(terminals.Get(clientIndex)->GetApplication(0))
         ->TraceConnectWithoutContext("Tx", MakeBoundCallback(&TxCallback, (uint32_t)pktSize));
-    sinkApp.Get(0)
-        ->TraceConnectWithoutContext("Rx", MakeBoundCallback(&RxCallback, (uint32_t)pktSize));
+    sinkApp.Get(0)->TraceConnectWithoutContext("Rx",
+                                               MakeBoundCallback(&RxCallback, (uint32_t)pktSize));
 
     // -----------------------------------------------------------------------
     // MAC-level traces (only available on CSMA devices in model == 1)
@@ -382,11 +417,14 @@ main(int argc, char* argv[])
         if (txDev)
         {
             txDev->TraceConnectWithoutContext(
-                "MacTx",    MakeBoundCallback(&MacTxTrace,   std::string("TX-host")));
+                "MacTx",
+                MakeBoundCallback(&MacTxTrace, std::string("TX-host")));
             txDev->TraceConnectWithoutContext(
-                "MacRx",    MakeBoundCallback(&MacRxTrace,   std::string("TX-host")));
+                "MacRx",
+                MakeBoundCallback(&MacRxTrace, std::string("TX-host")));
             txDev->TraceConnectWithoutContext(
-                "MacTxDrop",MakeBoundCallback(&TxDropTrace,  std::string("TX-host")));
+                "MacTxDrop",
+                MakeBoundCallback(&TxDropTrace, std::string("TX-host")));
         }
 
         Ptr<CsmaNetDevice> rxDev =
@@ -394,11 +432,14 @@ main(int argc, char* argv[])
         if (rxDev)
         {
             rxDev->TraceConnectWithoutContext(
-                "MacTx",    MakeBoundCallback(&MacTxTrace,   std::string("RX-host")));
+                "MacTx",
+                MakeBoundCallback(&MacTxTrace, std::string("RX-host")));
             rxDev->TraceConnectWithoutContext(
-                "MacRx",    MakeBoundCallback(&MacRxTrace,   std::string("RX-host")));
+                "MacRx",
+                MakeBoundCallback(&MacRxTrace, std::string("RX-host")));
             rxDev->TraceConnectWithoutContext(
-                "MacTxDrop",MakeBoundCallback(&TxDropTrace,  std::string("RX-host")));
+                "MacTxDrop",
+                MakeBoundCallback(&TxDropTrace, std::string("RX-host")));
         }
     }
 
@@ -413,9 +454,8 @@ main(int argc, char* argv[])
     Simulator::Destroy();
 
     unsigned long end = getTickCount();
-    NS_LOG_INFO("Simulate time: " << end - simulate_start << " ms"
-                << "  Total time: " << end - start << " ms"
-                << "  Run successfully!");
+    NS_LOG_INFO("Simulate time: " << end - simulate_start << " ms" << "  Total time: "
+                                  << end - start << " ms" << "  Run successfully!");
 
     PrintFinalThroughput();
     return 0;

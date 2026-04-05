@@ -32,38 +32,33 @@
 namespace ns3
 {
 
-class SwitchedEthernetChannel;
-class P4SwitchNetDevice;
-
 /**
  * \ingroup p4sim
- * \brief Helper for building P4-programmable switch topologies.
+ * \brief Helper for installing a P4SwitchNetDevice on a switch node.
  *
- * P4Helper manages three object factories:
- *  - **switch device** (P4SwitchNetDevice with P4 pipeline, installed on the switch node)
- *  - **NIC device**    (P4SwitchNetDevice in passthrough mode, installed on each host node)
- *  - **channel**       (SwitchedEthernetChannel, one per switch-port / host pair)
+ * P4Helper manages a single object factory for the P4SwitchNetDevice.
+ * Use SetDeviceAttribute() to configure P4-specific parameters (JsonPath,
+ * FlowTablePath, P4SwitchArch, SwitchRate, …) before calling Install().
  *
- * Each switch port is a dedicated full-duplex point-to-point channel, so the
- * channel attributes (DataRate, Delay) apply to every link created by this
- * helper.  Use SetChannelAttribute() to configure them before calling Install.
+ * To connect host nodes use SwitchedEthernetHelper, which owns the channel
+ * factory and the SwitchedEthernetHostDevice installation:
  *
- * Typical usage:
  * \code
- *   NodeContainer hosts;  hosts.Create(3);
- *   Ptr<Node>     sw;     sw = CreateObject<Node>();
- *
+ *   // Switch setup — P4 parameters only
  *   P4Helper p4;
  *   p4.SetDeviceAttribute("JsonPath",      StringValue("/path/switch.json"));
  *   p4.SetDeviceAttribute("FlowTablePath", StringValue("/path/rules.txt"));
- *   p4.SetChannelAttribute("DataRate",     DataRateValue(DataRate("1Gbps")));
- *   p4.SetChannelAttribute("Delay",        TimeValue(MicroSeconds(5)));
+ *   p4.SetDeviceAttribute("P4SwitchArch",  UintegerValue(0)); // V1Model
+ *   p4.SetDeviceAttribute("SwitchRate",    UintegerValue(10000));
+ *   NetDeviceContainer swDevs = p4.Install(switchNode);
+ *   Ptr<P4SwitchNetDevice> sw =
+ *       DynamicCast<P4SwitchNetDevice>(swDevs.Get(0));
  *
- *   // Creates: one P4SwitchNetDevice on sw, one NIC on each host,
- *   //          and three SwitchedEthernetChannels.
- *   NetDeviceContainer devs = p4.Install(sw, hosts);
- *   // devs[0]  = switch device
- *   // devs[1..3] = host NIC devices
+ *   // Host setup — channel / NIC parameters only
+ *   SwitchedEthernetHelper eth;
+ *   eth.SetChannelAttribute("DataRate", DataRateValue(DataRate("1Gbps")));
+ *   eth.SetChannelAttribute("Delay",    TimeValue(MicroSeconds(5)));
+ *   NetDeviceContainer hostDevs = eth.Install(sw, hosts);
  * \endcode
  */
 class P4Helper : public PcapHelperForDevice, public AsciiTraceHelperForDevice
@@ -77,96 +72,35 @@ class P4Helper : public PcapHelperForDevice, public AsciiTraceHelperForDevice
     // -----------------------------------------------------------------------
 
     /**
-     * \brief Set an attribute on the P4SwitchNetDevice created for the
-     *        switch node (pipeline mode).
+     * \brief Set an attribute on the P4SwitchNetDevice created by Install().
+     *
+     * Typical attributes: JsonPath, FlowTablePath, P4SwitchArch, SwitchRate.
      */
     void SetDeviceAttribute(const std::string& name, const AttributeValue& value);
 
-    /**
-     * \brief Set an attribute on the P4SwitchNetDevice created for each
-     *        host node (NIC / passthrough mode).
-     */
-    void SetNicAttribute(const std::string& name, const AttributeValue& value);
-
-    /**
-     * \brief Set an attribute on every SwitchedEthernetChannel created by
-     *        this helper (e.g. "DataRate", "Delay").
-     */
-    void SetChannelAttribute(const std::string& name, const AttributeValue& value);
-
     // -----------------------------------------------------------------------
-    // Install — switch device only
+    // Install
     // -----------------------------------------------------------------------
 
     /**
-     * \brief Install a P4SwitchNetDevice (switch mode) on \p switchNode.
+     * \brief Install a P4SwitchNetDevice on \p switchNode.
      *
-     * No channels or NIC devices are created.  Call ConnectHost() afterward
-     * to add individual ports.
+     * Assigns a unique MAC address and adds the device to the node.
+     * No channels or NIC devices are created — use SwitchedEthernetHelper
+     * to connect host nodes.
      *
      * \param switchNode The switch node.
-     * \return Container holding the created switch device.
+     * \return Container holding the created P4SwitchNetDevice.
      */
     NetDeviceContainer Install(Ptr<Node> switchNode) const;
 
     /**
-     * \brief Install a P4SwitchNetDevice (switch mode) on the named node.
+     * \brief Install a P4SwitchNetDevice on the named node.
      */
     NetDeviceContainer Install(const std::string& switchNodeName) const;
 
-    // -----------------------------------------------------------------------
-    // Install — switch + ports in one call
-    // -----------------------------------------------------------------------
-
-    /**
-     * \brief Install a P4 switch on \p switchNode and connect it to every
-     *        node in \p hosts via individual SwitchedEthernetChannels.
-     *
-     * For each host a new channel is created (using the channel factory
-     * attributes), the switch device acquires a new port, and a NIC device
-     * is installed on the host node.
-     *
-     * Return value layout:
-     *  - index 0   : the P4SwitchNetDevice on \p switchNode
-     *  - index 1…N : the NIC P4SwitchNetDevice on hosts[0…N-1]
-     *
-     * \param switchNode The P4 switch node.
-     * \param hosts      Host nodes to connect as switch ports.
-     * \return Container with switch device + all host NIC devices.
-     */
-    NetDeviceContainer Install(Ptr<Node> switchNode, const NodeContainer& hosts) const;
-
-    // -----------------------------------------------------------------------
-    // Add a single port to an already-installed switch
-    // -----------------------------------------------------------------------
-
-    /**
-     * \brief Connect \p hostNode to the switch device \p switchDev via a
-     *        new SwitchedEthernetChannel.
-     *
-     * A NIC device is created on \p hostNode and both ends are attached to
-     * a freshly created channel.  Use this to incrementally add ports to a
-     * switch after the initial Install() call.
-     *
-     * \param switchDev Existing switch device (already on its node).
-     * \param hostNode  Node to connect as the new port's far end.
-     * \return Container holding the NIC device created on \p hostNode.
-     */
-    NetDeviceContainer ConnectHost(Ptr<P4SwitchNetDevice> switchDev, Ptr<Node> hostNode) const;
-
   private:
-    /**
-     * \brief Create and configure the P4SwitchNetDevice for the switch node.
-     *        Assigns a unique MAC address and adds the device to the node.
-     */
     Ptr<P4SwitchNetDevice> InstallSwitchPriv(Ptr<Node> node) const;
-
-    /**
-     * \brief Create a NIC P4SwitchNetDevice on \p hostNode, attach both it
-     *        and \p switchDev to a new channel, and return the NIC device.
-     */
-    Ptr<P4SwitchNetDevice> InstallPortPriv(Ptr<P4SwitchNetDevice> switchDev,
-                                           Ptr<Node> hostNode) const;
 
     // PcapHelperForDevice
     void EnablePcapInternal(std::string prefix,
@@ -180,9 +114,7 @@ class P4Helper : public PcapHelperForDevice, public AsciiTraceHelperForDevice
                              Ptr<NetDevice> nd,
                              bool explicitFilename) override;
 
-    ObjectFactory m_deviceFactory;  ///< P4SwitchNetDevice (switch / pipeline mode)
-    ObjectFactory m_nicFactory;     ///< P4SwitchNetDevice (NIC / passthrough mode)
-    ObjectFactory m_channelFactory; ///< SwitchedEthernetChannel
+    ObjectFactory m_deviceFactory; ///< P4SwitchNetDevice factory
 };
 
 } // namespace ns3

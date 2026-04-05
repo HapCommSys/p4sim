@@ -93,8 +93,6 @@ class P4SwitchNetDevice : public NetDevice
 
     P4SwitchNetDevice();
     ~P4SwitchNetDevice() override;
-    P4SwitchNetDevice();
-    ~P4SwitchNetDevice() override;
 
     P4SwitchNetDevice(const P4SwitchNetDevice&) = delete;
     P4SwitchNetDevice& operator=(const P4SwitchNetDevice&) = delete;

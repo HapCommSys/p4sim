@@ -30,8 +30,6 @@
 
 namespace ns3
 {
-namespace ns3
-{
 
 class P4CoreV1model : public P4SwitchCore
 {
@@ -290,20 +288,8 @@ class P4CoreV1model : public P4SwitchCore
             return egress_port % nb_threads;
         }
 
-        size_t operator()(size_t egress_port) const
-        {
-            return egress_port % nb_threads;
-        }
-
         size_t nb_threads;
     };
-
-    size_t nb_threads;
-};
-
-private:
-uint64_t m_packetId;
-uint64_t m_switchRate;
 
 private:
 uint64_t m_packetId;
@@ -332,9 +318,6 @@ static constexpr size_t m_nbEgressThreads = 1u;
 std::unique_ptr<InputBuffer> input_buffer;
 NSQueueingLogicPriRL<std::unique_ptr<bm::Packet>, EgressThreadMapper> egress_buffer;
 bm::Queue<std::unique_ptr<bm::Packet>> output_buffer;
-std::unique_ptr<InputBuffer> input_buffer;
-NSQueueingLogicPriRL<std::unique_ptr<bm::Packet>, EgressThreadMapper> egress_buffer;
-bm::Queue<std::unique_ptr<bm::Packet>> output_buffer;
 
 bool m_firstPacket;
 
@@ -358,7 +341,7 @@ std::unordered_map<uint32_t, PortTxState> m_portTxState;
 /// Physical link rate read from port 0 at startup; used for logging/diagnostics only.
 /// Actual serialisation delay is now modelled by the port NetDevice itself.
 uint64_t m_linkRateBps{1000000000ULL};
-}; // namespace ns3
+}; // class P4CoreV1model
 
 } // namespace ns3
 

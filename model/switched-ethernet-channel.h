@@ -35,27 +35,34 @@ namespace ns3
 
 class Packet;
 class P4SwitchNetDevice;
+class SwitchedEthernetHostDevice;
 
 // ---------------------------------------------------------------------------
 // Per-endpoint record
 // ---------------------------------------------------------------------------
 
 /**
- * \brief Bookkeeping for one end of a P4SwitchNetDevice channel.
+ * \brief Bookkeeping for one end of a SwitchedEthernetChannel.
  *
- * Stores the pointer to the attached device and whether it is currently
- * active (able to send and receive).
+ * Slot 0 is always a P4SwitchNetDevice (the switch).
+ * Slot 1 may be either a P4SwitchNetDevice or a SwitchedEthernetHostDevice
+ * (a plain host NIC).  Exactly one of the two device pointers is non-null.
  */
 struct P4SwitchDeviceRec
 {
-    Ptr<P4SwitchNetDevice> devicePtr; ///< Attached device
-    bool active;                      ///< True when the device is enabled
+    Ptr<P4SwitchNetDevice>          devicePtr;     ///< Non-null for P4 switch devices
+    Ptr<SwitchedEthernetHostDevice> hostDevicePtr; ///< Non-null for plain host devices
+    bool active;
 
     P4SwitchDeviceRec();
     explicit P4SwitchDeviceRec(Ptr<P4SwitchNetDevice> device);
+    explicit P4SwitchDeviceRec(Ptr<SwitchedEthernetHostDevice> device);
 
-    /** \return true if the device is active. */
     bool IsActive() const;
+    /** \return true if this slot holds a plain host device (not a P4 device). */
+    bool IsHost() const;
+    /** \return the underlying NetDevice pointer regardless of type. */
+    Ptr<NetDevice> GetNetDevice() const;
 };
 
 // ---------------------------------------------------------------------------
@@ -107,12 +114,20 @@ class SwitchedEthernetChannel : public Channel
     // -----------------------------------------------------------------------
 
     /**
-     * \brief Attach \p device to this channel.
+     * \brief Attach a P4SwitchNetDevice to this channel.
      *
      * At most two devices may be attached (full-duplex point-to-point).
      * \return The device slot ID (0 or 1) assigned to this device.
      */
     int32_t Attach(Ptr<P4SwitchNetDevice> device);
+
+    /**
+     * \brief Attach a plain host device to this channel (slot 1).
+     *
+     * Called by SwitchedEthernetHostDevice::Attach().
+     * \return The device slot ID assigned to this device.
+     */
+    int32_t AttachHost(Ptr<SwitchedEthernetHostDevice> device);
 
     /**
      * \brief Mark a device as inactive (detached).

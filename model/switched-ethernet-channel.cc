@@ -20,6 +20,8 @@
 
 #include "switched-ethernet-channel.h"
 
+#include "switched-ethernet-host-device.h"
+
 #include "ns3/log.h"
 #include "ns3/node.h"
 #include "ns3/p4-switch-net-device.h"
@@ -48,10 +50,32 @@ P4SwitchDeviceRec::P4SwitchDeviceRec(Ptr<P4SwitchNetDevice> device)
 {
 }
 
+P4SwitchDeviceRec::P4SwitchDeviceRec(Ptr<SwitchedEthernetHostDevice> device)
+    : hostDevicePtr(device),
+      active(true)
+{
+}
+
 bool
 P4SwitchDeviceRec::IsActive() const
 {
     return active;
+}
+
+bool
+P4SwitchDeviceRec::IsHost() const
+{
+    return hostDevicePtr != nullptr;
+}
+
+Ptr<NetDevice>
+P4SwitchDeviceRec::GetNetDevice() const
+{
+    if (IsHost())
+    {
+        return hostDevicePtr;
+    }
+    return devicePtr;
 }
 
 // ---------------------------------------------------------------------------
@@ -97,7 +121,18 @@ SwitchedEthernetChannel::Attach(Ptr<P4SwitchNetDevice> device)
 {
     NS_LOG_FUNCTION(this << device);
     NS_ASSERT(device);
-    // Full-duplex point-to-point: exactly two slots.
+    NS_ASSERT_MSG(m_deviceList.size() < 2,
+                  "SwitchedEthernetChannel: cannot attach more than 2 devices");
+
+    m_deviceList.emplace_back(device);
+    return static_cast<int32_t>(m_deviceList.size() - 1);
+}
+
+int32_t
+SwitchedEthernetChannel::AttachHost(Ptr<SwitchedEthernetHostDevice> device)
+{
+    NS_LOG_FUNCTION(this << device);
+    NS_ASSERT(device);
     NS_ASSERT_MSG(m_deviceList.size() < 2,
                   "SwitchedEthernetChannel: cannot attach more than 2 devices");
 
@@ -224,16 +259,33 @@ SwitchedEthernetChannel::TransmitEnd(uint32_t srcId)
     // Schedule delivery to every active device that is NOT the sender.
     for (uint32_t i = 0; i < m_deviceList.size(); ++i)
     {
-        if (m_deviceList[i].IsActive() && i != m_currentSrc[srcId])
+        if (!m_deviceList[i].IsActive() || i == m_currentSrc[srcId])
         {
+            continue;
+        }
+
+        Ptr<Packet> pktCopy = m_currentPkt[srcId]->Copy();
+
+        if (m_deviceList[i].IsHost())
+        {
+            // Plain host device: deliver the full Ethernet frame directly.
+            Ptr<SwitchedEthernetHostDevice> dst = m_deviceList[i].hostDevicePtr;
+            Simulator::ScheduleWithContext(dst->GetNode()->GetId(),
+                                           m_delay,
+                                           &SwitchedEthernetHostDevice::ReceiveFrame,
+                                           dst,
+                                           pktCopy);
+        }
+        else
+        {
+            // P4 switch device: pass packet + sender pointer.
             Ptr<P4SwitchNetDevice> dst = m_deviceList[i].devicePtr;
             Ptr<P4SwitchNetDevice> sender = m_deviceList[m_currentSrc[srcId]].devicePtr;
-
             Simulator::ScheduleWithContext(dst->GetNode()->GetId(),
                                            m_delay,
                                            &P4SwitchNetDevice::Receive,
                                            dst,
-                                           m_currentPkt[srcId]->Copy(),
+                                           pktCopy,
                                            sender);
         }
     }
@@ -314,14 +366,15 @@ SwitchedEthernetChannel::GetNDevices() const
 Ptr<NetDevice>
 SwitchedEthernetChannel::GetDevice(std::size_t i) const
 {
-    return GetP4SwitchDevice(i);
+    NS_ASSERT(i < m_deviceList.size());
+    return m_deviceList[i].GetNetDevice();
 }
 
 Ptr<P4SwitchNetDevice>
 SwitchedEthernetChannel::GetP4SwitchDevice(std::size_t i) const
 {
     NS_ASSERT(i < m_deviceList.size());
-    return m_deviceList[i].devicePtr;
+    return m_deviceList[i].devicePtr; // null if slot is a host device
 }
 
 DataRate

@@ -35,8 +35,6 @@
 
 namespace ns3
 {
-namespace ns3
-{
 
 NS_LOG_COMPONENT_DEFINE("P4SwitchNetDevice");
 NS_OBJECT_ENSURE_REGISTERED(P4SwitchNetDevice);
@@ -143,7 +141,6 @@ P4SwitchNetDevice::GetTypeId()
                             MakeTraceSourceAccessor(&P4SwitchNetDevice::m_macRxTrace),
                             "ns3::Packet::TracedCallback");
 
-    return tid;
     return tid;
 }
 
@@ -541,6 +538,7 @@ P4SwitchNetDevice::GetChannel() const
     }
     return nullptr;
 }
+
 
 void
 P4SwitchNetDevice::SetAddress(Address address)

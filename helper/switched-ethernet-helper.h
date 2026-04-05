@@ -1,6 +1,5 @@
-/* -*- Mode:C++; c-file-style:"gnu"; indent-tabs-mode:nil; -*- */
 /*
- * Copyright (c) 2012
+ * Copyright (c) 2025 TU Dresden
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -15,223 +14,101 @@
  * along with this program; if not, write to the Free Software
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  *
- * Author: Jeff Young 
- *         Based on csma-helper by Mathieu Lacage <mathieu.lacage@sophia.inria.fr>
+ * Authors: Mingyu Ma <mingyu.ma@tu-dresden.de>
  */
+
 #ifndef SWITCHED_ETHERNET_HELPER_H
 #define SWITCHED_ETHERNET_HELPER_H
 
-#include <string>
-
 #include "ns3/attribute.h"
-#include "ns3/object-factory.h"
 #include "ns3/net-device-container.h"
 #include "ns3/node-container.h"
-#include "ns3/switched-ethernet-channel.h"
-#include "ns3/deprecated.h"
-#include "ns3/trace-helper.h"
+#include "ns3/object-factory.h"
+#include "ns3/p4-switch-net-device.h"
 
-namespace ns3 {
+#include <string>
 
-class Packet;
+namespace ns3
+{
+
+class SwitchedEthernetHostDevice;
 
 /**
- * \brief build a set of SwitchedEthernetNetDevice objects
+ * \ingroup p4sim
+ * \brief Helper for connecting plain (non-P4) host nodes to a P4SwitchNetDevice.
  *
- * Normally we eschew multiple inheritance, however, the classes 
- * PcapUserHelperForDevice and AsciiTraceUserHelperForDevice are
- * treated as "mixins".  A mixin is a self-contained class that
- * encapsulates a general attribute or a set of functionality that
- * may be of interest to many other classes.
+ * SwitchedEthernetHelper creates one SwitchedEthernetChannel per host and
+ * installs a SwitchedEthernetHostDevice on each host node.  It has no
+ * knowledge of P4 programs or flow tables — those are configured through
+ * P4Helper on the switch side.
+ *
+ * Typical usage:
+ * \code
+ *   // 1) Install the P4 switch with P4-specific parameters
+ *   P4Helper p4;
+ *   p4.SetDeviceAttribute("JsonPath",      StringValue("/path/switch.json"));
+ *   p4.SetDeviceAttribute("FlowTablePath", StringValue("/path/rules.txt"));
+ *   NetDeviceContainer swDevs = p4.Install(switchNode);
+ *   Ptr<P4SwitchNetDevice> sw =
+ *       DynamicCast<P4SwitchNetDevice>(swDevs.Get(0));
+ *
+ *   // 2) Connect hosts with channel-level parameters only
+ *   SwitchedEthernetHelper eth;
+ *   eth.SetChannelAttribute("DataRate", DataRateValue(DataRate("1Gbps")));
+ *   eth.SetChannelAttribute("Delay",    TimeValue(MicroSeconds(5)));
+ *   NetDeviceContainer hostDevs = eth.Install(sw, hosts);
+ * \endcode
  */
-class SwitchedEthernetHelper : public PcapHelperForDevice, public AsciiTraceHelperForDevice
+class SwitchedEthernetHelper
 {
-public:
-  /**
-   * Construct a SwitchedEthernetHelper.
-   */
-  SwitchedEthernetHelper ();
-  virtual ~SwitchedEthernetHelper () {}
+  public:
+    SwitchedEthernetHelper();
+    ~SwitchedEthernetHelper() = default;
 
-  /**
-   * \param type the type of queue
-   * \param n1 the name of the attribute to set on the queue
-   * \param v1 the value of the attribute to set on the queue
-   * \param n2 the name of the attribute to set on the queue
-   * \param v2 the value of the attribute to set on the queue
-   * \param n3 the name of the attribute to set on the queue
-   * \param v3 the value of the attribute to set on the queue
-   * \param n4 the name of the attribute to set on the queue
-   * \param v4 the value of the attribute to set on the queue
-   *
-   * Set the type of queue to create and associated to each
-   * SwitchedEthernetNetDevice created through SwitchedEthernetHelper::Install.
-   */
-  void SetQueue (std::string type,
-                 std::string n1 = "", const AttributeValue &v1 = EmptyAttributeValue (),
-                 std::string n2 = "", const AttributeValue &v2 = EmptyAttributeValue (),
-                 std::string n3 = "", const AttributeValue &v3 = EmptyAttributeValue (),
-                 std::string n4 = "", const AttributeValue &v4 = EmptyAttributeValue ());
+    // -----------------------------------------------------------------------
+    // Channel attribute configuration
+    // -----------------------------------------------------------------------
 
-  /**
-   * \param n1 the name of the attribute to set
-   * \param v1 the value of the attribute to set
-   *
-   * Set these attributes on each ns3::SwitchedEthernetNetDevice created
-   * by SwitchedEthernetHelper::Install
-   */
-  void SetDeviceAttribute (std::string n1, const AttributeValue &v1);
+    /**
+     * \brief Set an attribute on every SwitchedEthernetChannel created by
+     *        this helper (e.g. "DataRate", "Delay").
+     */
+    void SetChannelAttribute(const std::string& name, const AttributeValue& value);
 
-  /**
-   * \param n1 the name of the attribute to set
-   * \param v1 the value of the attribute to set
-   *
-   * Set these attributes on each ns3::SwitchedEthernetChannel created
-   * by SwitchedEthernetHelper::Install
-   */
-  void SetChannelAttribute (std::string n1, const AttributeValue &v1);
+    // -----------------------------------------------------------------------
+    // Install
+    // -----------------------------------------------------------------------
 
-  /**
-   * This method creates an ns3::SwitchedEthernetChannel with the attributes configured by
-   * SwitchedEthernetHelper::SetChannelAttribute, an ns3::SwitchedEthernetNetDevice with the attributes
-   * configured by SwitchedEthernetHelper::SetDeviceAttribute and then adds the device
-   * to the node and attaches the channel to the device.
-   *
-   * \param node The node to install the device in
-   * \returns A container holding the added net device.
-   */
-  NetDeviceContainer Install (Ptr<Node> node) const;
+    /**
+     * \brief Connect all nodes in \p hosts to \p switchDev.
+     *
+     * For each host node a new SwitchedEthernetChannel and a
+     * SwitchedEthernetHostDevice are created.  The host device is assigned a
+     * unique MAC address and added to the host node.
+     *
+     * \param switchDev An already-installed P4SwitchNetDevice.
+     * \param hosts     Host nodes to connect as switch ports.
+     * \return Container holding the SwitchedEthernetHostDevice for each host,
+     *         in the same order as \p hosts.
+     */
+    NetDeviceContainer Install(Ptr<P4SwitchNetDevice> switchDev,
+                               const NodeContainer& hosts) const;
 
-  /**
-   * This method creates an ns3::SwitchedEthernetChannel with the attributes configured by
-   * SwitchedEthernetHelper::SetChannelAttribute, an ns3::SwitchedEthernetNetDevice with the attributes
-   * configured by SwitchedEthernetHelper::SetDeviceAttribute and then adds the device
-   * to the node and attaches the channel to the device.
-   *
-   * \param name The name of the node to install the device in
-   * \returns A container holding the added net device.
-   */
-  NetDeviceContainer Install (std::string name) const;
+    /**
+     * \brief Connect a single host node to \p switchDev.
+     *
+     * \param switchDev An already-installed P4SwitchNetDevice.
+     * \param hostNode  The host node to connect.
+     * \return Container holding the SwitchedEthernetHostDevice on \p hostNode.
+     */
+    NetDeviceContainer ConnectHost(Ptr<P4SwitchNetDevice> switchDev,
+                                   Ptr<Node> hostNode) const;
 
-  /**
-   * This method creates an ns3::SwitchedEthernetNetDevice with the attributes configured by
-   * SwitchedEthernetHelper::SetDeviceAttribute and then adds the device to the node and 
-   * attaches the provided channel to the device.
-   *
-   * \param node The node to install the device in
-   * \param channel The channel to attach to the device.
-   * \returns A container holding the added net device.
-   */
-  NetDeviceContainer Install (Ptr<Node> node, Ptr<SwitchedEthernetChannel> channel) const;
+  private:
+    Ptr<SwitchedEthernetHostDevice> InstallPortPriv(Ptr<P4SwitchNetDevice> switchDev,
+                                                     Ptr<Node> hostNode) const;
 
-  /**
-   * This method creates an ns3::SwitchedEthernetNetDevice with the attributes configured by
-   * SwitchedEthernetHelper::SetDeviceAttribute and then adds the device to the node and 
-   * attaches the provided channel to the device.
-   *
-   * \param node The node to install the device in
-   * \param channelName The name of the channel to attach to the device.
-   * \returns A container holding the added net device.
-   */
-  NetDeviceContainer Install (Ptr<Node> node, std::string channelName) const;
-
-  /**
-   * This method creates an ns3::SwitchedEthernetNetDevice with the attributes configured by
-   * SwitchedEthernetHelper::SetDeviceAttribute and then adds the device to the node and 
-   * attaches the provided channel to the device.
-   *
-   * \param nodeName The name of the node to install the device in
-   * \param channel The channel to attach to the device.
-   * \returns A container holding the added net device.
-   */
-  NetDeviceContainer Install (std::string nodeName, Ptr<SwitchedEthernetChannel> channel) const;
-
-  /**
-   * This method creates an ns3::SwitchedEthernetNetDevice with the attributes configured by
-   * SwitchedEthernetHelper::SetDeviceAttribute and then adds the device to the node and 
-   * attaches the provided channel to the device.
-   *
-   * \param nodeName The name of the node to install the device in
-   * \param channelName The name of the channel to attach to the device.
-   * \returns A container holding the added net device.
-   */
-  NetDeviceContainer Install (std::string nodeName, std::string channelName) const;
-
-  /**
-   * This method creates an ns3::SwitchedEthernetChannel with the attributes configured by
-   * SwitchedEthernetHelper::SetChannelAttribute.  For each Ptr<node> in the provided
-   * container: it creates an ns3::SwitchedEthernetNetDevice (with the attributes 
-   * configured by SwitchedEthernetHelper::SetDeviceAttribute); adds the device to the 
-   * node; and attaches the channel to the device.
-   *
-   * \param c The NodeContainer holding the nodes to be changed.
-   * \returns A container holding the added net devices.
-   */
-  NetDeviceContainer Install (const NodeContainer &c) const;
-
-  /**
-   * For each Ptr<node> in the provided container, this method creates an 
-   * ns3::SwitchedEthernetNetDevice (with the attributes configured by 
-   * SwitchedEthernetHelper::SetDeviceAttribute); adds the device to the node; and attaches 
-   * the provided channel to the device.
-   *
-   * \param c The NodeContainer holding the nodes to be changed.
-   * \param channel The channel to attach to the devices.
-   * \returns A container holding the added net devices.
-   */
-  NetDeviceContainer Install (const NodeContainer &c, Ptr<SwitchedEthernetChannel> channel) const;
-
-  /**
-   * For each Ptr<node> in the provided container, this method creates an 
-   * ns3::SwitchedEthernetNetDevice (with the attributes configured by 
-   * SwitchedEthernetHelper::SetDeviceAttribute); adds the device to the node; and attaches 
-   * the provided channel to the device.
-   *
-   * \param c The NodeContainer holding the nodes to be changed.
-   * \param channelName The name of the channel to attach to the devices.
-   * \returns A container holding the added net devices.
-   */
-  NetDeviceContainer Install (const NodeContainer &c, std::string channelName) const;
-
-private:
-  /*
-   * \internal
-   */
-  Ptr<NetDevice> InstallPriv (Ptr<Node> node, Ptr<SwitchedEthernetChannel> channel) const;
-
-  /**
-   * \brief Enable pcap output on the indicated net device.
-   * \internal
-   *
-   * NetDevice-specific implementation mechanism for hooking the trace and
-   * writing to the trace file.
-   *
-   * \param prefix Filename prefix to use for pcap files.
-   * \param nd Net device for which you want to enable tracing.
-   * \param promiscuous If true capture all possible packets available at the device.
-   * \param explicitFilename Treat the prefix as an explicit filename if true
-   */
-  virtual void EnablePcapInternal (std::string prefix, Ptr<NetDevice> nd, bool promiscuous, bool explicitFilename);
-
-  /**
-   * \brief Enable ascii trace output on the indicated net device.
-   * \internal
-   *
-   * NetDevice-specific implementation mechanism for hooking the trace and
-   * writing to the trace file.
-   *
-   * \param stream The output stream object to use when logging ascii traces.
-   * \param prefix Filename prefix to use for ascii trace files.
-   * \param nd Net device for which you want to enable tracing.
-   */
-  virtual void EnableAsciiInternal (Ptr<OutputStreamWrapper> stream, 
-                                    std::string prefix, 
-                                    Ptr<NetDevice> nd,
-                                    bool explicitFilename);
-
-  ObjectFactory m_queueFactory;
-  ObjectFactory m_deviceFactory;
-  ObjectFactory m_channelFactory;
+    ObjectFactory m_channelFactory; ///< SwitchedEthernetChannel factory
 };
 
 } // namespace ns3

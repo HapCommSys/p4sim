@@ -54,6 +54,7 @@ build_lib(
         model/p4-bridge-channel.cc
         model/p4-p2p-channel.cc
         model/switched-ethernet-channel.cc
+        model/switched-ethernet-host-device.cc
         model/custom-header.cc
         model/p4-topology-reader.cc
         model/p4-switch-core.cc
@@ -65,6 +66,7 @@ build_lib(
         model/custom-p2p-net-device.cc
         model/p4-controller.cc
         helper/p4-helper.cc
+        helper/switched-ethernet-helper.cc
         helper/p4-topology-reader-helper.cc
         helper/p4-p2p-helper.cc
         helper/build-flowtable-helper.cc
@@ -79,6 +81,7 @@ build_lib(
         model/p4-bridge-channel.h
         model/p4-p2p-channel.h
         model/switched-ethernet-channel.h
+        model/switched-ethernet-host-device.h
         model/custom-header.h
         model/p4-topology-reader.h
         model/p4-switch-core.h
@@ -90,6 +93,7 @@ build_lib(
         model/custom-p2p-net-device.h
         model/p4-controller.h
         helper/p4-helper.h
+        helper/switched-ethernet-helper.h
         helper/p4-topology-reader-helper.h
         helper/p4-p2p-helper.h
         helper/build-flowtable-helper.h

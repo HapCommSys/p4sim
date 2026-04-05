@@ -20,6 +20,7 @@
 
 #include "ns3/data-rate.h"
 #include "ns3/p4-switch-net-device.h"
+#include "ns3/switched-ethernet-channel.h"
 #include "ns3/primitives-pna.h"
 #include "ns3/register-access-v1model.h"
 #include "ns3/simulator.h"
@@ -226,20 +227,19 @@ P4PnaNic::CalculateScheduleTime()
 {
     // Try to read the physical link rate from the first bridge port so that
     // serialisation delay is modelled accurately.  Falls back to 1 Gbps.
-    if (m_switchNetDevice && m_switchNetDevice->GetNBridgePorts() > 0)
+    if (m_switchNetDevice && m_switchNetDevice->GetNPorts() > 0)
     {
-        Ptr<NetDevice> port = m_switchNetDevice->GetBridgePort(0);
-        DataRateValue drv;
-        if (port->GetAttributeFailSafe("DataRate", drv))
+        Ptr<SwitchedEthernetChannel> ch = m_switchNetDevice->GetPortChannel(0);
+        if (ch)
         {
-            m_linkRateBps = drv.Get().GetBitRate();
+            m_linkRateBps = ch->GetDataRate().GetBitRate();
             NS_LOG_INFO("PNA NIC ID " << m_p4SwitchId
                                       << ": link rate from port 0 = " << m_linkRateBps << " bps");
         }
         else
         {
             NS_LOG_DEBUG("PNA NIC ID " << m_p4SwitchId
-                                       << ": DataRate attribute not available; using 1 Gbps");
+                                       << ": no channel on port 0; using 1 Gbps");
         }
     }
 }
