@@ -116,6 +116,45 @@ class SwitchedEthernetHostDevice : public NetDevice
     TracedCallback<Ptr<const Packet>> m_macTxTrace;
     TracedCallback<Ptr<const Packet>> m_macRxTrace;
     TracedCallback<Ptr<const Packet>> m_macTxDropTrace;
+    /**
+     * A trace source that emulates a non-promiscuous protocol sniffer connected
+     * to the device.  Unlike your average everyday sniffer, this trace source
+     * will not fire on PACKET_OTHERHOST events.
+     *
+     * On the transmit size, this trace hook will fire after a packet is dequeued
+     * from the device queue for transmission.  In Linux, for example, this would
+     * correspond to the point just before a device hard_start_xmit where
+     * dev_queue_xmit_nit is called to dispatch the packet to the PF_PACKET
+     * ETH_P_ALL handlers.
+     *
+     * On the receive side, this trace hook will fire when a packet is received,
+     * just before the receive callback is executed.  In Linux, for example,
+     * this would correspond to the point at which the packet is dispatched to
+     * packet sniffers in netif_receive_skb.
+     *
+     * \see class CallBackTraceSource
+     */
+    TracedCallback<Ptr<const Packet>> m_snifferTrace;
+
+    /**
+     * A trace source that emulates a promiscuous mode protocol sniffer connected
+     * to the device.  This trace source fire on packets destined for any host
+     * just like your average everyday packet sniffer.
+     *
+     * On the transmit size, this trace hook will fire after a packet is dequeued
+     * from the device queue for transmission.  In Linux, for example, this would
+     * correspond to the point just before a device hard_start_xmit where
+     * dev_queue_xmit_nit is called to dispatch the packet to the PF_PACKET
+     * ETH_P_ALL handlers.
+     *
+     * On the receive side, this trace hook will fire when a packet is received,
+     * just before the receive callback is executed.  In Linux, for example,
+     * this would correspond to the point at which the packet is dispatched to
+     * packet sniffers in netif_receive_skb.
+     *
+     * \see class CallBackTraceSource
+     */
+    TracedCallback<Ptr<const Packet>> m_promiscSnifferTrace;
 };
 
 } // namespace ns3

@@ -60,7 +60,21 @@ SwitchedEthernetHostDevice::GetTypeId()
             .AddTraceSource("MacTxDrop",
                             "A packet was dropped before transmission.",
                             MakeTraceSourceAccessor(&SwitchedEthernetHostDevice::m_macTxDropTrace),
-                            "ns3::Packet::TracedCallback");
+                            "ns3::Packet::TracedCallback")
+            //
+            // Trace sources designed to simulate a packet sniffer facility (tcpdump).
+            //
+            .AddTraceSource("Sniffer",
+                            "Trace source simulating a non-promiscuous "
+                            "packet sniffer attached to the device",
+                            MakeTraceSourceAccessor(&SwitchedEthernetHostDevice::m_snifferTrace),
+                            "ns3::Packet::TracedCallback")
+            .AddTraceSource(
+                "PromiscSniffer",
+                "Trace source simulating a promiscuous "
+                "packet sniffer attached to the device",
+                MakeTraceSourceAccessor(&SwitchedEthernetHostDevice::m_promiscSnifferTrace),
+                "ns3::Packet::TracedCallback");
     return tid;
 }
 
@@ -106,6 +120,9 @@ SwitchedEthernetHostDevice::ReceiveFrame(Ptr<Packet> frame)
     Mac48Address src = eth.GetSource();
     uint16_t proto = eth.GetLengthType();
 
+    // Promiscuous sniffer fires for every frame delivered to this device.
+    m_promiscSnifferTrace(frame);
+
     // Accept unicast-to-us, broadcast, and multicast.
     if (dst != m_address && dst != Mac48Address::GetBroadcast() && !dst.IsGroup())
     {
@@ -113,6 +130,7 @@ SwitchedEthernetHostDevice::ReceiveFrame(Ptr<Packet> frame)
         return;
     }
 
+    m_snifferTrace(frame);
     m_macRxTrace(frame);
 
     if (!m_promiscRxCallback.IsNull())
@@ -135,18 +153,16 @@ SwitchedEthernetHostDevice::ReceiveFrame(Ptr<Packet> frame)
 // ---------------------------------------------------------------------------
 
 bool
-SwitchedEthernetHostDevice::Send(Ptr<Packet> packet,
-                                  const Address& dest,
-                                  uint16_t protocolNumber)
+SwitchedEthernetHostDevice::Send(Ptr<Packet> packet, const Address& dest, uint16_t protocolNumber)
 {
     return SendFrom(packet, m_address, dest, protocolNumber);
 }
 
 bool
 SwitchedEthernetHostDevice::SendFrom(Ptr<Packet> packet,
-                                      const Address& source,
-                                      const Address& dest,
-                                      uint16_t protocolNumber)
+                                     const Address& source,
+                                     const Address& dest,
+                                     uint16_t protocolNumber)
 {
     NS_LOG_FUNCTION(this << packet << dest << protocolNumber);
 
@@ -164,6 +180,8 @@ SwitchedEthernetHostDevice::SendFrom(Ptr<Packet> packet,
     packet->AddHeader(eth);
 
     m_macTxTrace(packet);
+    m_snifferTrace(packet);
+    m_promiscSnifferTrace(packet);
 
     if (!m_channel->TransmitStart(packet, m_devId))
     {

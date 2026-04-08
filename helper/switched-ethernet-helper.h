@@ -25,6 +25,7 @@
 #include "ns3/node-container.h"
 #include "ns3/object-factory.h"
 #include "ns3/p4-switch-net-device.h"
+#include "ns3/trace-helper.h"
 
 #include <string>
 
@@ -59,11 +60,11 @@ class SwitchedEthernetHostDevice;
  *   NetDeviceContainer hostDevs = eth.Install(sw, hosts);
  * \endcode
  */
-class SwitchedEthernetHelper
+class SwitchedEthernetHelper : public PcapHelperForDevice, public AsciiTraceHelperForDevice
 {
   public:
     SwitchedEthernetHelper();
-    ~SwitchedEthernetHelper() = default;
+    ~SwitchedEthernetHelper() override = default;
 
     // -----------------------------------------------------------------------
     // Channel attribute configuration
@@ -107,6 +108,18 @@ class SwitchedEthernetHelper
   private:
     Ptr<SwitchedEthernetHostDevice> InstallPortPriv(Ptr<P4SwitchNetDevice> switchDev,
                                                      Ptr<Node> hostNode) const;
+
+    // PcapHelperForDevice
+    void EnablePcapInternal(std::string prefix,
+                            Ptr<NetDevice> nd,
+                            bool promiscuous,
+                            bool explicitFilename) override;
+
+    // AsciiTraceHelperForDevice
+    void EnableAsciiInternal(Ptr<OutputStreamWrapper> stream,
+                             std::string prefix,
+                             Ptr<NetDevice> nd,
+                             bool explicitFilename) override;
 
     ObjectFactory m_channelFactory; ///< SwitchedEthernetChannel factory
 };

@@ -19,10 +19,14 @@
 
 #include "switched-ethernet-helper.h"
 
+#include "ns3/config.h"
 #include "ns3/log.h"
 #include "ns3/mac48-address.h"
+#include "ns3/packet.h"
+#include "ns3/pcap-file-wrapper.h"
 #include "ns3/switched-ethernet-channel.h"
 #include "ns3/switched-ethernet-host-device.h"
+#include "ns3/trace-helper.h"
 
 namespace ns3
 {
@@ -84,6 +88,79 @@ SwitchedEthernetHelper::InstallPortPriv(Ptr<P4SwitchNetDevice> switchDev,
     NS_LOG_DEBUG("Port " << (switchDev->GetNPorts() - 1)
                  << " connected to host node " << hostNode->GetId());
     return hostDev;
+}
+
+// ---------------------------------------------------------------------------
+// Pcap tracing
+// ---------------------------------------------------------------------------
+
+void
+SwitchedEthernetHelper::EnablePcapInternal(std::string prefix,
+                                           Ptr<NetDevice> nd,
+                                           bool promiscuous,
+                                           bool explicitFilename)
+{
+    Ptr<SwitchedEthernetHostDevice> device = nd->GetObject<SwitchedEthernetHostDevice>();
+    if (!device)
+    {
+        NS_LOG_INFO("SwitchedEthernetHelper::EnablePcapInternal: not a SwitchedEthernetHostDevice"
+                    " — skipping");
+        return;
+    }
+
+    PcapHelper pcapHelper;
+    std::string filename =
+        explicitFilename ? prefix : pcapHelper.GetFilenameFromDevice(prefix, device);
+
+    Ptr<PcapFileWrapper> file =
+        pcapHelper.CreateFile(filename, std::ios::out, PcapHelper::DLT_EN10MB);
+
+    if (promiscuous)
+    {
+        pcapHelper.HookDefaultSink<SwitchedEthernetHostDevice>(device, "PromiscSniffer", file);
+    }
+    else
+    {
+        pcapHelper.HookDefaultSink<SwitchedEthernetHostDevice>(device, "Sniffer", file);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Ascii tracing
+// ---------------------------------------------------------------------------
+
+void
+SwitchedEthernetHelper::EnableAsciiInternal(Ptr<OutputStreamWrapper> stream,
+                                            std::string prefix,
+                                            Ptr<NetDevice> nd,
+                                            bool explicitFilename)
+{
+    Ptr<SwitchedEthernetHostDevice> device = nd->GetObject<SwitchedEthernetHostDevice>();
+    if (!device)
+    {
+        NS_LOG_INFO("SwitchedEthernetHelper::EnableAsciiInternal: not a SwitchedEthernetHostDevice"
+                    " — skipping");
+        return;
+    }
+
+    Packet::EnablePrinting();
+
+    AsciiTraceHelper asciiHelper;
+    if (!stream)
+    {
+        std::string filename =
+            explicitFilename ? prefix : asciiHelper.GetFilenameFromDevice(prefix, device);
+        stream = asciiHelper.CreateFileStream(filename);
+    }
+
+    asciiHelper.HookDefaultReceiveSinkWithoutContext<SwitchedEthernetHostDevice>(
+        device, "MacRx", stream);
+
+    std::ostringstream oss;
+    oss << "/NodeList/" << nd->GetNode()->GetId() << "/DeviceList/" << nd->GetIfIndex()
+        << "/$ns3::SwitchedEthernetHostDevice/MacTx";
+    Config::Connect(oss.str(),
+                    MakeBoundCallback(&AsciiTraceHelper::DefaultDequeueSinkWithContext, stream));
 }
 
 } // namespace ns3

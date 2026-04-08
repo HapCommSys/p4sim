@@ -139,6 +139,19 @@ P4SwitchNetDevice::GetTypeId()
                             "and is being forwarded up the local protocol stack.  This is a "
                             "non-promiscuous trace,",
                             MakeTraceSourceAccessor(&P4SwitchNetDevice::m_macRxTrace),
+                            "ns3::Packet::TracedCallback")
+            //
+            // Trace sources designed to simulate a packet sniffer facility (tcpdump).
+            //
+            .AddTraceSource("Sniffer",
+                            "Trace source simulating a non-promiscuous "
+                            "packet sniffer attached to the device",
+                            MakeTraceSourceAccessor(&P4SwitchNetDevice::m_snifferTrace),
+                            "ns3::Packet::TracedCallback")
+            .AddTraceSource("PromiscSniffer",
+                            "Trace source simulating a promiscuous "
+                            "packet sniffer attached to the device",
+                            MakeTraceSourceAccessor(&P4SwitchNetDevice::m_promiscSnifferTrace),
                             "ns3::Packet::TracedCallback");
 
     return tid;
@@ -315,6 +328,10 @@ P4SwitchNetDevice::Receive(Ptr<Packet> packet, Ptr<P4SwitchNetDevice> sender)
     bool hasCore = (m_v1modelSwitch || m_psaSwitch || m_pnaNic || m_p4Pipeline);
     if (!hasCore)
     {
+        m_promiscSnifferTrace(packet);
+        m_snifferTrace(packet);
+        m_macRxTrace(packet);
+
         // Strip the Ethernet header before handing to the IP stack.
         Ptr<Packet> stripped = packet->Copy();
         EthernetHeader hdr;
@@ -337,6 +354,10 @@ P4SwitchNetDevice::Receive(Ptr<Packet> packet, Ptr<P4SwitchNetDevice> sender)
 
     NS_LOG_DEBUG("Ingress port=" << inPort << " src=" << src48 << " dst=" << dst48 << " proto=0x"
                                  << std::hex << proto << std::dec);
+
+    m_promiscSnifferTrace(packet);
+    m_snifferTrace(packet);
+    m_macRxTrace(packet);
 
     // Feed the full Ethernet frame into the P4 pipeline.
     Ptr<Packet> pkt = packet->Copy();
@@ -388,6 +409,7 @@ P4SwitchNetDevice::SendNs3Packet(Ptr<Packet> packetOut,
     if (outPort == 511)
     {
         NS_LOG_DEBUG("Drop port (511) — packet discarded");
+        m_macTxDropTrace(packetOut);
         return;
     }
 
@@ -395,8 +417,13 @@ P4SwitchNetDevice::SendNs3Packet(Ptr<Packet> packetOut,
     {
         NS_LOG_WARN("SendNs3Packet: invalid port " << outPort << " (" << m_portChannels.size()
                                                    << " ports available)");
+        m_macTxDropTrace(packetOut);
         return;
     }
+
+    m_macTxTrace(packetOut);
+    m_snifferTrace(packetOut);
+    m_promiscSnifferTrace(packetOut);
 
     // The P4 pipeline delivers a full Ethernet frame.
     // Transmit it directly onto the channel.
@@ -413,6 +440,7 @@ P4SwitchNetDevice::TransmitOn(Ptr<SwitchedEthernetChannel> channel,
     if (!channel->TransmitStart(packet, devId))
     {
         NS_LOG_WARN("TransmitOn: channel busy or device inactive — packet dropped");
+        m_macTxDropTrace(packet);
         return;
     }
 
@@ -539,7 +567,6 @@ P4SwitchNetDevice::GetChannel() const
     return nullptr;
 }
 
-
 void
 P4SwitchNetDevice::SetAddress(Address address)
 {
@@ -640,10 +667,14 @@ P4SwitchNetDevice::SendFrom(Ptr<Packet> packet,
     eth.SetDestination(Mac48Address::ConvertFrom(dest));
     eth.SetLengthType(protocolNumber);
 
+    m_macTxTrace(packet);
+
     for (std::size_t i = 0; i < m_portChannels.size(); ++i)
     {
         Ptr<Packet> frame = packet->Copy();
         frame->AddHeader(eth);
+        m_promiscSnifferTrace(frame);
+        m_snifferTrace(frame);
         TransmitOn(m_portChannels[i], m_portDeviceIds[i], frame);
     }
     return true;

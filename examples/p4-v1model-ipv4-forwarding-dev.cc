@@ -323,6 +323,7 @@ main(int argc, char* argv[])
         if (enablePcap)
         {
             p4.EnablePcap("p4-v1model-ipv4-forwarding", sw);
+            eth.EnablePcap("p4-v1model-ipv4-forwarding-host", hostDevs);
         }
     }
     // -----------------------------------------------------------------------
@@ -429,6 +430,38 @@ main(int argc, char* argv[])
 
         Ptr<CsmaNetDevice> rxDev =
             DynamicCast<CsmaNetDevice>(terminals.Get(serverIndex)->GetDevice(0));
+        if (rxDev)
+        {
+            rxDev->TraceConnectWithoutContext(
+                "MacTx",
+                MakeBoundCallback(&MacTxTrace, std::string("RX-host")));
+            rxDev->TraceConnectWithoutContext(
+                "MacRx",
+                MakeBoundCallback(&MacRxTrace, std::string("RX-host")));
+            rxDev->TraceConnectWithoutContext(
+                "MacTxDrop",
+                MakeBoundCallback(&TxDropTrace, std::string("RX-host")));
+        }
+    }
+    else
+    {
+        Ptr<SwitchedEthernetHostDevice> txDev =
+            DynamicCast<SwitchedEthernetHostDevice>(terminals.Get(clientIndex)->GetDevice(1));
+        if (txDev)
+        {
+            txDev->TraceConnectWithoutContext(
+                "MacTx",
+                MakeBoundCallback(&MacTxTrace, std::string("TX-host")));
+            txDev->TraceConnectWithoutContext(
+                "MacRx",
+                MakeBoundCallback(&MacRxTrace, std::string("TX-host")));
+            txDev->TraceConnectWithoutContext(
+                "MacTxDrop",
+                MakeBoundCallback(&TxDropTrace, std::string("TX-host")));
+        }
+
+        Ptr<SwitchedEthernetHostDevice> rxDev =
+            DynamicCast<SwitchedEthernetHostDevice>(terminals.Get(serverIndex)->GetDevice(1));
         if (rxDev)
         {
             rxDev->TraceConnectWithoutContext(

@@ -51,11 +51,8 @@ build_lib(
         utils/switch-api.cc
         utils/p4-queue.cc
         utils/fattree-topo-helper.cc
-        model/p4-bridge-channel.cc
-        model/p4-p2p-channel.cc
         model/switched-ethernet-channel.cc
         model/switched-ethernet-host-device.cc
-        model/custom-header.cc
         model/p4-topology-reader.cc
         model/p4-switch-core.cc
         model/p4-core-v1model.cc
@@ -63,12 +60,10 @@ build_lib(
         model/p4-core-psa.cc
         model/p4-nic-pna.cc
         model/p4-switch-net-device.cc
-        model/custom-p2p-net-device.cc
         model/p4-controller.cc
         helper/p4-helper.cc
         helper/switched-ethernet-helper.cc
         helper/p4-topology-reader-helper.cc
-        helper/p4-p2p-helper.cc
         helper/build-flowtable-helper.cc
     HEADER_FILES # equivalent to headers.source
         utils/p4-queue.h
@@ -78,11 +73,8 @@ build_lib(
         utils/primitives-v1model.h
         utils/primitives-pna.h
         utils/fattree-topo-helper.h
-        model/p4-bridge-channel.h
-        model/p4-p2p-channel.h
         model/switched-ethernet-channel.h
         model/switched-ethernet-host-device.h
-        model/custom-header.h
         model/p4-topology-reader.h
         model/p4-switch-core.h
         model/p4-core-v1model.h
@@ -90,12 +82,10 @@ build_lib(
         model/p4-core-psa.h
         model/p4-nic-pna.h
         model/p4-switch-net-device.h
-        model/custom-p2p-net-device.h
         model/p4-controller.h
         helper/p4-helper.h
         helper/switched-ethernet-helper.h
         helper/p4-topology-reader-helper.h
-        helper/p4-p2p-helper.h
         helper/build-flowtable-helper.h
         helper/p4-net-builder.h
     LIBRARIES_TO_LINK 
@@ -103,7 +93,6 @@ build_lib(
         ${libnetwork}  
         ${libtraffic-control}
         ${libapplications}
-        ${libpoint-to-point}
         ${third_party_libs}
     TEST_SOURCES # equivalent to module_test.source
         # test/p4-controller-test-suite.cc
