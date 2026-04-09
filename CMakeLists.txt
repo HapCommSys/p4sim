@@ -53,17 +53,13 @@ build_lib(
         utils/fattree-topo-helper.cc
         model/switched-ethernet-channel.cc
         model/switched-ethernet-host-device.cc
-        model/p4-topology-reader.cc
         model/p4-switch-core.cc
         model/p4-core-v1model.cc
-        model/p4-core-pipeline.cc
         model/p4-core-psa.cc
         model/p4-nic-pna.cc
         model/p4-switch-net-device.cc
-        model/p4-controller.cc
         helper/p4-helper.cc
         helper/switched-ethernet-helper.cc
-        helper/p4-topology-reader-helper.cc
         helper/build-flowtable-helper.cc
     HEADER_FILES # equivalent to headers.source
         utils/p4-queue.h
@@ -75,19 +71,14 @@ build_lib(
         utils/fattree-topo-helper.h
         model/switched-ethernet-channel.h
         model/switched-ethernet-host-device.h
-        model/p4-topology-reader.h
         model/p4-switch-core.h
         model/p4-core-v1model.h
-        model/p4-core-pipeline.h
         model/p4-core-psa.h
         model/p4-nic-pna.h
         model/p4-switch-net-device.h
-        model/p4-controller.h
         helper/p4-helper.h
         helper/switched-ethernet-helper.h
-        helper/p4-topology-reader-helper.h
         helper/build-flowtable-helper.h
-        helper/p4-net-builder.h
     LIBRARIES_TO_LINK 
         ${libcore} 
         ${libnetwork}  

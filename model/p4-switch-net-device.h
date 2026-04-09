@@ -40,14 +40,12 @@ namespace ns3
 #define P4SWITCH_ARCH_V1MODEL 0
 #define P4SWITCH_ARCH_PSA 1
 #define P4NIC_ARCH_PNA 2
-#define P4SWITCH_ARCH_PIPELINE 3
 
 class Node;
 class SwitchedEthernetChannel;
 class P4CoreV1model;
 class P4CorePsa;
 class P4PnaNic;
-class P4CorePipeline;
 
 /**
  * \ingroup p4sim
@@ -262,7 +260,6 @@ class P4SwitchNetDevice : public NetDevice
     std::string m_flowTablePath;
 
     P4CoreV1model* m_v1modelSwitch;
-    P4CorePipeline* m_p4Pipeline;
     P4CorePsa* m_psaSwitch;
     P4PnaNic* m_pnaNic;
 

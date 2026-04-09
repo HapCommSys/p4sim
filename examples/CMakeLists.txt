@@ -18,13 +18,6 @@ set(P4SIM_CSMA_LIBS ${P4SIM_BASE_LIBS} ${libcsma})
 
 # # ========================= V1model Architecture =======================
 
-# # 2 hosts, 1 switch — IPv4 forwarding
-build_lib_example(
-  NAME p4-v1model-ipv4-forwarding-dev
-  SOURCE_FILES p4-v1model-ipv4-forwarding-dev.cc
-  LIBRARIES_TO_LINK ${P4SIM_CSMA_LIBS}
-)
-
 # # 2 hosts, 1 switch - Calculator P4 program
 # build_lib_example(
 #   NAME p4-calc
@@ -32,12 +25,12 @@ build_lib_example(
 #   LIBRARIES_TO_LINK ${P4SIM_CSMA_LIBS}
 # )
 
-# # 2 hosts, 1 switch — IPv4 forwarding
-# build_lib_example(
-#   NAME p4-v1model-ipv4-forwarding
-#   SOURCE_FILES p4-v1model-ipv4-forwarding.cc
-#   LIBRARIES_TO_LINK ${P4SIM_CSMA_LIBS}
-# )
+# 2 hosts, 1 switch — IPv4 forwarding
+build_lib_example(
+  NAME p4-v1model-ipv4-forwarding
+  SOURCE_FILES p4-v1model-ipv4-forwarding.cc
+  LIBRARIES_TO_LINK ${P4SIM_CSMA_LIBS}
+)
 
 # # 3 hosts, 3 routers (line topology) — L3 forwarding
 # build_lib_example(
@@ -139,29 +132,4 @@ build_lib_example(
 #   NAME p4-pna-ipv4-forwarding
 #   SOURCE_FILES p4-pna-ipv4-forwarding.cc
 #   LIBRARIES_TO_LINK ${P4SIM_CSMA_LIBS}
-# )
-
-# # ========================= Non-P4 Helpers =============================
-
-# # P2P channel with custom header (no P4 program)
-# build_lib_example(
-#   NAME p4-p2p-custom-header-test
-#   SOURCE_FILES p4-p2p-custom-header-test.cc
-#   LIBRARIES_TO_LINK ${P4SIM_BASE_LIBS}
-# )
-
-# # ns-3 simulation of a k-ary Fat-Tree data-center network topology (no P4 program)
-# build_lib_example(
-#   NAME topo-fattree
-#   SOURCE_FILES topo-fattree.cc
-#   LIBRARIES_TO_LINK ${P4SIM_CSMA_LIBS} ${libnix-vector-routing}
-# )
-
-# # ========================= Unit / Dev Tests ===========================
-
-# # Custom header parsing test
-# build_lib_example(
-#   NAME p4-custom-header-test
-#   SOURCE_FILES p4-custom-header-test.cc
-#   LIBRARIES_TO_LINK ${libp4sim}
 # )

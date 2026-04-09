@@ -23,7 +23,6 @@
 #include "ns3/ethernet-header.h"
 #include "ns3/log.h"
 #include "ns3/node.h"
-#include "ns3/p4-core-pipeline.h"
 #include "ns3/p4-core-psa.h"
 #include "ns3/p4-core-v1model.h"
 #include "ns3/p4-nic-pna.h"
@@ -166,7 +165,6 @@ P4SwitchNetDevice::P4SwitchNetDevice()
       m_enableSwap(false),
       m_switchArch(P4SWITCH_ARCH_V1MODEL),
       m_v1modelSwitch(nullptr),
-      m_p4Pipeline(nullptr),
       m_psaSwitch(nullptr),
       m_pnaNic(nullptr),
       m_InputBufferSizeLow(1024),
@@ -243,14 +241,6 @@ P4SwitchNetDevice::DoInitialize()
         m_pnaNic->start_and_return_();
         break;
 
-    case P4SWITCH_ARCH_PIPELINE:
-        NS_LOG_DEBUG("Initialising simple Pipeline");
-        m_p4Pipeline = new P4CorePipeline(this, m_enableSwap, m_enableTracing);
-        m_p4Pipeline->InitializeSwitchFromP4Json(m_jsonPath);
-        m_p4Pipeline->LoadFlowTableToSwitch(m_flowTablePath);
-        m_p4Pipeline->start_and_return_();
-        break;
-
     default:
         NS_FATAL_ERROR("Unknown P4 switch architecture: " << m_switchArch);
     }
@@ -265,8 +255,6 @@ P4SwitchNetDevice::DoDispose()
 
     delete m_v1modelSwitch;
     m_v1modelSwitch = nullptr;
-    delete m_p4Pipeline;
-    m_p4Pipeline = nullptr;
     delete m_psaSwitch;
     m_psaSwitch = nullptr;
     delete m_pnaNic;
@@ -325,7 +313,7 @@ P4SwitchNetDevice::Receive(Ptr<Packet> packet, Ptr<P4SwitchNetDevice> sender)
     }
 
     // NIC / passthrough mode: no P4 core — deliver up the stack.
-    bool hasCore = (m_v1modelSwitch || m_psaSwitch || m_pnaNic || m_p4Pipeline);
+    bool hasCore = (m_v1modelSwitch || m_psaSwitch || m_pnaNic);
     if (!hasCore)
     {
         m_promiscSnifferTrace(packet);
@@ -371,9 +359,6 @@ P4SwitchNetDevice::Receive(Ptr<Packet> packet, Ptr<P4SwitchNetDevice> sender)
         break;
     case P4NIC_ARCH_PNA:
         m_pnaNic->ReceivePacket(pkt, inPort, proto, dst48);
-        break;
-    case P4SWITCH_ARCH_PIPELINE:
-        m_p4Pipeline->ReceivePacket(pkt, inPort, proto, dst48);
         break;
     }
 }

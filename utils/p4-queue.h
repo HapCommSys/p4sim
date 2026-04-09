@@ -213,14 +213,13 @@ class NSQueueingLogicPriRL
         if (q_info_pri.size >= q_info_pri.capacity)
             return 0;
         q_info_pri.last_sent = get_next_tp(q_info_pri);
-        w_info.queues[priority].emplace(item,
-                                        queue_id,
-                                        q_info_pri.last_sent,
-                                        w_info.wrapping_counter++);
+        q_info_pri.queue.emplace(item,
+                                 queue_id,
+                                 q_info_pri.last_sent,
+                                 w_info.wrapping_counter++);
         q_info_pri.size++;
         q_info.size++;
         w_info.size++;
-        w_info.q_not_empty.notify_one();
         return 1;
     }
 
@@ -241,14 +240,13 @@ class NSQueueingLogicPriRL
         if (q_info_pri.size >= q_info_pri.capacity)
             return 0;
         q_info_pri.last_sent = get_next_tp(q_info_pri);
-        w_info.queues[priority].emplace(std::move(item),
-                                        queue_id,
-                                        q_info_pri.last_sent,
-                                        w_info.wrapping_counter++);
+        q_info_pri.queue.emplace(std::move(item),
+                                 queue_id,
+                                 q_info_pri.last_sent,
+                                 w_info.wrapping_counter++);
         q_info_pri.size++;
         q_info.size++;
         w_info.size++;
-        w_info.q_not_empty.notify_one();
         return 1;
     }
 
@@ -285,59 +283,57 @@ class NSQueueingLogicPriRL
     {
         LockType lock(mutex);
         auto& w_info = workers_info.at(worker_id);
-        MyQ* queue = nullptr;
-        size_t pri;
-        while (true)
+        if (w_info.size == 0)
+            return;
+
+        Time now = Simulator::Now();
+        bool found = false;
+        size_t best_pri = 0;
+        size_t best_port = 0;
+        Time best_send = Time::Max();
+        size_t best_id = static_cast<size_t>(-1);
+
+        // Scan all per-port queues to find the highest-priority eligible packet.
+        // Priority ordering: higher index = higher priority (served first).
+        for (auto& kv : queues_info)
         {
-            if (w_info.size == 0)
+            size_t port_id = kv.first;
+            if (map_to_worker(port_id) != worker_id)
+                continue;
+            auto& q_info = kv.second;
+            // Iterate from highest to lowest priority; stop at first eligible.
+            for (size_t pri = nb_priorities; pri-- > 0;)
             {
-                // waiting for add queue item
-                // w_info.q_not_empty.wait (lock);
-                return;
-            }
-            else
-            {
-                Time now = Simulator::Now();
-                Time next = now + Seconds(5);
-
-                // auto now_real = std::chrono::steady_clock::now ();
-                // auto next_real = now_real + std::chrono::nanoseconds (next.GetNanoSeconds ());
-                // auto now = clock::now ();
-                // auto next = clock::time_point::max ();
-
-                // This will iterate from nb_priorities-1 to 0
-                for (pri = nb_priorities; pri-- > 0;)
+                auto& q_info_pri = q_info.at(pri);
+                if (q_info_pri.queue.empty())
+                    continue;
+                const auto& top = q_info_pri.queue.top();
+                if (top.send > now)
+                    continue;
+                // Eligible: prefer higher pri, then earlier send, then lower id.
+                if (!found || pri > best_pri ||
+                    (pri == best_pri && (top.send < best_send ||
+                     (top.send == best_send && top.id < best_id))))
                 {
-                    auto& q = w_info.queues[pri];
-                    if (q.size() == 0)
-                        continue;
-                    if (q.top().send <= now)
-                    {
-                        queue = &q;
-                        break;
-                    }
-                    next = std::min(next, q.top().send);
-                    // next_real = now_real + std::chrono::nanoseconds (next.GetNanoSeconds ());
+                    found = true;
+                    best_pri = pri;
+                    best_port = port_id;
+                    best_send = top.send;
+                    best_id = top.id;
                 }
-                if (queue)
-                    break;
-                return;
-                // if (w_info.q_not_empty.wait_until (lock, next_real) == std::cv_status::timeout)
-                //   {
-                //     // Time Out in 5s
-                //     *pItem = nullptr;
-                //     return;
-                //   }
+                break; // best eligible packet for this port is found
             }
         }
-        *queue_id = queue->top().queue_id;
-        *priority = pri;
-        // TODO(antonin): improve / document this
-        // http://stackoverflow.com/questions/20149471/move-out-element-of-std-priority-queue-in-c11
-        *pItem = std::move(const_cast<QE&>(queue->top()).e);
-        queue->pop();
-        auto& q_info = get_queue_or_throw(*queue_id);
-        auto& q_info_pri = q_info.at(*priority);
+
+        if (!found)
+            return;
+
+        *queue_id = best_port;
+        *priority = best_pri;
+        auto& q_info = get_queue_or_throw(best_port);
+        auto& q_info_pri = q_info.at(best_pri);
+        *pItem = std::move(const_cast<QE&>(q_info_pri.queue.top()).e);
+        q_info_pri.queue.pop();
         q_info_pri.size--;
         q_info.size--;
         w_info.size--;
@@ -364,24 +360,103 @@ class NSQueueingLogicPriRL
      */
     Time get_next_tp_all_ports()
     {
+        LockType lock(mutex);
         Time now = Simulator::Now();
         Time next = Time::Max(); // sentinel: no packets queued anywhere
 
-        for (auto& w_info : workers_info)
+        for (auto& kv : queues_info)
         {
+            auto& q_info = kv.second;
             for (size_t pri = nb_priorities; pri-- > 0;)
             {
-                auto& q = w_info.queues[pri];
-                if (q.size() == 0)
+                auto& q_info_pri = q_info.at(pri);
+                if (q_info_pri.queue.empty())
                     continue;
-                if (q.top().send <= now)
-                {
-                    return Time(0); // at least one packet is immediately eligible
-                }
-                next = std::min(next, q.top().send);
+                if (q_info_pri.queue.top().send <= now)
+                    return Time(0);
+                next = std::min(next, q_info_pri.queue.top().send);
             }
         }
-        return next; // either a real future time, or Time::Max() if empty
+        return next;
+    }
+
+    /**
+     * @brief Returns the earliest time at which any queued packet for a
+     *        specific egress port becomes rate-eligible for dequeue.
+     *
+     * Returns Time(0) if a packet is already eligible (send <= now).
+     * Returns Time::Max() if the port queue is empty.
+     * Returns a future Time otherwise.
+     *
+     * @param port The egress port (= queue_id) to query.
+     */
+    Time get_next_tp_for_port(size_t port)
+    {
+        LockType lock(mutex);
+        auto it = queues_info.find(port);
+        if (it == queues_info.end())
+            return Time::Max();
+
+        auto& q_info = it->second;
+        if (q_info.size == 0)
+            return Time::Max();
+
+        Time now = Simulator::Now();
+        Time next = Time::Max();
+
+        for (size_t pri = nb_priorities; pri-- > 0;)
+        {
+            auto& q_info_pri = q_info.at(pri);
+            if (q_info_pri.queue.empty())
+                continue;
+            if (q_info_pri.queue.top().send <= now)
+                return Time(0);
+            next = std::min(next, q_info_pri.queue.top().send);
+        }
+        return next;
+    }
+
+    /**
+     * @brief Dequeue the next rate-eligible packet for a specific egress port.
+     *
+     * Scans priority queues high-to-low and pops the first packet whose
+     * send timestamp <= Simulator::Now(). Returns immediately (no blocking)
+     * if no eligible packet exists.
+     *
+     * @param port     The egress port (= queue_id) to dequeue from.
+     * @param priority Set to the priority of the dequeued packet.
+     * @param pItem    Receives the dequeued packet; unchanged if none eligible.
+     */
+    void pop_back_for_port(size_t port, size_t* priority, T* pItem)
+    {
+        LockType lock(mutex);
+        auto it = queues_info.find(port);
+        if (it == queues_info.end())
+            return;
+
+        auto& q_info = it->second;
+        if (q_info.size == 0)
+            return;
+
+        Time now = Simulator::Now();
+        size_t worker_id = map_to_worker(port);
+        auto& w_info = workers_info.at(worker_id);
+
+        for (size_t pri = nb_priorities; pri-- > 0;)
+        {
+            auto& q_info_pri = q_info.at(pri);
+            if (q_info_pri.queue.empty())
+                continue;
+            if (q_info_pri.queue.top().send > now)
+                continue;
+            *priority = pri;
+            *pItem = std::move(const_cast<QE&>(q_info_pri.queue.top()).e);
+            q_info_pri.queue.pop();
+            q_info_pri.size--;
+            q_info.size--;
+            w_info.size--;
+            return;
+        }
     }
 
     /**
@@ -603,6 +678,13 @@ class NSQueueingLogicPriRL
         {
         }
 
+        // MyQ holds unique_ptrs which are non-copyable; disable copy.
+        QueueInfoPri(const QueueInfoPri&) = delete;
+        QueueInfoPri& operator=(const QueueInfoPri&) = delete;
+        QueueInfoPri(QueueInfoPri&&) = default;
+        QueueInfoPri& operator=(QueueInfoPri&&) = default;
+
+        MyQ queue;    ///< Per-(port, priority) packet queue
         size_t size{0};
         size_t capacity;
         uint64_t queue_rate_pps;
@@ -617,22 +699,22 @@ class NSQueueingLogicPriRL
     struct QueueInfo : public std::vector<QueueInfoPri>
     {
         QueueInfo(size_t capacity, uint64_t queue_rate_pps, size_t nb_priorities)
-            : std::vector<QueueInfoPri>(nb_priorities, QueueInfoPri(capacity, queue_rate_pps))
         {
+            // QueueInfoPri is non-copyable (holds unique_ptrs); use emplace_back.
+            this->reserve(nb_priorities);
+            for (size_t i = 0; i < nb_priorities; i++)
+                this->emplace_back(capacity, queue_rate_pps);
         }
 
         size_t size{0};
     };
 
     /**
-     * @brief threads information from bmv2 src.
-     *
+     * @brief Per-worker bookkeeping (packet queues are now per-port in QueueInfoPri).
      */
     struct WorkerInfo
     {
-        mutable std::condition_variable q_not_empty{};
         size_t size{0};
-        std::array<MyQ, 32> queues;
         size_t wrapping_counter{0};
     };
 
