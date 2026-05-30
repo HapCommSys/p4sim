@@ -31,6 +31,8 @@
 #include "ns3/string.h"
 #include "ns3/switched-ethernet-channel.h"
 #include "ns3/uinteger.h"
+#include "p4-switch-net-device.h"
+#include <cstdint>
 
 namespace ns3
 {
@@ -470,6 +472,16 @@ P4SwitchNetDevice::GetPortNumber(Ptr<P4SwitchNetDevice> sender) const
         {
             return i;
         }
+    }
+    return UINT32_MAX;
+}
+
+uint32_t
+P4SwitchNetDevice::GetPortDeviceId(uint32_t n) const
+{
+    if (n<m_portDeviceIds.size())
+    {
+        return m_portDeviceIds[n];
     }
     return UINT32_MAX;
 }

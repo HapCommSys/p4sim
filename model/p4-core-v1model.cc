@@ -25,7 +25,9 @@
 #include "ns3/register-access-v1model.h"
 #include "ns3/simulator.h"
 #include "ns3/switched-ethernet-channel.h"
+#include "p4-switch-net-device.h"
 
+#include <cstdint>
 #include <fstream> // tracing info to file
 #include <sstream>
 
@@ -253,6 +255,13 @@ P4CoreV1model::EventDrivenEgressDequeue(uint32_t port)
     {
         // Should not normally happen, but guard anyway.
         NS_LOG_DEBUG("Port " << port << " still busy – PortTxComplete will retry");
+        return;
+    }
+    Ptr<SwitchedEthernetChannel> ch=m_switchNetDevice->GetPortChannel(port);
+    uint32_t devId=m_switchNetDevice->GetPortDeviceId(port);
+    if (ch && ch->IsBusy(devId))
+    {
+        NS_LOG_WARN("Port "<<port<<": channel still busy (devId= "<<devId<<"), deferring dequeue - PortTxComplete will retyr");
         return;
     }
 

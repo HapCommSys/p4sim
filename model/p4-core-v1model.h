@@ -22,6 +22,7 @@
 
 #include "ns3/p4-queue.h"
 #include "ns3/p4-switch-core.h"
+#include "ns3/switched-ethernet-channel.h"
 
 #include <bm/bm_sim/counters.h>
 #include <unordered_map>
