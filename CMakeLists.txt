@@ -58,6 +58,7 @@ build_lib(
         model/p4-core-psa.cc
         model/p4-nic-pna.cc
         model/p4-switch-net-device.cc
+        model/p4-switch-queue-item.cc
         helper/p4-helper.cc
         helper/switched-ethernet-helper.cc
         helper/build-flowtable-helper.cc
@@ -76,6 +77,7 @@ build_lib(
         model/p4-core-psa.h
         model/p4-nic-pna.h
         model/p4-switch-net-device.h
+        model/p4-switch-queue-item.h
         helper/p4-helper.h
         helper/switched-ethernet-helper.h
         helper/build-flowtable-helper.h

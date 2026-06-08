@@ -22,6 +22,8 @@
 
 #include "ns3/p4-queue.h"
 #include "ns3/p4-switch-core.h"
+#include "ns3/p4-switch-queue-item.h"
+#include "ns3/queue-disc.h"
 #include "ns3/switched-ethernet-channel.h"
 
 #include <bm/bm_sim/counters.h>
@@ -79,6 +81,20 @@ class P4CoreV1model : public P4SwitchCore
     void EventDrivenEgressDequeue(uint32_t port);
     void ScheduleEgressIfNeeded(uint32_t port);
     void PortTxComplete(uint32_t port);
+    void TryTransmitFromQueueDisc(uint32_t port);
+
+    // === Per-port QueueDisc ===
+
+    /**
+     * @brief Install (or replace) a QueueDisc on a given egress port.
+     *
+     * The QueueDisc will be initialized automatically if it has not been
+     * already.  Pass nullptr to remove an existing QueueDisc.
+     *
+     * @param port  Egress port index.
+     * @param qd    The QueueDisc to install, or nullptr to remove.
+     */
+    void SetPortQueueDisc(uint32_t port, Ptr<QueueDisc> qd);
 
     // === Internal helpers ===
     void MulticastPacket(bm::Packet* packet, unsigned int mgid);
@@ -130,7 +146,6 @@ class P4CoreV1model : public P4SwitchCore
 
     std::unique_ptr<InputBuffer> input_buffer;
     NSQueueingLogicPriRL<std::unique_ptr<bm::Packet>, EgressThreadMapper> egress_buffer;
-    bm::Queue<std::unique_ptr<bm::Packet>> output_buffer;
 
     bool m_firstPacket;
 
@@ -149,6 +164,7 @@ class P4CoreV1model : public P4SwitchCore
         EventId pendingEvent{};
     };
 
+    std::unordered_map<uint32_t, Ptr<QueueDisc>> m_portQueueDiscs;
     std::unordered_map<uint32_t, PortTxState> m_portTxState;
 
     /// Physical link rate read from port 0 at startup; used for logging/diagnostics only.
