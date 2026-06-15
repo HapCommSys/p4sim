@@ -14,6 +14,12 @@ include(FindPkgConfig)
 set(third_party_libraries
     "bm"
     "gmp"
+    "jsoncpp"
+    "libpcap"
+    "nanomsg"
+    "libxxhash"
+    "bmruntime"
+    "thrift"
 )
 
 # Initialize variables to collect sources and libraries
@@ -39,6 +45,23 @@ if(PKG_CONFIG_FOUND)
       message(WARNING "Library ${lib} not found. Make sure it is installed and available.")
     endif()
   endforeach()
+endif()
+
+# Prefer pkg-config, but also add fallback libraries from /usr/local/lib
+# to avoid unresolved BMv2/Thrift symbols when module names differ.
+find_library(RUNTIMESTUBS_LIB runtimestubs PATHS /usr/local/lib)
+if(RUNTIMESTUBS_LIB)
+  list(APPEND third_party_libs ${RUNTIMESTUBS_LIB})
+endif()
+
+find_library(BMRUNTIME_LIB bmruntime PATHS /usr/local/lib)
+if(BMRUNTIME_LIB)
+  list(APPEND third_party_libs ${BMRUNTIME_LIB})
+endif()
+
+find_library(THRIFT_LIB thrift PATHS /usr/local/lib)
+if(THRIFT_LIB)
+  list(APPEND third_party_libs ${THRIFT_LIB})
 endif()
 
 list(APPEND third_party_libs -L/usr/local/lib)
