@@ -15,6 +15,7 @@
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  *
  * Authors: Mingyu Ma <mingyu.ma@tu-dresden.de>
+ *          Vineet Goel <vineetgoel692@gmail.com>
  */
 
 #ifndef P4_SWITCH_QUEUE_ITEM_H

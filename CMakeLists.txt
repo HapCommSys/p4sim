@@ -52,7 +52,7 @@ build_lib(
         utils/p4-queue.cc
         utils/fattree-topo-helper.cc
         model/switched-ethernet-channel.cc
-        model/switched-ethernet-host-device.cc
+        model/eth-net-device.cc
         model/p4-switch-core.cc
         model/p4-core-v1model.cc
         model/p4-core-psa.cc
@@ -71,7 +71,7 @@ build_lib(
         utils/primitives-pna.h
         utils/fattree-topo-helper.h
         model/switched-ethernet-channel.h
-        model/switched-ethernet-host-device.h
+        model/eth-net-device.h
         model/p4-switch-core.h
         model/p4-core-v1model.h
         model/p4-core-psa.h

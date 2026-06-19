@@ -20,7 +20,7 @@
 
 #include "switched-ethernet-channel.h"
 
-#include "switched-ethernet-host-device.h"
+#include "eth-net-device.h"
 
 #include "ns3/log.h"
 #include "ns3/node.h"
