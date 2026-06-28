@@ -32,11 +32,13 @@
 #include "ns3/core-module.h"
 #include "ns3/csma-helper.h"
 #include "ns3/csma-net-device.h"
+#include "ns3/custom-p2p-net-device.h"
 #include "ns3/format-utils.h"
 #include "ns3/internet-module.h"
 #include "ns3/network-module.h"
 #include "ns3/p4-helper.h"
 #include "ns3/p4-net-builder.h"
+#include "ns3/p4-p2p-helper.h"
 #include "ns3/p4-topology-reader-helper.h"
 
 #include <filesystem>
@@ -205,7 +207,7 @@ PrintFinalThroughput()
 
     std::cout << "======================================" << std::endl;
     std::cout << "Final Simulation Results:" << std::endl;
-    std::cout << "  ** [App Layer]" << std::endl;
+    std::cout << "  ** [App Layer] (User configured DataRate)" << std::endl;
     std::cout << "  PDR: " << pktDeliveryRatio << "%" << std::endl;
     std::cout << "  TX: " << totalTxBytes << " bytes  (" << first_packet_send_time_tx << "s -> "
               << last_packet_send_time_tx << "s,  elapsed=" << send_time << "s)" << std::endl;
@@ -235,8 +237,9 @@ main(int argc, char* argv[])
     // -----------------------------------------------------------------------
     uint16_t pktSize = 1000;           ///< Application payload size (bytes).
     std::string appDataRate = "3Mbps"; ///< OnOff application data rate.
-    std::string linkRate = "1000Mbps"; ///< CSMA channel data rate.
-    std::string linkDelay = "0.01ms";  ///< CSMA channel one-way propagation delay.
+    std::string linkRate = "1000Mbps"; ///< Channel data rate (P2P or CSMA).
+    std::string linkDelay = "0.01ms";  ///< Channel one-way propagation delay.
+    std::string channelType = "p2p";   ///< Channel type: "p2p" or "csma".
     uint32_t clientIndex = 0;          ///< Index of the sending host.
     uint32_t serverIndex = 1;          ///< Index of the receiving host.
     uint16_t serverPort = 9093;        ///< UDP destination port on the server.
@@ -251,14 +254,15 @@ main(int argc, char* argv[])
     std::string p4JsonPath = p4SrcDir + "/simple_v1model.json";
     std::string flowTablePath = p4SrcDir + "/flowtable_0.txt";
     std::string topoInput = p4SrcDir + "/topo.txt";
-    std::string topoFormat("CsmaTopo");
+    std::string topoFormat("p2pTopo"); // p2pTopo
 
     // ============================  command line ============================
     CommandLine cmd;
     cmd.AddValue("pktSize", "Application payload size in bytes (default 1000)", pktSize);
     cmd.AddValue("appDataRate", "OnOff application data rate, e.g. 3Mbps", appDataRate);
-    cmd.AddValue("linkRate", "CSMA link data rate, e.g. 1000Mbps", linkRate);
-    cmd.AddValue("linkDelay", "CSMA link one-way delay, e.g. 0.01ms", linkDelay);
+    cmd.AddValue("linkRate", "Link data rate, e.g. 1000Mbps", linkRate);
+    cmd.AddValue("linkDelay", "Link one-way delay, e.g. 0.01ms", linkDelay);
+    cmd.AddValue("channelType", "Channel type: p2p or csma (default p2p)", channelType);
     cmd.AddValue("clientIndex", "Sender host index (default 0)", clientIndex);
     cmd.AddValue("serverIndex", "Receiver host index (default 1)", serverIndex);
     cmd.AddValue("serverPort", "UDP destination port on the server (default 9093)", serverPort);
@@ -270,6 +274,19 @@ main(int argc, char* argv[])
     cmd.AddValue("model", "Switch model: 0=P4 V1Model, 1=NS-3 bridge baseline", model);
     cmd.AddValue("pcap", "Enable PCAP packet capture (true/false)", enablePcap);
     cmd.Parse(argc, argv);
+
+    if (channelType != "p2p" && channelType != "csma")
+    {
+        NS_LOG_ERROR("Invalid channelType '" << channelType << "'. Use 'p2p' or 'csma'.");
+        return -1;
+    }
+    if (model == 1 && channelType == "p2p")
+    {
+        NS_LOG_WARN("model=1 (NS-3 bridge baseline) only supports CSMA channel. "
+                    "Please use --channelType=csma with model=1. Stopping simulation.");
+        return -1;
+    }
+    topoFormat = (channelType == "csma") ? "CsmaTopo" : "p2pTopo";
 
     // Apply runtime-configurable timing after parsing
     client_stop_time = client_start_time + flowDuration;
@@ -300,13 +317,26 @@ main(int argc, char* argv[])
     NS_LOG_INFO("*** Host number: " << hostNum << ", Switch number: " << switchNum);
 
     // set default network link parameter
-    CsmaHelper csma;
-    csma.SetChannelAttribute("DataRate", StringValue(linkRate));
-    csma.SetChannelAttribute("Delay", StringValue(linkDelay));
-
     std::vector<SwitchNodeC_t> switchNodes(switchNum);
     std::vector<HostNodeC_t> hostNodes(hostNum);
-    BuildNetworkFromTopology(topoReader, csma, switchNodes, hostNodes);
+
+    CsmaHelper csma;
+    P4PointToPointHelper p2p;
+
+    if (channelType == "csma")
+    {
+        NS_LOG_INFO("*** Channel type: CSMA  rate=" << linkRate << "  delay=" << linkDelay);
+        csma.SetChannelAttribute("DataRate", StringValue(linkRate));
+        csma.SetChannelAttribute("Delay", StringValue(linkDelay));
+        BuildNetworkFromTopology(topoReader, csma, switchNodes, hostNodes);
+    }
+    else
+    {
+        NS_LOG_INFO("*** Channel type: P2P  rate=" << linkRate << "  delay=" << linkDelay);
+        p2p.SetDeviceAttribute("DataRate", StringValue(linkRate));
+        p2p.SetChannelAttribute("Delay", StringValue(linkDelay));
+        BuildNetworkFromTopology(topoReader, p2p, switchNodes, hostNodes);
+    }
 
     // Install the Internet stack
     InternetStackHelper internet;
@@ -388,33 +418,74 @@ main(int argc, char* argv[])
     sinkApp1.Get(0)->TraceConnectWithoutContext("Rx",
                                                 MakeBoundCallback(&RxCallback, (uint32_t)pktSize));
 
-    // Attach MAC-level traces to the sender NIC
-    Ptr<CsmaNetDevice> txDev = DynamicCast<CsmaNetDevice>(terminals.Get(clientI)->GetDevice(0));
-    if (txDev)
+    // Attach MAC-level traces to the sender and receiver NICs
+    if (channelType == "p2p")
     {
-        txDev->TraceConnectWithoutContext("MacTx",
-                                          MakeBoundCallback(&MacTxTrace, std::string("TX-host")));
-        txDev->TraceConnectWithoutContext("MacRx",
-                                          MakeBoundCallback(&MacRxTrace, std::string("TX-host")));
-        txDev->TraceConnectWithoutContext("MacTxDrop",
-                                          MakeBoundCallback(&TxDropTrace, std::string("TX-host")));
+        Ptr<CustomP2PNetDevice> txDev =
+            DynamicCast<CustomP2PNetDevice>(terminals.Get(clientI)->GetDevice(0));
+        if (txDev)
+        {
+            txDev->TraceConnectWithoutContext(
+                "MacTx",
+                MakeBoundCallback(&MacTxTrace, std::string("TX-host")));
+            txDev->TraceConnectWithoutContext(
+                "MacRx",
+                MakeBoundCallback(&MacRxTrace, std::string("TX-host")));
+            txDev->TraceConnectWithoutContext(
+                "MacTxDrop",
+                MakeBoundCallback(&TxDropTrace, std::string("TX-host")));
+        }
+        Ptr<CustomP2PNetDevice> rxDev =
+            DynamicCast<CustomP2PNetDevice>(terminals.Get(serverI)->GetDevice(0));
+        if (rxDev)
+        {
+            rxDev->TraceConnectWithoutContext(
+                "MacTx",
+                MakeBoundCallback(&MacTxTrace, std::string("RX-host")));
+            rxDev->TraceConnectWithoutContext(
+                "MacRx",
+                MakeBoundCallback(&MacRxTrace, std::string("RX-host")));
+            rxDev->TraceConnectWithoutContext(
+                "MacTxDrop",
+                MakeBoundCallback(&TxDropTrace, std::string("RX-host")));
+        }
     }
-
-    // Attach MAC-level traces to the receiver NIC
-    Ptr<CsmaNetDevice> rxDev = DynamicCast<CsmaNetDevice>(terminals.Get(serverI)->GetDevice(0));
-    if (rxDev)
+    else
     {
-        rxDev->TraceConnectWithoutContext("MacTx",
-                                          MakeBoundCallback(&MacTxTrace, std::string("RX-host")));
-        rxDev->TraceConnectWithoutContext("MacRx",
-                                          MakeBoundCallback(&MacRxTrace, std::string("RX-host")));
-        rxDev->TraceConnectWithoutContext("MacTxDrop",
-                                          MakeBoundCallback(&TxDropTrace, std::string("RX-host")));
+        Ptr<CsmaNetDevice> txDev = DynamicCast<CsmaNetDevice>(terminals.Get(clientI)->GetDevice(0));
+        if (txDev)
+        {
+            txDev->TraceConnectWithoutContext(
+                "MacTx",
+                MakeBoundCallback(&MacTxTrace, std::string("TX-host")));
+            txDev->TraceConnectWithoutContext(
+                "MacRx",
+                MakeBoundCallback(&MacRxTrace, std::string("TX-host")));
+            txDev->TraceConnectWithoutContext(
+                "MacTxDrop",
+                MakeBoundCallback(&TxDropTrace, std::string("TX-host")));
+        }
+        Ptr<CsmaNetDevice> rxDev = DynamicCast<CsmaNetDevice>(terminals.Get(serverI)->GetDevice(0));
+        if (rxDev)
+        {
+            rxDev->TraceConnectWithoutContext(
+                "MacTx",
+                MakeBoundCallback(&MacTxTrace, std::string("RX-host")));
+            rxDev->TraceConnectWithoutContext(
+                "MacRx",
+                MakeBoundCallback(&MacRxTrace, std::string("RX-host")));
+            rxDev->TraceConnectWithoutContext(
+                "MacTxDrop",
+                MakeBoundCallback(&TxDropTrace, std::string("RX-host")));
+        }
     }
 
     if (enablePcap)
     {
-        csma.EnablePcapAll("p4-v1model-ipv4-forwarding");
+        if (channelType == "csma")
+            csma.EnablePcapAll("p4-v1model-ipv4-forwarding");
+        else
+            p2p.EnablePcapAll("p4-v1model-ipv4-forwarding");
     }
 
     // Run simulation
