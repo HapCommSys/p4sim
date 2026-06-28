@@ -23,6 +23,12 @@
 #include "ns3/register-access-v1model.h"
 #include "ns3/simulator.h"
 
+#undef LOG_INFO
+#undef LOG_ERROR
+#undef LOG_DEBUG
+#undef LOG_WARN
+#undef LOG_LOGIC
+
 NS_LOG_COMPONENT_DEFINE("P4CoreV1modelPipeline");
 
 namespace ns3
