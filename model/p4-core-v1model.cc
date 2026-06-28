@@ -15,17 +15,21 @@
  *
  * Authors: Antonin Bas <antonin@barefootnetworks.com>
  * Modified: Mingyu Ma <mingyu.ma@tu-dresden.de>
+ *           Vineet Goel <vineetgoel692@gmail.com>
  */
 
 #include "ns3/p4-core-v1model.h"
 
 #include "ns3/data-rate.h"
 #include "ns3/p4-switch-net-device.h"
+#include "ns3/p4-switch-queue-item.h"
 #include "ns3/primitives-v1model.h"
 #include "ns3/register-access-v1model.h"
 #include "ns3/simulator.h"
 #include "ns3/switched-ethernet-channel.h"
+#include "p4-switch-net-device.h"
 
+#include <cstdint>
 #include <fstream> // tracing info to file
 #include <sstream>
 
@@ -90,7 +94,6 @@ P4CoreV1model::P4CoreV1model(P4SwitchNetDevice* net_device,
                     queue_buffer_size,
                     EgressThreadMapper(m_nbEgressThreads),
                     nb_queues_per_port),
-      output_buffer(64),
       m_firstPacket(false)
 {
     // configure for the switch v1model
@@ -130,8 +133,6 @@ P4CoreV1model::~P4CoreV1model()
             continue;
         }
     }
-
-    output_buffer.push_front(nullptr);
 
     NS_LOG_INFO("P4CoreV1model destroyed successfully.");
 }
@@ -253,6 +254,13 @@ P4CoreV1model::EventDrivenEgressDequeue(uint32_t port)
     {
         // Should not normally happen, but guard anyway.
         NS_LOG_DEBUG("Port " << port << " still busy – PortTxComplete will retry");
+        return;
+    }
+    Ptr<SwitchedEthernetChannel> ch=m_switchNetDevice->GetPortChannel(port);
+    uint32_t devId=m_switchNetDevice->GetPortDeviceId(port);
+    if (ch && ch->IsBusy(devId))
+    {
+        NS_LOG_WARN("Port "<<port<<": channel still busy (devId= "<<devId<<"), deferring dequeue - PortTxComplete will retyr");
         return;
     }
 
@@ -399,39 +407,123 @@ P4CoreV1model::EventDrivenEgressDequeue(uint32_t port)
         return;
     }
 
-    // Hand the packet off to the ns-3 network stack.
-    // Mark the port busy before calling SendNs3Packet so that any re-entrant
-    // Enqueue() call (e.g. from an egress clone) correctly sees the port as occupied.
+    // Convert the BMv2 packet to an ns-3 packet and extract routing metadata
+    // before deciding which path (QueueDisc vs direct) to take.
+    uint16_t protocol = RegisterAccess::get_ns_protocol(bm_packet.get());
+    int addr_index = RegisterAccess::get_ns_address(bm_packet.get());
     size_t pkt_bytes = bm_packet->get_data_size();
+    Ptr<Packet> ns_packet = this->ConvertToNs3Packet(std::move(bm_packet));
+
+    NS_LOG_DEBUG("Sending packet to NS-3 stack, Packet ID: " << ns_packet->GetUid()
+                                                              << ", Size: " << ns_packet->GetSize()
+                                                              << " bytes, Port: " << out_port);
+
+    // Check if a QueueDisc is installed on this egress port.
+    auto it = m_portQueueDiscs.find(static_cast<uint32_t>(out_port));
+
+    if (it != m_portQueueDiscs.end() && it->second != nullptr)
+    {
+        // --- QueueDisc path ---
+        // Wrap the packet in a P4SwitchQueueItem and push it into the QueueDisc.
+        // The QueueDisc buffers it; TryTransmitFromQueueDisc() will drain
+        // to the wire only if the port is free.
+        Ptr<P4SwitchQueueItem> item = Create<P4SwitchQueueItem>(
+            ns_packet,
+            m_destinationList[addr_index],
+            protocol,
+            static_cast<uint32_t>(out_port));
+
+        bool ok = it->second->Enqueue(item);
+        if (!ok)
+        {
+            NS_LOG_WARN("Port " << out_port << ": QueueDisc rejected packet (full?)");
+        }
+
+        // Attempt to drain the QueueDisc onto the wire.
+        TryTransmitFromQueueDisc(static_cast<uint32_t>(out_port));
+    }
+    else
+    {
+        // --- Direct path (no QueueDisc) ---
+        // Mark the port busy so that any re-entrant Enqueue() correctly
+        // sees it as occupied, then transmit and schedule PortTxComplete.
+        pstate.busy = true;
+
+        uint64_t tx_ns = (m_linkRateBps > 0)
+                             ? (pkt_bytes * 8ULL * 1000000000ULL / m_linkRateBps)
+                             : 0ULL;
+        Time txDelay = NanoSeconds(tx_ns);
+
+        NS_LOG_DEBUG("Port " << out_port << ": direct TX, " << pkt_bytes
+                             << " B, txDelay=" << tx_ns << " ns");
+
+        m_switchNetDevice->SendNs3Packet(ns_packet,
+                                         static_cast<int>(out_port),
+                                         protocol,
+                                         m_destinationList[addr_index]);
+
+        Simulator::Schedule(txDelay,
+                            &P4CoreV1model::PortTxComplete,
+                            this,
+                            static_cast<uint32_t>(out_port));
+    }
+}
+
+// ---------------------------------------------------------------------------
+// TryTransmitFromQueueDisc — drain one packet from the port's QueueDisc
+// ---------------------------------------------------------------------------
+
+void
+P4CoreV1model::TryTransmitFromQueueDisc(uint32_t port)
+{
+    NS_LOG_FUNCTION(this << port);
+
+    auto& pstate = m_portTxState[port];
+    if (pstate.busy)
+    {
+        NS_LOG_DEBUG("Port " << port << ": wire busy, QueueDisc drain deferred");
+        return;
+    }
+
+    auto it = m_portQueueDiscs.find(port);
+    if (it == m_portQueueDiscs.end() || !it->second)
+    {
+        return;
+    }
+
+    Ptr<QueueDiscItem> item = it->second->Dequeue();
+    if (!item)
+    {
+        NS_LOG_DEBUG("Port " << port << ": QueueDisc empty, nothing to transmit");
+        return;
+    }
+
+    // Mark the port busy and transmit.
     pstate.busy = true;
 
-    // Compute the serialisation delay from the configured link rate and schedule
-    // PortTxComplete to fire once the packet has been fully clocked out.
-    // This mirrors what P4CorePsa does (p4-core-psa.cc, PortTxComplete scheduling).
+    uint64_t pkt_bytes = item->GetPacket()->GetSize();
     uint64_t tx_ns = (m_linkRateBps > 0)
-                         ? (static_cast<uint64_t>(pkt_bytes) * 8ULL * 1000000000ULL / m_linkRateBps)
+                         ? (pkt_bytes * 8ULL * 1000000000ULL / m_linkRateBps)
                          : 0ULL;
     Time txDelay = NanoSeconds(tx_ns);
 
-    NS_LOG_DEBUG("Port " << out_port << ": handing " << pkt_bytes
-                         << " B to NetDevice, txDelay=" << tx_ns << " ns");
+    NS_LOG_DEBUG("Port " << port << ": QueueDisc TX, " << pkt_bytes
+                         << " B, txDelay=" << tx_ns << " ns");
 
-    uint16_t protocol = RegisterAccess::get_ns_protocol(bm_packet.get());
-    int addr_index = RegisterAccess::get_ns_address(bm_packet.get());
-    Ptr<Packet> ns_packet = this->ConvertToNs3Packet(std::move(bm_packet));
-    NS_LOG_DEBUG("Sending packet to NS-3 stack, Packet ID: " << ns_packet->GetUid()
-                                                             << ", Size: " << ns_packet->GetSize()
-                                                             << " bytes, Port: " << out_port);
-    m_switchNetDevice->SendNs3Packet(ns_packet,
-                                     static_cast<int>(out_port),
-                                     protocol,
-                                     m_destinationList[addr_index]);
+    m_switchNetDevice->SendNs3Packet(item->GetPacket(),
+                                     static_cast<int>(port),
+                                     item->GetProtocol(),
+                                     item->GetAddress());
 
     Simulator::Schedule(txDelay,
                         &P4CoreV1model::PortTxComplete,
                         this,
-                        static_cast<uint32_t>(out_port));
+                        port);
 }
+
+// ---------------------------------------------------------------------------
+// PortTxComplete — wire is free, service the next packet
+// ---------------------------------------------------------------------------
 
 void
 P4CoreV1model::PortTxComplete(uint32_t port)
@@ -441,16 +533,27 @@ P4CoreV1model::PortTxComplete(uint32_t port)
     auto& pstate = m_portTxState[port];
     pstate.busy = false;
 
-    // Check if there are still packets waiting for this port.
-    if (egress_buffer.size(port) > 0)
+    // Priority 1: drain the QueueDisc if it has buffered packets.
+    auto it = m_portQueueDiscs.find(port);
+    if (it != m_portQueueDiscs.end() && it->second && it->second->GetNPackets() > 0)
     {
-        NS_LOG_DEBUG(
-            "Port " << port << ": PortTxComplete – queued packets remain, scheduling next dequeue");
+        NS_LOG_DEBUG("Port " << port
+                             << ": PortTxComplete – draining QueueDisc ("
+                             << it->second->GetNPackets() << " pkts buffered)");
+        TryTransmitFromQueueDisc(port);
+    }
+
+    // Priority 2: if QueueDisc didn't take the port, feed from egress_buffer.
+    if (!pstate.busy && egress_buffer.size(port) > 0)
+    {
+        NS_LOG_DEBUG("Port " << port
+                             << ": PortTxComplete – queued packets remain in egress_buffer,"
+                                " scheduling next dequeue");
         ScheduleEgressIfNeeded(port);
     }
-    else
+    else if (!pstate.busy)
     {
-        NS_LOG_DEBUG("Port " << port << ": PortTxComplete – queue empty, port idle");
+        NS_LOG_DEBUG("Port " << port << ": PortTxComplete – all queues empty, port idle");
     }
 }
 
@@ -833,6 +936,35 @@ P4CoreV1model::SetAllEgressQueueRates(const uint64_t rate_pps)
 {
     egress_buffer.set_rate_for_all(rate_pps);
     return 0;
+}
+
+// ---------------------------------------------------------------------------
+// Per-port QueueDisc installation
+// ---------------------------------------------------------------------------
+
+void
+P4CoreV1model::SetPortQueueDisc(uint32_t port, Ptr<QueueDisc> qd)
+{
+    NS_LOG_FUNCTION(this << port << qd);
+
+    if (qd)
+    {
+        // Following ns-3's TrafficControlLayer pattern: the installer is
+        // responsible for calling Initialize() before the QueueDisc is used.
+        // We do it here so that callers don't forget.
+        if (!qd->IsInitialized())
+        {
+            qd->Initialize();
+        }
+        NS_LOG_INFO("Installed QueueDisc on port " << port << " (" << qd->GetTypeId().GetName()
+                                                    << ")");
+    }
+    else
+    {
+        NS_LOG_INFO("Removed QueueDisc from port " << port);
+    }
+
+    m_portQueueDiscs[port] = qd;
 }
 
 } // namespace ns3

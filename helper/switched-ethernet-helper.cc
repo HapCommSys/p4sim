@@ -25,7 +25,7 @@
 #include "ns3/packet.h"
 #include "ns3/pcap-file-wrapper.h"
 #include "ns3/switched-ethernet-channel.h"
-#include "ns3/switched-ethernet-host-device.h"
+#include "ns3/eth-net-device.h"
 #include "ns3/trace-helper.h"
 
 namespace ns3

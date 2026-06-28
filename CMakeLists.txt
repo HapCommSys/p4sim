@@ -52,12 +52,13 @@ build_lib(
         utils/p4-queue.cc
         utils/fattree-topo-helper.cc
         model/switched-ethernet-channel.cc
-        model/switched-ethernet-host-device.cc
+        model/eth-net-device.cc
         model/p4-switch-core.cc
         model/p4-core-v1model.cc
         model/p4-core-psa.cc
         model/p4-nic-pna.cc
         model/p4-switch-net-device.cc
+        model/p4-switch-queue-item.cc
         helper/p4-helper.cc
         helper/switched-ethernet-helper.cc
         helper/build-flowtable-helper.cc
@@ -70,12 +71,13 @@ build_lib(
         utils/primitives-pna.h
         utils/fattree-topo-helper.h
         model/switched-ethernet-channel.h
-        model/switched-ethernet-host-device.h
+        model/eth-net-device.h
         model/p4-switch-core.h
         model/p4-core-v1model.h
         model/p4-core-psa.h
         model/p4-nic-pna.h
         model/p4-switch-net-device.h
+        model/p4-switch-queue-item.h
         helper/p4-helper.h
         helper/switched-ethernet-helper.h
         helper/build-flowtable-helper.h
@@ -86,6 +88,7 @@ build_lib(
         ${libapplications}
         ${third_party_libs}
     TEST_SOURCES # equivalent to module_test.source
+        test/p4-switch-queue-item-test-suite.cc
         # test/p4-controller-test-suite.cc
         #  test/p4sim-test-suite.cc
         #  test/format-utils-test-suite.cc

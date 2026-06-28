@@ -15,9 +15,10 @@
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  *
  * Authors: Mingyu Ma <mingyu.ma@tu-dresden.de>
+ * Modified: Vineet Goel <vineetgoel692@gmail.com>
  */
 
-#include "switched-ethernet-host-device.h"
+#include "eth-net-device.h"
 
 #include "switched-ethernet-channel.h"
 

@@ -15,6 +15,7 @@
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  *
  * Authors: Mingyu Ma <mingyu.ma@tu-dresden.de>
+ * Modified: Vineet Goel <vineetgoel692@gmail.com>
  */
 
 #ifndef P4_SWITCH_NET_DEVICE_H
@@ -24,6 +25,7 @@
 #include "ns3/net-device.h"
 #include "ns3/traced-callback.h"
 
+#include <cstdint>
 #include <stdint.h>
 #include <string>
 #include <vector>
@@ -165,7 +167,8 @@ class P4SwitchNetDevice : public NetDevice
 
     /** \return Port index of \p sender, or UINT32_MAX if not found. */
     uint32_t GetPortNumber(Ptr<P4SwitchNetDevice> sender) const;
-
+    /** \return Device-slot ID for port \p n in its channel, or UNIT32_MAX if invalid. */
+    uint32_t GetPortDeviceId(uint32_t n) const;
     // -----------------------------------------------------------------------
     // P4 core accessor
     // -----------------------------------------------------------------------

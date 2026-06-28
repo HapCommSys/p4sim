@@ -15,10 +15,11 @@
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  *
  * Authors: Mingyu Ma <mingyu.ma@tu-dresden.de>
+ * Modified: Vineet Goel <vineetgoel692@gmail.com>
  */
 
-#ifndef SWITCHED_ETHERNET_HOST_DEVICE_H
-#define SWITCHED_ETHERNET_HOST_DEVICE_H
+#ifndef ETH_NET_DEVICE_H
+#define ETH_NET_DEVICE_H
 
 #include "ns3/mac48-address.h"
 #include "ns3/net-device.h"
@@ -159,4 +160,4 @@ class SwitchedEthernetHostDevice : public NetDevice
 
 } // namespace ns3
 
-#endif // SWITCHED_ETHERNET_HOST_DEVICE_H
+#endif // ETH_NET_DEVICE_H

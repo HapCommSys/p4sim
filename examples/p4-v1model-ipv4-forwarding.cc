@@ -48,7 +48,7 @@
 #include "ns3/p4-helper.h"
 #include "ns3/p4-switch-net-device.h"
 #include "ns3/switched-ethernet-helper.h"
-#include "ns3/switched-ethernet-host-device.h"
+#include "ns3/eth-net-device.h"
 
 #include <filesystem>
 #include <iomanip>
