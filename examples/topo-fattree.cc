@@ -16,19 +16,38 @@
  * Authors: Mingyu Ma <mingyu.ma@tu-dresden.de>
  */
 
+/**
+ * k-ary fat-tree data-center topology built from plain ns-3 nodes (no P4 program).
+ *
+ * This is the non-P4 counterpart of p4-topo-fattree. A fat tree has many redundant
+ * paths between any two hosts, so it cannot be built from ns-3 BridgeNetDevices:
+ * ns-3 bridges implement no spanning tree protocol, and a bridged fat tree is a
+ * layer-2 loop (Ipv4GlobalRoutingHelper aborts with "L2 forwarding loop detected!",
+ * and ARP broadcasts would circulate forever). Instead, every switch is an IPv4
+ * router and every link is its own /30 subnet.
+ *
+ * Routes come from Nix-vector routing (on-demand shortest path). ns-3 global routing
+ * is not used: its SPF computation asserts on the equal-cost paths of a fat tree
+ * ("Assumed there is at most one exit from the root to this vertex").
+ *
+ * Addressing (pod p, edge switch e inside the pod, host h below that edge switch):
+ *   edge switch <-> host link   10.p.e.(4h)/30, edge switch .4h+1, host .4h+2
+ *   switch <-> switch link      one /30 per link, allocated from 172.16.0.0/12
+ *
+ * Traffic: for the first half of the hosts, host i sends TCP OnOff traffic to host
+ * (hostNum - 1 - i). A per-flow summary (sent / received bytes, goodput) is printed
+ * at the end.
+ */
+
 #include "ns3/applications-module.h"
-#include "ns3/bridge-helper.h"
 #include "ns3/core-module.h"
 #include "ns3/csma-module.h"
-#include "ns3/fattree-topo-helper.h"
 #include "ns3/internet-module.h"
-#include "ns3/ipv4-global-routing-helper.h"
 #include "ns3/network-module.h"
 #include "ns3/nix-vector-helper.h"
-#include "ns3/p4-helper.h"
 
+#include <iomanip>
 #include <iostream>
-#include <netinet/in.h>
 #include <string>
 #include <sys/time.h>
 #include <time.h>
@@ -57,17 +76,14 @@ getTickCount(void)
     return currentTime;
 }
 
-static void
-SinkRx(Ptr<const Packet> p, const Address& ad)
-{
-    std::cout << "Rx" << "Received from  " << ad << std::endl;
-}
+// Bytes handed to the socket by each OnOff client, indexed by flow.
+static std::vector<uint64_t> g_flowTxBytes;
 
-// static void
-// PingRtt(std::string context, Time rtt)
-// {
-//     std::cout << "Rtt" << context << " " << rtt << std::endl;
-// }
+static void
+FlowTx(uint32_t flow, Ptr<const Packet> p)
+{
+    g_flowTxBytes[flow] += p->GetSize();
+}
 
 // switch number:0~switchNum-1
 // host number: 0~hostNum-1
@@ -133,41 +149,11 @@ ShowSwitchHostInfo(const std::vector<SwitchUnit_t>& switchInfos,
     }
 }
 
-char*
+// Base address of the host links below edge switch s of pod `pod`: 10.pod.s.0
+std::string
 GetHostIpAddrBase(unsigned int pod, unsigned int s)
 {
-    std::string ipBase("10.");
-    if (pod == 0)
-        ipBase.append("0.");
-    else
-    {
-        std::string podStr;
-        while (pod)
-        {
-            podStr.insert(podStr.begin(), pod % 10 + '0');
-            pod /= 10;
-        }
-        ipBase.append(podStr);
-        ipBase.insert(ipBase.end(), '.');
-    }
-    if (s == 0)
-        ipBase.append("0.0");
-    else
-    {
-        std::string sStr;
-        while (s)
-        {
-            sStr.insert(sStr.begin(), s % 10 + '0');
-            s /= 10;
-        }
-        ipBase.append(sStr);
-        ipBase.append(".0");
-    }
-    char* res = new char[ipBase.size() + 1];
-    for (size_t i = 0; i < ipBase.size(); i++)
-        res[i] = ipBase[i];
-    res[ipBase.size()] = '\0';
-    return res;
+    return "10." + std::to_string(pod) + "." + std::to_string(s) + ".0";
 }
 
 int
@@ -179,15 +165,28 @@ main(int argc, char* argv[])
     std::string linkDataRate("1000Mbps");
     std::string linkDelay("0.01ms");
     int packetSize = 1024;
+    uint16_t servPort = 9; // TCP port of the PacketSink on every server host
     std::string onOffDataRate("1Mbps");
     std::string maxBytes("0");
+    double clientStartTime = 1.0;
+    double clientStopTime = 10.0;
+    double sinkStopTime = 11.0;
+    double simStopTime = 12.0;
 
     LogComponentEnable("TOPOFATTREE", LOG_LEVEL_DEBUG);
-    // LogComponentEnable("BridgeNetDevice",LOG_LEVEL_LOGIC);
 
     CommandLine cmd;
-    cmd.AddValue("podnum", "Numbers of built tree topo levels", podNum);
+    cmd.AddValue("podnum", "Number of pods k of the k-ary fat tree (even, 2..128)", podNum);
     cmd.Parse(argc, argv);
+
+    NS_ABORT_MSG_IF(podNum < 2 || podNum % 2 != 0 || podNum > 128,
+                    "podnum must be an even number between 2 and 128, got " << podNum);
+
+    // All flows start at the same time and share the first hops of their shortest paths.
+    // With the ns-3 default of 3 packets waiting per unresolved ARP entry, the 4th SYN
+    // towards the same next hop is dropped and its connection only starts after the 3s
+    // SYN retransmission timeout. Use a queue close to the Linux default (unres_qlen 101).
+    Config::SetDefault("ns3::ArpCache::PendingQueueSize", UintegerValue(100));
 
     unsigned int coreSwitchNum = podNum * podNum / 4;
     unsigned int hostNum = coreSwitchNum * podNum;
@@ -210,18 +209,19 @@ main(int argc, char* argv[])
     csma.SetChannelAttribute("DataRate", StringValue(linkDataRate));
     csma.SetChannelAttribute("Delay", StringValue(linkDelay));
 
-    // Initialize Internet Stack and Routing Protocols
+    // Initialize Internet Stack and Routing Protocols on hosts and switches. Every switch
+    // is an IPv4 router, so the redundant fat-tree paths do not form layer-2 loops.
     //
     InternetStackHelper internet;
     Ipv4NixVectorHelper nixRouting;
-    Ipv4GlobalRoutingHelper globalRouting;
-    // Ipv4StaticRoutingHelper staticRouting;
-
-    Ipv4ListRoutingHelper Routinglist;
-    Routinglist.Add(globalRouting, 0);
-    Routinglist.Add(nixRouting, 10);
-    internet.SetRoutingHelper(Routinglist);
+    internet.SetRoutingHelper(nixRouting);
     internet.Install(hosts);
+    internet.Install(switches);
+
+    // Host links: 10.pod.edge.(4h)/30. Switch-to-switch links: one /30 each from 172.16/12.
+    Ipv4AddressHelper hostLinkIpv4;
+    Ipv4AddressHelper switchLinkIpv4;
+    switchLinkIpv4.SetBase("172.16.0.0", "255.255.255.252");
 
     //=========== Connect aggregate switches to edge switches, edge switches to hosts  ===========//
     unsigned int curAggrSwitchIndex;
@@ -229,14 +229,12 @@ main(int argc, char* argv[])
     unsigned int aggrLinkEdgeSwitchIndex;
     unsigned int edgeLinkHostIndex;
 
-    Ipv4AddressHelper ipv4;
-    // ipv4.SetBase("10.0.0.0","255.255.255.0","0.0.0.2");
     for (unsigned int i = 0; i < podNum; i++) // number pod
     {
         for (unsigned int j = 0; j < halfPodNum; j++) // number switch in pod
         {
-            // set host ip base
-            ipv4.SetBase(GetHostIpAddrBase(i, j), "255.255.255.0");
+            // set host link ip base
+            hostLinkIpv4.SetBase(GetHostIpAddrBase(i, j).c_str(), "255.255.255.252");
 
             curAggrSwitchIndex = aggrSwitchIndex + i * halfPodNum + j;
             curEdgeSwitchIndex = edgeSwitchIndex + i * halfPodNum + j;
@@ -249,6 +247,8 @@ main(int argc, char* argv[])
                 NetDeviceContainer linkAggrEdge =
                     csma.Install(NodeContainer(switches.Get(curAggrSwitchIndex),
                                                switches.Get(aggrLinkEdgeSwitchIndex)));
+                switchLinkIpv4.Assign(linkAggrEdge);
+                switchLinkIpv4.NewNetwork();
 
                 switchInfos[curAggrSwitchIndex].switchDevices.Add(linkAggrEdge.Get(0));
                 switchInfos[aggrLinkEdgeSwitchIndex].switchDevices.Add(linkAggrEdge.Get(1));
@@ -269,9 +269,10 @@ main(int argc, char* argv[])
 
                 switchInfos[curEdgeSwitchIndex].switchDevices.Add(linkEdgeHost.Get(0));
                 hostInfos[edgeLinkHostIndex].hostDevice.Add(linkEdgeHost.Get(1));
-                // assign host ip
-                hostInfos[edgeLinkHostIndex].hostIpv4 =
-                    ipv4.Assign(hostInfos[edgeLinkHostIndex].hostDevice);
+                // assign ip: edge switch port gets .4h+1 (the host's gateway), host gets .4h+2
+                Ipv4InterfaceContainer edgeHostIf = hostLinkIpv4.Assign(linkEdgeHost);
+                hostLinkIpv4.NewNetwork();
+                hostInfos[edgeLinkHostIndex].hostIpv4.Add(edgeHostIf.Get(1));
 
                 switchInfos[curEdgeSwitchIndex].isSwitch.push_back(false);
                 switchInfos[curEdgeSwitchIndex].index.push_back(edgeLinkHostIndex);
@@ -296,6 +297,8 @@ main(int argc, char* argv[])
             coreLinkAggrSwitchIndex = aggrSwitchIndex + j * halfPodNum + k;
             NetDeviceContainer linkCoreAggr =
                 csma.Install(NodeContainer(switches.Get(i), switches.Get(coreLinkAggrSwitchIndex)));
+            switchLinkIpv4.Assign(linkCoreAggr);
+            switchLinkIpv4.NewNetwork();
 
             switchInfos[i].switchDevices.Add(linkCoreAggr.Get(0));
             switchInfos[coreLinkAggrSwitchIndex].switchDevices.Add(linkCoreAggr.Get(1));
@@ -322,76 +325,73 @@ main(int argc, char* argv[])
             startPodI = 0;
     }
 
-    //=========== Bridge switch and switch devices  ===========//
-    BridgeHelper bridge;
-    for (unsigned int i = 0; i < switchNum; i++)
-    {
-        bridge.Install(switches.Get(i), switchInfos[i].switchDevices);
-    }
-
     //=========== Show switch and host info  ===========//
     ShowSwitchHostInfo(switchInfos, hostInfos);
 
-    std::cout << "Using Bridge with L2 fat tree will cause error!!!!!" << std::endl;
-
     //=========== Build OnOff applications  ===========//
 
-    ApplicationContainer apps;
     unsigned int halfHostNum = hostNum / 2;
+    g_flowTxBytes.assign(halfHostNum, 0);
+    std::vector<Ptr<PacketSink>> flowSinks(halfHostNum);
     for (unsigned int i = 0; i < halfHostNum; i++)
     {
         unsigned int serverI = hostNum - i - 1;
         Ipv4Address serverAddr = hostInfos[serverI].hostIpv4.GetAddress(0);
-        InetSocketAddress dst = InetSocketAddress(serverAddr);
+        InetSocketAddress dst = InetSocketAddress(serverAddr, servPort);
 
         OnOffHelper onOff = OnOffHelper("ns3::TcpSocketFactory", dst);
         onOff.SetAttribute("PacketSize", UintegerValue(packetSize));
         onOff.SetAttribute("DataRate", StringValue(onOffDataRate));
         onOff.SetAttribute("MaxBytes", StringValue(maxBytes));
 
-        apps = onOff.Install(hosts.Get(i));
-        apps.Start(Seconds(1.0));
-        apps.Stop(Seconds(10.0));
+        ApplicationContainer clientApps = onOff.Install(hosts.Get(i));
+        clientApps.Start(Seconds(clientStartTime));
+        clientApps.Stop(Seconds(clientStopTime));
+        clientApps.Get(0)->TraceConnectWithoutContext("Tx", MakeBoundCallback(&FlowTx, i));
 
         PacketSinkHelper sink = PacketSinkHelper("ns3::TcpSocketFactory", dst);
-        apps = sink.Install(hosts.Get(serverI));
-        apps.Start(Seconds(0.0));
-        apps.Stop(Seconds(11.0));
+        ApplicationContainer sinkApps = sink.Install(hosts.Get(serverI));
+        sinkApps.Start(Seconds(0.0));
+        sinkApps.Stop(Seconds(sinkStopTime));
+        flowSinks[i] = DynamicCast<PacketSink>(sinkApps.Get(0));
 
         NS_LOG_DEBUG("Data send from client " << i << " to the server " << serverI);
     }
 
-    Ipv4GlobalRoutingHelper::PopulateRoutingTables();
-
     csma.EnablePcapAll("topo-fattree", false);
 
-    // Test to print all the applications and types.
-    // std::cout << "=================" << std::endl;
-    // for (uint32_t nodeId = 0; nodeId < ns3::NodeList::GetNNodes(); ++nodeId)
-    // {
-    //     Ptr<ns3::Node> node = ns3::NodeList::GetNode(nodeId);
-    //     std::cout << "Node " << nodeId << " has " << node->GetNApplications()
-    //               << " application(s):" << std::endl;
-
-    //     for (uint32_t appId = 0; appId < node->GetNApplications(); ++appId)
-    //     {
-    //         Ptr<ns3::Application> app = node->GetApplication(appId);
-    //         std::cout << "  App[" << appId << "]: " << app->GetInstanceTypeId().GetName()
-    //                   << std::endl;
-    //     }
-    // }
-    // std::cout << "=================" << std::endl;
-
-    Config::ConnectWithoutContext("/NodeList/8/ApplicationList/0/$ns3::PacketSink/Rx",
-                                  MakeCallback(&SinkRx));
-
-    // Config::Connect("/NodeList/*/ApplicationList/*/$ns3::V4Ping/Rtt", MakeCallback(&PingRtt));
     Packet::EnablePrinting();
 
     unsigned long simulateStart = getTickCount();
+    Simulator::Stop(Seconds(simStopTime));
     Simulator::Run();
+
+    //=========== Per-flow results ===========//
+    double sendDuration = clientStopTime - clientStartTime;
+    uint64_t totalTx = 0;
+    uint64_t totalRx = 0;
+    std::cout << "=========== Flow results (TCP OnOff " << onOffDataRate
+              << ", default on 1s / off 1s, " << clientStartTime << "s-" << clientStopTime
+              << "s) ===========" << std::endl;
+    for (unsigned int i = 0; i < halfHostNum; i++)
+    {
+        unsigned int serverI = hostNum - i - 1;
+        uint64_t rx = flowSinks[i]->GetTotalRx();
+        totalTx += g_flowTxBytes[i];
+        totalRx += rx;
+        std::cout << "flow " << i << ": host " << i << " (" << hostInfos[i].hostIpv4.GetAddress(0)
+                  << ") -> host " << serverI << " (" << hostInfos[serverI].hostIpv4.GetAddress(0)
+                  << ") sent " << g_flowTxBytes[i] << " B, received " << rx << " B, goodput "
+                  << std::fixed << std::setprecision(3) << rx * 8.0 / sendDuration / 1e6
+                  << " Mbps" << std::defaultfloat << std::endl;
+    }
+    std::cout << "Total sent " << totalTx << " B, received " << totalRx << " B, delivered "
+              << std::fixed << std::setprecision(2)
+              << (totalTx > 0 ? 100.0 * totalRx / totalTx : 0.0) << " %, aggregate goodput "
+              << std::setprecision(3) << totalRx * 8.0 / sendDuration / 1e6 << " Mbps"
+              << std::defaultfloat << std::endl;
+
     Simulator::Destroy();
-    // NS_LOG_INFO("Done.");
     unsigned long end = getTickCount();
 
     std::cout << "Host Num: " << hostNum << " Switch Num: " << switchNum << std::endl;
