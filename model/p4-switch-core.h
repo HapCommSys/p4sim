@@ -245,7 +245,7 @@ class P4SwitchCore : public bm::Switch
     class MirroringSessions;            //!< Mirroring sessions for clone .etc
     int m_thriftPort;                   //!< Thrift port for the switch (default 9090)
     size_t m_nbQueuesPerPort;           //!< Number of queues per port (default 8)
-    uint64_t m_packetId;                //!< Packet ID
+    uint64_t m_packetId{0};             //!< Packet ID
     uint64_t m_startTimestamp;          //!< Start time of the switch
     bm::TargetParserBasic* m_argParser; //!< Structure of parsers
     std::unique_ptr<MirroringSessions> m_mirroringSessions; //!< Mirroring sessions
