@@ -59,7 +59,7 @@ class P4PnaNic : public P4SwitchCore
     void Enqueue(uint32_t egress_port, std::unique_ptr<bm::Packet>&& packet) override;
     bool HandleEgressPipeline(size_t workerId) override;
 
-    bool main_processing_pipeline();
+    bool main_processing_pipeline(std::unique_ptr<bm::Packet> bm_packet);
 
     int ReceivePacket(Ptr<Packet> packetIn,
                       int inPort,
@@ -75,7 +75,8 @@ class P4PnaNic : public P4SwitchCore
 
     uint64_t m_packetId; // Packet ID
 
-    bm::Queue<std::unique_ptr<bm::Packet>> input_buffer;
+    // "loopedback" (current pna.p4) or "recirculated" (older pna.p4)
+    std::string m_loopedbackField{"loopedback"};
 };
 
 } // namespace ns3

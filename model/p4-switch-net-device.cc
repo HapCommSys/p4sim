@@ -479,6 +479,15 @@ void P4SwitchNetDevice::SendNs3Packet(Ptr<Packet> packetOut, int outPort,
     if (outPort != 511) {
       NS_LOG_DEBUG("EgressPortNum: " << outPort);
       Ptr<NetDevice> outNetDevice = GetBridgePort(outPort);
+      if (!outNetDevice) {
+        // The P4 program selected a port that does not exist on this switch
+        // (e.g. egress_spec / send_to_port() out of range). Drop the packet,
+        // as BMv2 does, instead of dereferencing a null pointer.
+        NS_LOG_WARN("Egress port " << outPort << " does not exist (switch has "
+                                   << GetNBridgePorts()
+                                   << " ports), dropping packet");
+        return;
+      }
       outNetDevice->SendFrom(packetOut, src, dst, protocol);
     }
   } else

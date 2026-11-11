@@ -161,8 +161,12 @@ P4SwitchCore::InitializeSwitchFromP4Json(const std::string& jsonPath)
     status = init_from_options_parser(opt_parser);
     if (status != 0)
     {
-        NS_LOG_ERROR("Failed to apply p4 json for switch core.");
-        return;
+        // BMv2 prints the reason to std::cout without flushing it; flush it so
+        // the message is not lost, and stop here instead of crashing later on
+        // the first packet (the PHV factory is not initialized).
+        std::cout.flush();
+        NS_FATAL_ERROR("Switch ID " << m_p4SwitchId << ": failed to load P4 JSON " << jsonPath
+                                    << " (BMv2 init status " << status << ")");
     }
 
     NS_LOG_INFO("P4 json applied successfully.");
