@@ -18,7 +18,6 @@ set(third_party_libraries
     "libpcap"
     "nanomsg"
     "libxxhash"
-    "bmruntime"
     "thrift"
 )
 
@@ -52,11 +51,6 @@ endif()
 find_library(RUNTIMESTUBS_LIB runtimestubs PATHS /usr/local/lib)
 if(RUNTIMESTUBS_LIB)
   list(APPEND third_party_libs ${RUNTIMESTUBS_LIB})
-endif()
-
-find_library(BMRUNTIME_LIB bmruntime PATHS /usr/local/lib)
-if(BMRUNTIME_LIB)
-  list(APPEND third_party_libs ${BMRUNTIME_LIB})
 endif()
 
 find_library(THRIFT_LIB thrift PATHS /usr/local/lib)
