@@ -140,12 +140,13 @@ P4CorePsa::P4CorePsa(P4SwitchNetDevice* net_device,
 P4CorePsa::~P4CorePsa()
 {
     NS_LOG_FUNCTION(this << " Switch ID: " << m_p4SwitchId);
-    input_buffer.push_front(nullptr);
-    for (size_t i = 0; i < nb_egress_threads; i++)
-    {
-        egress_buffer.push_front(i, 0, nullptr);
-    }
-    output_buffer.push_front(nullptr);
+
+    // The pipelines are run by ns-3 events, not by BMv2 worker threads, so no
+    // sentinel packet is needed to stop them. (bm::Queue::push_front() blocks
+    // when the queue is full, and nothing would ever pop it.) Cancel the events
+    // that still point to this object; queued packets are freed with the queues.
+    m_egressTimeEvent.Cancel();
+    m_egressRetryEvent.Cancel();
 }
 
 void
@@ -177,7 +178,8 @@ P4CorePsa::SetEgressTimerEvent()
     if (m_firstPacket && !checkflag)
     {
         NS_LOG_INFO("Egress timer event needs additional scheduling due to !checkflag.");
-        Simulator::Schedule(Time(NanoSeconds(10)), &P4CorePsa::HandleEgressPipeline, this, 0);
+        m_egressRetryEvent =
+            Simulator::Schedule(Time(NanoSeconds(10)), &P4CorePsa::HandleEgressPipeline, this, 0);
     }
 }
 

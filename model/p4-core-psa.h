@@ -110,8 +110,9 @@ class P4CorePsa : public P4SwitchCore
                            //!< Per Second))
     size_t m_nbQueuesPerPort;
 
-    EventId m_egressTimeEvent; //!< The timer event ID [Egress]
-    Time m_egressTimeRef;      //!< Desired time between timer event triggers
+    EventId m_egressTimeEvent;  //!< The timer event ID [Egress]
+    EventId m_egressRetryEvent; //!< Extra egress run scheduled by the timer
+    Time m_egressTimeRef;       //!< Desired time between timer event triggers
 
     // Buffers and Transmit Function
     // std::unique_ptr<InputBuffer> input_buffer;

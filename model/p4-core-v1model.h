@@ -911,8 +911,10 @@ private:
   double m_virtualQueueRate; // pps
 
   size_t m_nbQueuesPerPort;
-  EventId m_egressTimeEvent; //!< The timer event ID for dequeue
-  Time m_egressTimeRef;      //!< Desired time between timer event triggers
+  EventId m_egressTimeEvent;  //!< The timer event ID for dequeue
+  EventId m_egressRetryEvent; //!< Extra egress run scheduled by the timer
+  EventId m_tracingEvent;     //!< The timer event ID for tracing statistics
+  Time m_egressTimeRef;       //!< Desired time between timer event triggers
   uint64_t m_startTimestamp; //!< Start time of the switch
 
   static constexpr size_t m_nbEgressThreads = 1u; // 4u default in bmv2

@@ -25,6 +25,7 @@
 #include "ns3/traced-callback.h"
 
 #include <map>
+#include <memory>
 #include <stdint.h>
 #include <string>
 
@@ -223,10 +224,12 @@ private:
   // === P4 configuration and initialization ===
   std::string m_jsonPath;         //!< Path to the P4 JSON configuration file.
   std::string m_flowTablePath;    //!< Path to the flow table file.
-  P4CoreV1model *m_v1modelSwitch; //!< V1model switch core
-  P4CorePipeline *m_p4Pipeline;   //!< P4 pipeline core
-  P4CorePsa *m_psaSwitch;         //!< PSA switch core
-  P4PnaNic *m_pnaNic;             //!< PNA NIC core
+  // The device owns its P4 core: DoInitialize() creates the one selected by
+  // m_switchArch (the others stay null) and DoDispose() releases it.
+  std::unique_ptr<P4CoreV1model> m_v1modelSwitch; //!< V1model switch core
+  std::unique_ptr<P4CorePipeline> m_p4Pipeline;   //!< P4 pipeline core
+  std::unique_ptr<P4CorePsa> m_psaSwitch;         //!< PSA switch core
+  std::unique_ptr<P4PnaNic> m_pnaNic;             //!< PNA NIC core
 
   // === Buffer and queue configuration ===
   size_t
