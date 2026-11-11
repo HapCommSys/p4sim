@@ -28,6 +28,12 @@
 
 #define SSWITCH_VIRTUAL_QUEUE_NUM_V1MODEL 8
 
+#undef LOG_INFO
+#undef LOG_ERROR
+#undef LOG_DEBUG
+#undef LOG_WARN
+#undef LOG_LOGIC
+
 namespace ns3 {
 
 class P4CoreV1model : public P4SwitchCore {

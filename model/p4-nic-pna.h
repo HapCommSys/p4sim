@@ -22,6 +22,12 @@
 #include "ns3/p4-queue.h"
 #include "ns3/p4-switch-core.h"
 
+#undef LOG_INFO
+#undef LOG_ERROR
+#undef LOG_DEBUG
+#undef LOG_WARN
+#undef LOG_LOGIC
+
 namespace ns3
 {
 
