@@ -50,6 +50,7 @@ class P4CoreV1model;
 class P4CorePsa;
 class P4PnaNic;
 class P4CorePipeline;
+class P4SwitchCore;
 
 /**
  * \defgroup P4 Switch Network Device
@@ -156,6 +157,12 @@ public:
                      const Address &destination);
   P4CoreV1model *GetV1ModelCore() const;
 
+  /**
+   * \brief Get the Thrift port of the P4 core of this switch
+   * \return the port, or 0 if the core is not created yet (or already released)
+   */
+  int GetThriftPort() const;
+
   // inherited from NetDevice base class.
   void SetIfIndex(const uint32_t index) override;
   uint32_t GetIfIndex() const override;
@@ -216,6 +223,13 @@ protected:
   // Ptr<NetDevice> GetLearnedState(Mac48Address source);
 
 private:
+  /**
+   * \brief Pass the BMv2 options of this device (BmLogLevel, ThriftPort) to
+   * its P4 core, before the core loads the P4 JSON.
+   * \param core the P4 core created by DoInitialize()
+   */
+  void ConfigureCore(P4SwitchCore &core) const;
+
   // === Basic configuration ===
   bool m_enableTracing;  //!< Enable tracing
   bool m_enableSwap;     //!< Enable swapping
@@ -224,6 +238,8 @@ private:
   // === P4 configuration and initialization ===
   std::string m_jsonPath;         //!< Path to the P4 JSON configuration file.
   std::string m_flowTablePath;    //!< Path to the flow table file.
+  std::string m_bmLogLevel;       //!< BMv2 log level ("trace" ... "off")
+  uint16_t m_thriftPort;          //!< Requested Thrift port, 0 = automatic
   // The device owns its P4 core: DoInitialize() creates the one selected by
   // m_switchArch (the others stay null) and DoDispose() releases it.
   std::unique_ptr<P4CoreV1model> m_v1modelSwitch; //!< V1model switch core

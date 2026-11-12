@@ -42,7 +42,159 @@
 #include <bm/bm_sim/options_parse.h>
 #include <fstream>
 
+#include <algorithm>
+#include <cctype>
+#include <cstdlib>
+#include <fcntl.h>
+#include <netinet/in.h>
+#include <sys/file.h>
+#include <sys/socket.h>
+#include <unistd.h>
+
 NS_LOG_COMPONENT_DEFINE("P4SwitchCore");
+
+namespace
+{
+
+/// Default first port of the automatic Thrift port allocation
+constexpr int P4SIM_DEFAULT_THRIFT_PORT_BASE = 9090;
+/// Number of ports tried by the automatic Thrift port allocation
+constexpr int P4SIM_THRIFT_PORT_SEARCH_RANGE = 1000;
+
+/// First port of the automatic allocation: $P4SIM_THRIFT_PORT_BASE or 9090
+int
+GetThriftPortBase()
+{
+    const char* env = std::getenv("P4SIM_THRIFT_PORT_BASE");
+    if (env == nullptr || *env == '\0')
+    {
+        return P4SIM_DEFAULT_THRIFT_PORT_BASE;
+    }
+    char* end = nullptr;
+    long base = std::strtol(env, &end, 10);
+    if (*end != '\0' || base < 1 || base > 65535)
+    {
+        NS_FATAL_ERROR("Invalid P4SIM_THRIFT_PORT_BASE='" << env
+                                                          << "' (expected a port number)");
+    }
+    return static_cast<int>(base);
+}
+
+/// True if nothing listens on TCP port \p port (a bind attempt succeeds)
+bool
+IsTcpPortFree(int port)
+{
+    int sock = ::socket(AF_INET, SOCK_STREAM | SOCK_CLOEXEC, 0);
+    if (sock < 0)
+    {
+        return true; // cannot check; BMv2 reports a real conflict later
+    }
+    int one = 1;
+    // Like the Thrift server: a connection in TIME_WAIT does not make the port busy
+    ::setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, &one, sizeof(one));
+    sockaddr_in addr{};
+    addr.sin_family = AF_INET;
+    addr.sin_addr.s_addr = htonl(INADDR_ANY);
+    addr.sin_port = htons(static_cast<uint16_t>(port));
+    bool isFree = ::bind(sock, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) == 0;
+    ::close(sock);
+    return isFree;
+}
+
+/**
+ * Reserve \p port for this process if it is free.
+ *
+ * The reservation is an exclusive flock() on /tmp/p4sim-thrift-<port>.lock. It
+ * is held until the process exits (the kernel also releases it on a crash), so
+ * p4sim processes running in parallel, e.g. under test.py, never pick the same
+ * port. A port that another program listens on is skipped as well.
+ */
+bool
+TryReservePort(int port)
+{
+    std::string lockPath = "/tmp/p4sim-thrift-" + std::to_string(port) + ".lock";
+    int fd = ::open(lockPath.c_str(), O_RDONLY | O_CREAT | O_CLOEXEC, 0666);
+    if (fd < 0)
+    {
+        return false;
+    }
+    if (::flock(fd, LOCK_EX | LOCK_NB) != 0)
+    {
+        ::close(fd); // reserved by another p4sim process (or another switch of ours)
+        return false;
+    }
+    if (!IsTcpPortFree(port))
+    {
+        ::close(fd); // releases the lock
+        return false;
+    }
+    // Keep the descriptor open on purpose: it holds the reservation.
+    static std::vector<int> s_reservations;
+    s_reservations.push_back(fd);
+    return true;
+}
+
+/// Thrift port for a switch: \p requested if it is free, or the first free port (0)
+int
+AllocateThriftPort(uint16_t requested, int switchId)
+{
+    if (requested != 0)
+    {
+        if (!TryReservePort(requested))
+        {
+            NS_FATAL_ERROR("P4 switch " << switchId << ": Thrift port " << requested
+                                        << " is already in use by another p4sim process or "
+                                           "another program. Choose another ThriftPort, or "
+                                           "use 0 to pick a free port automatically.");
+        }
+        return requested;
+    }
+    int base = GetThriftPortBase();
+    int last = std::min(base + P4SIM_THRIFT_PORT_SEARCH_RANGE, 65536);
+    for (int port = base; port < last; ++port)
+    {
+        if (TryReservePort(port))
+        {
+            return port;
+        }
+    }
+    NS_FATAL_ERROR("P4 switch " << switchId << ": no free Thrift port in [" << base << ", "
+                                << last << "). Set P4SIM_THRIFT_PORT_BASE to another range.");
+    return -1;
+}
+
+/// BMv2 log level for a name such as "trace" or "off" (case-insensitive)
+bm::Logger::LogLevel
+ParseBmLogLevel(std::string name)
+{
+    std::transform(name.begin(), name.end(), name.begin(), [](unsigned char c) {
+        return std::tolower(c);
+    });
+    using L = bm::Logger::LogLevel;
+    static const std::map<std::string, L> levels = {
+        {"trace", L::TRACE},
+        {"debug", L::DEBUG},
+        {"info", L::INFO},
+        {"notice", L::NOTICE},
+        {"warn", L::WARN},
+        {"warning", L::WARN},
+        {"error", L::ERROR},
+        {"critical", L::CRITICAL},
+        {"alert", L::ALERT},
+        {"emerg", L::EMERG},
+        {"off", L::OFF},
+    };
+    auto it = levels.find(name);
+    if (it == levels.end())
+    {
+        NS_FATAL_ERROR("Invalid BmLogLevel '" << name
+                                              << "': expected trace, debug, info, notice, warn, "
+                                                 "error, critical, alert, emerg or off");
+    }
+    return it->second;
+}
+
+} // namespace
 
 namespace ns3
 {
@@ -139,22 +291,25 @@ P4SwitchCore::InitializeSwitchFromP4Json(const std::string& jsonPath)
     NS_LOG_INFO("Applying p4 json to switch.");
     int status = 0;
 
-    static int p4_switch_ctrl_plane_thrift_port = 9090;
-    m_thriftPort = p4_switch_ctrl_plane_thrift_port;
+    bm::Logger::LogLevel logLevel = ParseBmLogLevel(m_bmLogLevel);
+    m_thriftPort = AllocateThriftPort(m_requestedThriftPort, m_p4SwitchId);
 
-    std::cout << "P4 switch " << m_p4SwitchId
-              << " thrift port: " << p4_switch_ctrl_plane_thrift_port << std::endl;
+    std::cout << "P4 switch " << m_p4SwitchId << " thrift port: " << m_thriftPort << std::endl;
 
+    // The Thrift port is unique among the p4sim processes of this host (see
+    // AllocateThriftPort()), so the IPC sockets and the log file named after it
+    // are unique too.
+    const std::string portStr = std::to_string(m_thriftPort);
     bm::OptionsParser opt_parser;
     opt_parser.config_file_path = jsonPath;
-    opt_parser.debugger_addr =
-        "ipc:///tmp/bmv2-" + std::to_string(p4_switch_ctrl_plane_thrift_port) + "-debug.ipc";
-    opt_parser.notifications_addr = "ipc:///tmp/bmv2-" +
-                                    std::to_string(p4_switch_ctrl_plane_thrift_port) +
-                                    "-notifications.ipc";
-    opt_parser.file_logger =
-        "/tmp/bmv2-" + std::to_string(p4_switch_ctrl_plane_thrift_port) + "-pipeline.log";
-    opt_parser.thrift_port = p4_switch_ctrl_plane_thrift_port++;
+    opt_parser.debugger_addr = "ipc:///tmp/bmv2-" + portStr + "-debug.ipc";
+    opt_parser.notifications_addr = "ipc:///tmp/bmv2-" + portStr + "-notifications.ipc";
+    if (logLevel != bm::Logger::LogLevel::OFF)
+    {
+        opt_parser.file_logger = "/tmp/bmv2-" + portStr + "-pipeline.log";
+    }
+    opt_parser.log_level = logLevel;
+    opt_parser.thrift_port = m_thriftPort;
     opt_parser.console_logging = false;
 
     // Initialize the switch
@@ -170,6 +325,24 @@ P4SwitchCore::InitializeSwitchFromP4Json(const std::string& jsonPath)
     }
 
     NS_LOG_INFO("P4 json applied successfully.");
+}
+
+void
+P4SwitchCore::SetBmLogLevel(const std::string& level)
+{
+    m_bmLogLevel = level;
+}
+
+void
+P4SwitchCore::SetThriftPort(uint16_t port)
+{
+    m_requestedThriftPort = port;
+}
+
+int
+P4SwitchCore::GetThriftPort() const
+{
+    return m_thriftPort;
 }
 
 int
