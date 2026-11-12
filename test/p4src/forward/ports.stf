@@ -1,0 +1,8 @@
+# Frames other than IPv4 are forwarded unchanged by ingress port: 0 -> 1 -> 2 -> 0.
+
+packet 0 ffffffffffff 000000000010 88b5  00000001
+expect 1 ffffffffffff 000000000010 88b5  00000001
+packet 1 ffffffffffff 000000000011 88b5  00000002
+expect 2 ffffffffffff 000000000011 88b5  00000002
+packet 2 ffffffffffff 000000000012 88b5  00000003
+expect 0 ffffffffffff 000000000012 88b5  00000003
