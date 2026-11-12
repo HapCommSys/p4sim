@@ -185,10 +185,10 @@ class P4ControllerTestSuite : public TestSuite
 {
   public:
     P4ControllerTestSuite()
-        : TestSuite("p4-controller", UNIT)
+        : TestSuite("p4-controller", TestSuite::Type::UNIT)
     {
-        AddTestCase(new P4ControllerFlowEntryTestCase, TestCase::QUICK);
-        AddTestCase(new P4ControllerActionProfileTestCase, TestCase::QUICK);
+        AddTestCase(new P4ControllerFlowEntryTestCase, TestCase::Duration::QUICK);
+        AddTestCase(new P4ControllerActionProfileTestCase, TestCase::Duration::QUICK);
     }
 };
 

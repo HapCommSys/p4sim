@@ -53,9 +53,9 @@ private:
 class P4TopologyReaderTestSuite : public TestSuite
 {
 public:
-  P4TopologyReaderTestSuite () : TestSuite ("p4-topology-reader", UNIT)
+  P4TopologyReaderTestSuite () : TestSuite ("p4-topology-reader", TestSuite::Type::UNIT)
   {
-    AddTestCase (new P4TopologyReaderTestCase, TestCase::QUICK);
+    AddTestCase (new P4TopologyReaderTestCase, TestCase::Duration::QUICK);
   }
 };
 

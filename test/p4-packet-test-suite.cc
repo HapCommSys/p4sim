@@ -265,7 +265,7 @@ static class P4PacketTestSuite : public TestSuite
 {
   public:
     P4PacketTestSuite()
-        : TestSuite("p4-packet", UNIT)
+        : TestSuite("p4-packet", TestSuite::Type::UNIT)
     {
         const std::vector<std::pair<std::string, uint32_t>> archs = {
             {"v1model", P4SWITCH_ARCH_V1MODEL},
@@ -276,7 +276,7 @@ static class P4PacketTestSuite : public TestSuite
         {
             for (const char* stf : {"ipv4.stf", "drop.stf", "ports.stf"})
             {
-                AddTestCase(new StfTestCase(name, arch, stf), TestCase::QUICK);
+                AddTestCase(new StfTestCase(name, arch, stf), TestCase::Duration::QUICK);
             }
         }
     }

@@ -164,7 +164,7 @@ class SourceRoutingApp : public Application
 
     void StopApplication() override
     {
-        if (m_event.IsRunning())
+        if (m_event.IsPending())
         {
             m_event.Cancel();
         }

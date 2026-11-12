@@ -208,11 +208,11 @@ class P4QueueTestSuite : public TestSuite
 {
   public:
     P4QueueTestSuite()
-        : TestSuite("p4-queue", UNIT)
+        : TestSuite("p4-queue", TestSuite::Type::UNIT)
     {
-        AddTestCase(new P4QueueCapacityTestCase, TestCase::QUICK);
-        AddTestCase(new P4QueueRateTestCase, TestCase::QUICK);
-        AddTestCase(new P4QueuePriorityTestCase, TestCase::QUICK);
+        AddTestCase(new P4QueueCapacityTestCase, TestCase::Duration::QUICK);
+        AddTestCase(new P4QueueRateTestCase, TestCase::Duration::QUICK);
+        AddTestCase(new P4QueuePriorityTestCase, TestCase::Duration::QUICK);
     }
 };
 

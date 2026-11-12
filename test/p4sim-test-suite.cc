@@ -207,17 +207,17 @@ class P4simTestSuite : public TestSuite
 {
   public:
     P4simTestSuite()
-        : TestSuite("p4sim", UNIT)
+        : TestSuite("p4sim", TestSuite::Type::UNIT)
     {
         AddTestCase(
             new P4SwitchLoadTestCase("v1model", 0, "p4src/simple_v1model/simple_v1model.json"),
-            TestCase::QUICK);
+            TestCase::Duration::QUICK);
         AddTestCase(new P4SwitchLoadTestCase("PSA", 1, "p4src/simple_psa/simple_psa.json"),
-                    TestCase::QUICK);
+                    TestCase::Duration::QUICK);
         AddTestCase(new P4SwitchLoadTestCase("PNA", 2, "p4src/simple_pna/simple_pna.json"),
-                    TestCase::QUICK);
-        AddTestCase(new P4ThriftPortTestCase, TestCase::QUICK);
-        AddTestCase(new P4BmLogLevelTestCase, TestCase::QUICK);
+                    TestCase::Duration::QUICK);
+        AddTestCase(new P4ThriftPortTestCase, TestCase::Duration::QUICK);
+        AddTestCase(new P4BmLogLevelTestCase, TestCase::Duration::QUICK);
     }
 };
 

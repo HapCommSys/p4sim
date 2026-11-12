@@ -213,9 +213,9 @@ public:
 };
 
 FormatUtilsTestSuite::FormatUtilsTestSuite ()
-    : TestSuite ("format-utils", UNIT) // Test suite name and type
+    : TestSuite ("format-utils", TestSuite::Type::UNIT) // Test suite name and type
 {
-  AddTestCase (new FormatUtilsTestCase, TestCase::QUICK);
+  AddTestCase (new FormatUtilsTestCase, TestCase::Duration::QUICK);
 }
 
 // Register the test suite with NS-3

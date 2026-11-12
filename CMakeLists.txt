@@ -1,5 +1,3 @@
-set(CMAKE_CXX_STANDARD 17)
-set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # Check if stdint.h is supported
 check_include_file_cxx(stdint.h HAVE_STDINT_H)
