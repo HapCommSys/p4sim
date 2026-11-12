@@ -5,11 +5,14 @@
 From the ns-3 root, with `./ns3 configure --enable-tests --enable-examples`:
 
 ```bash
-./test.py -s p4sim             # one suite (-v lists its test cases)
-./test.py -e p4-basic-example  # one example
+./test.py -s p4sim                               # one suite
+./ns3 run "test-runner --suite=p4sim --verbose"  # one suite, with each test case
+./ns3 run "p4-basic-example --ns3::P4SwitchNetDevice::BmLogLevel=off"  # one example
 ```
 
-No environment variable is needed, and suites can run in parallel.
+No environment variable is needed, and suites can run in parallel. `./test.py -e`
+runs an example without the arguments in `examples-to-run.py`, so it writes the
+full BMv2 log to `/tmp`.
 
 ## Suites
 
@@ -42,6 +45,6 @@ can change details such as generated names).
   `$P4SIM_THRIFT_PORT_BASE` (9090) with a lock on `/tmp/p4sim-thrift-<port>.lock`,
   so parallel runs never share a port.
 - Keep tests small: every packet runs through the BMv2 pipeline.
-- End each test case with `Simulator::Destroy()`.
+- Call `Simulator::Destroy()` in `DoTeardown()`, which also runs after a failed check.
 - A P4 JSON that fails to load aborts the process (`NS_FATAL_ERROR`), so it can
   only be tested in a separate process.
