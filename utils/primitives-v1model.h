@@ -171,6 +171,27 @@ class drop : public ActionPrimitive<>
 
 REGISTER_PRIMITIVE(drop);
 
+// mark_to_drop(standard_metadata): what p4c emits for v1model's mark_to_drop()
+class mark_to_drop : public ActionPrimitive<Header&>
+{
+    void operator()(Header& standardMetadata)
+    {
+        const bm::HeaderType& type = standardMetadata.get_header_type();
+        int egressSpec = type.get_field_offset("egress_spec");
+        int mcastGrp = type.get_field_offset("mcast_grp");
+        if (egressSpec != -1)
+        {
+            standardMetadata.get_field(egressSpec).set(511);
+        }
+        if (mcastGrp != -1)
+        {
+            standardMetadata.get_field(mcastGrp).set(0);
+        }
+    }
+};
+
+REGISTER_PRIMITIVE(mark_to_drop);
+
 class exit_ : public ActionPrimitive<>
 {
     void operator()()
