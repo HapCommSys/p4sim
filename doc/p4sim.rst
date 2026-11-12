@@ -60,8 +60,10 @@ Scope and Limitations
   forwarding logic but does not model ASIC-level timing.
 * Only the **software switch back-end** (BMv2) is used; hardware targets
   are out of scope.
-* BMv2 is built with **C++17**, therefore |ns3| must also be compiled
-  with C++17 (ns-3.39 or earlier).
+* This branch targets |ns3| 3.49, which requires C++23. BMv2's bundled
+  spdlog header ``spdlog/details/registry.h`` must be patched for C++20
+  and later (see ``README.md``, Step 3). For ns-3.39 with C++17, use the
+  ``ns-3.39`` branch.
 * When using a CSMA channel the P4 program must handle ARP explicitly.
 * Tracing support is basic (throughput-level); per-table hit/miss
   counters are not yet exported.
@@ -91,11 +93,13 @@ Prerequisites
 1. Install BMv2 and its dependencies via the
    `p4lang/tutorials <https://github.com/p4lang/tutorials>`_ install
    script (Ubuntu 24.04 recommended).
-2. Run ``sudo ./set_pkg_config_env.sh`` inside ``contrib/p4sim/`` to
+2. Patch BMv2's bundled spdlog header for C++20 and later (see
+   ``README.md``, Step 3).
+3. Run ``sudo ./set_pkg_config_env.sh`` inside ``contrib/p4sim/`` to
    register the ``bm`` pkg-config package.
-3. Set the environment variable so that examples can find P4 artefacts::
+4. Set the environment variable so that examples can find P4 artefacts::
 
-     export P4SIM_DIR="$HOME/workdir/ns3.39/contrib/p4sim"
+     export P4SIM_DIR="$HOME/workdir/ns3.49/contrib/p4sim"
 
 See ``doc/vm-env.md`` for the full step-by-step guide.
 

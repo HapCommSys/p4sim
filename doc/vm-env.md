@@ -1,5 +1,7 @@
 # P4Sim: NS-3-Based P4 Simulation Environment
 
+> **Note:** This guide describes the ns-3.39 setup. On the `ns-3.49` branch, follow the [README](../README.md#installation--setup) instead: it uses ns-3.49 (C++23) and needs a two-line patch of a BMv2 header (Step 3).
+
 ## Table of Contents
 
 - [Local Deployment (ns-3.39)](#local-deployment-ns339) *(recommended)*

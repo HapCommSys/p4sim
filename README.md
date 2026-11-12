@@ -45,11 +45,11 @@ Our implementation builds upon the P4-driven Network Simulator Module described 
 
 ## Installation & Setup
 
-The following steps set up a local environment to run P4sim with **ns-3.39** on **Ubuntu 24.04 LTS**.
+The following steps set up a local environment to run P4sim with **ns-3.49** (C++23) on **Ubuntu 24.04 LTS**.
 
 > **Note:** The BMv2 and P4 software installation will take **1–2 hours** and consume up to **15 GB** of disk space.
 
-> **Why ns-3.39 or earlier?** Starting from ns-3.40, ns-3 requires C++20. However, BMv2 is currently built with C++17. P4sim therefore supports ns-3.39 and earlier versions. We plan to upgrade once a C++20-compatible BMv2 build becomes available.
+> **Which branch?** This branch (`ns-3.49`) targets ns-3.49, which requires C++23 (g++ 11 or clang++ 17 or later, CMake 3.25 or later). For ns-3.39 with C++17, use the [`ns-3.39`](https://github.com/HapCommSys/p4sim/tree/ns-3.39) branch.
 
 ### Step 1: Initialize the Working Directory
 
@@ -76,23 +76,37 @@ Verify the installation:
 simple_switch --version
 ```
 
-### Step 3: Clone and Build ns-3.39 with P4sim
+### Step 3: Patch the BMv2 spdlog Header for C++20 and Later
+
+BMv2 bundles an old version of spdlog. Its `spdlog/details/registry.h` uses a template-id as a constructor name (`registry_t<Mutex>()`), which is ill-formed from C++20 on, and g++ rejects it. P4sim includes this header through the BMv2 logger, so it does not compile with ns-3.49 until the header is fixed. The fix changes two lines of the installed header; the BMv2 libraries built by the tutorials script do not need to be rebuilt:
+
+```bash
+sudo sed -i -E \
+  -e 's/^(\s*)registry_t<Mutex>\(\)\{\}/\1registry_t(){}/' \
+  -e 's/^(\s*)registry_t<Mutex>\((const registry_t<Mutex>&)\) = delete;/\1registry_t(\2) = delete;/' \
+  /usr/local/include/bm/spdlog/details/registry.h
+grep -n 'registry_t(' /usr/local/include/bm/spdlog/details/registry.h
+```
+
+The `grep` output should show the two fixed lines: `registry_t(){}` and `registry_t(const registry_t<Mutex>&) = delete;`.
+
+### Step 4: Clone and Build ns-3.49 with P4sim
 
 ```bash
 cd ~/workdir
-git clone https://github.com/nsnam/ns-3-dev-git.git ns3.39
-cd ns3.39 && git checkout ns-3.39
+git clone https://github.com/nsnam/ns-3-dev-git.git ns3.49
+cd ns3.49 && git checkout ns-3.49
 ```
 
-Add the P4sim module:
+Add the P4sim module (branch `ns-3.49`):
 
 ```bash
 cd contrib
-git clone https://github.com/HapCommSys/p4sim.git
+git clone -b ns-3.49 https://github.com/HapCommSys/p4sim.git
 cd p4sim && sudo ./set_pkg_config_env.sh
 ```
 
-Configure and build:
+Configure and build (ns-3.49 uses C++23 by default):
 
 ```bash
 cd ../..
@@ -100,18 +114,18 @@ cd ../..
 ./ns3 build
 ```
 
-### Step 4: Set the `P4SIM_DIR` Environment Variable
+### Step 5: Set the `P4SIM_DIR` Environment Variable
 
 P4sim resolves P4 artifact paths (JSON pipelines, flow tables, topology files) via the `P4SIM_DIR` environment variable. Add it to your shell profile:
 
 ```bash
-echo 'export P4SIM_DIR="$HOME/workdir/ns3.39/contrib/p4sim"' >> ~/.bashrc
+echo 'export P4SIM_DIR="$HOME/workdir/ns3.49/contrib/p4sim"' >> ~/.bashrc
 source ~/.bashrc
 ```
 
 > **Tip:** If `P4SIM_DIR` is not set, P4sim falls back to a path derived from the executable location, but setting it explicitly is recommended for reliability.
 
-### Step 5: Run an Example
+### Step 6: Run an Example
 
 ```bash
 ./ns3 run p4-v1model-ipv4-forwarding
@@ -119,7 +133,7 @@ source ~/.bashrc
 
 No manual path editing is required — all examples use portable path helpers. A full list of available example names can be found in [`examples/CMakeLists.txt`](examples/CMakeLists.txt).
 
-See the full step-by-step guide (including VM setup) in [doc/vm-env.md](doc/vm-env.md).
+See the full step-by-step guide (including VM setup) in [doc/vm-env.md](doc/vm-env.md). That guide is written for ns-3.39; with this branch, use ns-3.49 and also apply Step 3 above.
 
 ---
 
