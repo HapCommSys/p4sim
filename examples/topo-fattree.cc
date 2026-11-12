@@ -30,9 +30,19 @@
  * is not used: its SPF computation asserts on the equal-cost paths of a fat tree
  * ("Assumed there is at most one exit from the root to this vertex").
  *
+ * Note: earlier versions of this example bridged all switches at layer 2, which cannot
+ * work on a fat tree (see above). This version is therefore a layer-3 baseline: each
+ * flow follows one shortest path chosen by Nix-vector routing (no ECMP), which should be
+ * kept in mind when comparing it with p4-topo-fattree.
+ *
  * Addressing (pod p, edge switch e inside the pod, host h below that edge switch):
  *   edge switch <-> host link   10.p.e.(4h)/30, edge switch .4h+1, host .4h+2
- *   switch <-> switch link      one /30 per link, allocated from 172.16.0.0/12
+ *   switch <-> switch link      one /30 per link, allocated consecutively from 172.16.0.0
+ *
+ * A k-ary fat tree has k^3/2 switch-to-switch links, i.e. 2*k^3 addresses. They stay
+ * inside 172.16.0.0/12 only for podnum <= 80; for larger podnum the allocation continues
+ * past 172.31.255.255 (up to 172.79.255.255 for podnum = 128). This does not affect the
+ * simulation, since these addresses do not overlap with the 10.0.0.0/8 host links.
  *
  * Traffic: for the first half of the hosts, host i sends TCP OnOff traffic to host
  * (hostNum - 1 - i). A per-flow summary (sent / received bytes, goodput) is printed
@@ -218,7 +228,8 @@ main(int argc, char* argv[])
     internet.Install(hosts);
     internet.Install(switches);
 
-    // Host links: 10.pod.edge.(4h)/30. Switch-to-switch links: one /30 each from 172.16/12.
+    // Host links: 10.pod.edge.(4h)/30. Switch-to-switch links: one /30 each, counting up
+    // from 172.16.0.0 (inside 172.16.0.0/12 only for podnum <= 80, see the header comment).
     Ipv4AddressHelper hostLinkIpv4;
     Ipv4AddressHelper switchLinkIpv4;
     switchLinkIpv4.SetBase("172.16.0.0", "255.255.255.252");
