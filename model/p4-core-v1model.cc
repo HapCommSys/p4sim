@@ -113,17 +113,15 @@ P4CoreV1model::P4CoreV1model(P4SwitchNetDevice *net_device, bool enable_swap,
 P4CoreV1model::~P4CoreV1model() {
   NS_LOG_FUNCTION(this << " Destructing P4CoreV1model...");
 
-  if (input_buffer) {
-    input_buffer->push_front(InputBuffer::PacketType::SENTINEL, nullptr);
-  }
-
-  for (size_t i = 0; i < m_nbEgressThreads; i++) {
-    while (egress_buffer.push_front(i, 0, nullptr) == 0) {
-      continue;
-    }
-  }
-
-  output_buffer.push_front(nullptr);
+  // Unlike BMv2 simple_switch, the ingress and egress pipelines here are run
+  // by ns-3 events, not by worker threads, so there is no thread to wake up
+  // with a sentinel packet. (Pushing one could block forever, or loop forever
+  // in the egress case, when the queue is full.) Instead, cancel the events
+  // that still point to this object. Packets left in the queues are freed
+  // together with the queues.
+  m_egressTimeEvent.Cancel();
+  m_egressRetryEvent.Cancel();
+  m_tracingEvent.Cancel();
 
   NS_LOG_INFO("P4CoreV1model destroyed successfully.");
 }
@@ -272,8 +270,8 @@ void P4CoreV1model::start_and_return_() {
 
   if (m_enableTracing) {
     NS_LOG_INFO("Enabling tracing in P4 Switch ID: " << m_p4SwitchId);
-    Simulator::Schedule(m_timeInterval,
-                        &P4CoreV1model::CalculatePacketsPerSecond, this);
+    m_tracingEvent = Simulator::Schedule(
+        m_timeInterval, &P4CoreV1model::CalculatePacketsPerSecond, this);
   }
 }
 
@@ -298,8 +296,8 @@ void P4CoreV1model::SetEgressTimerEvent() {
   if (m_firstPacket && !checkflag) {
     NS_LOG_INFO(
         "Egress timer event needs additional scheduling due to !checkflag.");
-    Simulator::Schedule(Time(NanoSeconds(10)),
-                        &P4CoreV1model::HandleEgressPipeline, this, 0);
+    m_egressRetryEvent = Simulator::Schedule(
+        Time(NanoSeconds(10)), &P4CoreV1model::HandleEgressPipeline, this, 0);
   }
 }
 
@@ -815,8 +813,8 @@ void P4CoreV1model::CalculatePacketsPerSecond() {
   log_file << log_stream.str();
   log_file.flush();
 
-  Simulator::Schedule(m_timeInterval, &P4CoreV1model::CalculatePacketsPerSecond,
-                      this);
+  m_tracingEvent = Simulator::Schedule(
+      m_timeInterval, &P4CoreV1model::CalculatePacketsPerSecond, this);
 }
 
 void P4CoreV1model::CopyFieldList(const std::unique_ptr<bm::Packet> &packet,

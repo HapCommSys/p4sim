@@ -134,7 +134,7 @@ void P4SwitchNetDevice::DoInitialize() {
   switch (m_switchArch) {
   case P4SWITCH_ARCH_V1MODEL:
     NS_LOG_DEBUG("P4 architecture: v1model");
-    m_v1modelSwitch = new P4CoreV1model(
+    m_v1modelSwitch = std::make_unique<P4CoreV1model>(
         this, m_enableSwap, m_enableTracing, m_switchRate, m_InputBufferSizeLow,
         m_InputBufferSizeHigh, m_queueBufferSize);
     m_v1modelSwitch->InitializeSwitchFromP4Json(m_jsonPath);
@@ -144,10 +144,10 @@ void P4SwitchNetDevice::DoInitialize() {
 
   case P4SWITCH_ARCH_PSA:
     NS_LOG_DEBUG("P4 architecture: PSA");
-    m_psaSwitch =
-        new P4CorePsa(this, m_enableSwap, m_enableTracing, m_switchRate,
-                      m_InputBufferSizeLow, // normal input queue size
-                      m_queueBufferSize);
+    m_psaSwitch = std::make_unique<P4CorePsa>(
+        this, m_enableSwap, m_enableTracing, m_switchRate,
+        m_InputBufferSizeLow, // normal input queue size
+        m_queueBufferSize);
     m_psaSwitch->InitializeSwitchFromP4Json(m_jsonPath);
     m_psaSwitch->LoadFlowTableToSwitch(m_flowTablePath);
     m_psaSwitch->start_and_return_();
@@ -155,7 +155,7 @@ void P4SwitchNetDevice::DoInitialize() {
 
   case P4NIC_ARCH_PNA:
     NS_LOG_DEBUG("P4 architecture: PNA");
-    m_pnaNic = new P4PnaNic(this, m_enableSwap);
+    m_pnaNic = std::make_unique<P4PnaNic>(this, m_enableSwap);
     m_pnaNic->InitializeSwitchFromP4Json(m_jsonPath);
     // m_pnaNic->LoadFlowTableToSwitch(m_flowTablePath); // Now not supported
     m_pnaNic->start_and_return_();
@@ -164,7 +164,8 @@ void P4SwitchNetDevice::DoInitialize() {
   case P4SWITCH_ARCH_PIPELINE:
 
     NS_LOG_DEBUG("P4 architecture: Pipeline");
-    m_p4Pipeline = new P4CorePipeline(this, m_enableSwap, m_enableTracing);
+    m_p4Pipeline =
+        std::make_unique<P4CorePipeline>(this, m_enableSwap, m_enableTracing);
     m_p4Pipeline->InitializeSwitchFromP4Json(m_jsonPath);
     m_p4Pipeline->LoadFlowTableToSwitch(m_flowTablePath);
     // m_p4Pipeline->InitSwitchWithP4(m_jsonPath, m_flowTablePath);
@@ -176,6 +177,13 @@ void P4SwitchNetDevice::DoInitialize() {
 
 void P4SwitchNetDevice::DoDispose() {
   NS_LOG_FUNCTION_NOARGS();
+  // Release the P4 core before the ports: it keeps a raw pointer to this
+  // device, and its destructor cancels the ns-3 events it still has pending.
+  m_v1modelSwitch.reset();
+  m_psaSwitch.reset();
+  m_pnaNic.reset();
+  m_p4Pipeline.reset();
+
   for (auto iter = m_ports.begin(); iter != m_ports.end(); iter++) {
     *iter = nullptr;
   }
@@ -246,6 +254,12 @@ void P4SwitchNetDevice::ReceiveFromDevice(Ptr<NetDevice> incomingPort,
     // std::cout << ns3Packet->GetSize() << std::endl;
   } else {
     NS_LOG_ERROR("Unsupported channel type.");
+  }
+
+  if (!m_v1modelSwitch && !m_psaSwitch && !m_pnaNic && !m_p4Pipeline) {
+    // No core: DoDispose() has released it, or DoInitialize() has not run.
+    NS_LOG_WARN("No P4 core, dropping packet");
+    return;
   }
 
   switch (m_switchArch) {
@@ -531,7 +545,7 @@ Address P4SwitchNetDevice::GetMulticast(Ipv6Address addr) const {
 }
 
 P4CoreV1model *P4SwitchNetDevice::GetV1ModelCore() const {
-  return m_v1modelSwitch;
+  return m_v1modelSwitch.get();
 }
 void P4SwitchNetDevice::EmitSwitchEvent(uint32_t id, const std::string &msg) {
   m_switchEvent(id, msg);
