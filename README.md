@@ -49,7 +49,7 @@ The following steps set up a local environment to run P4sim with **ns-3.39** on 
 
 > **Note:** The BMv2 and P4 software installation will take **1–2 hours** and consume up to **15 GB** of disk space.
 
-> **Why ns-3.39 or earlier?** Starting from ns-3.40, ns-3 requires C++20. However, BMv2 is currently built with C++17. P4sim therefore supports ns-3.39 and earlier versions. We plan to upgrade once a C++20-compatible BMv2 build becomes available.
+> **Which branch?** This branch (`ns-3.39`) keeps P4sim on ns-3.39 and C++17, the C++ standard of the BMv2 build from p4lang/tutorials. Starting from ns-3.40, ns-3 requires C++20 (ns-3.49 requires C++23). To use ns-3.49, switch to the [`ns-3.49`](https://github.com/HapCommSys/p4sim/tree/ns-3.49) branch.
 
 ### Step 1: Initialize the Working Directory
 
@@ -88,7 +88,7 @@ Add the P4sim module:
 
 ```bash
 cd contrib
-git clone https://github.com/HapCommSys/p4sim.git
+git clone -b ns-3.39 https://github.com/HapCommSys/p4sim.git
 cd p4sim && sudo ./set_pkg_config_env.sh
 ```
 

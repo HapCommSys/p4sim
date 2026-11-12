@@ -60,8 +60,9 @@ Scope and Limitations
   forwarding logic but does not model ASIC-level timing.
 * Only the **software switch back-end** (BMv2) is used; hardware targets
   are out of scope.
-* BMv2 is built with **C++17**, therefore |ns3| must also be compiled
-  with C++17 (ns-3.39 or earlier).
+* This branch targets |ns3| 3.39 with C++17, the C++ standard of the
+  BMv2 build from p4lang/tutorials. For ns-3.49 (C++23), use the
+  ``ns-3.49`` branch.
 * When using a CSMA channel the P4 program must handle ARP explicitly.
 * Tracing support is basic (throughput-level); per-table hit/miss
   counters are not yet exported.
