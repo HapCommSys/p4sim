@@ -353,9 +353,10 @@ void P4SwitchNetDevice::AddBridgePort(Ptr<NetDevice> bridgePort) {
 uint32_t P4SwitchNetDevice::GetPortNumber(Ptr<NetDevice> port) const {
   int portsNum = GetNBridgePorts();
   for (int i = 0; i < portsNum; i++) {
-    if (GetBridgePort(i) == port)
+    if (GetBridgePort(i) == port) {
       NS_LOG_DEBUG("Port found: " << i);
-    return i;
+      return i;
+    }
   }
   NS_LOG_ERROR("Port not found");
   return -1;
