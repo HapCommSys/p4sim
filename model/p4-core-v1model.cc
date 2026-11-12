@@ -1036,7 +1036,6 @@ int P4CoreV1model::CreateActionProfileGroup(
 
   bm::MatchErrorCode rc =
       this->mt_act_prof_create_group(0, profileName, outHandle);
-  std::cout << "THe control flow is reaching here";
   if (rc != bm::MatchErrorCode::SUCCESS) {
     NS_LOG_WARN("CreateActionProfileGroup failed for profile " << profileName);
     NS_LOG_WARN("Error: " << MatchErrorCodeToStr(rc));
