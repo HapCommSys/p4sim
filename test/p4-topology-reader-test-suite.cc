@@ -1,7 +1,6 @@
 #include "ns3/test.h"
 #include "ns3/log.h"
 #include "ns3/p4-topology-reader-helper.h"
-#include "ns3/format-utils.h"
 
 using namespace ns3;
 
@@ -19,7 +18,7 @@ private:
   virtual void
   DoRun ()
   {
-    // \@TODO [Now only can use a default file for test]
+    SetDataDir (NS_TEST_SOURCEDIR);
     std::string fileName = GetFileNameFromArgsOrDefault ();
     std::string fileType = "P2P";
 
@@ -52,11 +51,8 @@ private:
   std::string
   GetFileNameFromArgsOrDefault ()
   {
-     std::string p4SrcDir = GetP4SimDir();
-     std::cout<<p4SrcDir<<std::endl;
     std::string defaultFileName =
-       p4SrcDir  +
-      "/test/p4src/topology-files/dumbbell-topo.txt";
+        CreateDataDirFilename ("p4src/topology-files/dumbbell-topo.txt");
 
     const char *envFileName = std::getenv ("TOPOLOGY_FILE");
 

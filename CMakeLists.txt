@@ -121,5 +121,6 @@ build_lib(
          test/format-utils-test-suite.cc
          test/p4-topology-reader-test-suite.cc
          test/p4-p2p-channel-test-suite.cc
+         test/p4-queue-test-suite.cc
         ${examples_as_tests_sources}
 )

@@ -7,7 +7,6 @@
 #include "ns3/p4-core-v1model.h"
 #include "ns3/p4-helper.h"
 #include "ns3/p4-topology-reader-helper.h"
-#include "ns3/format-utils.h"
 #include "ns3/test.h"
 
 using namespace ns3;
@@ -31,7 +30,7 @@ private:
 };
 
 P4ControllerCheckFlowEntryTestCase::P4ControllerCheckFlowEntryTestCase()
-    : TestCase("P4 controller add flow entry test case (does nothing)") {}
+    : TestCase("P4 controller adds, modifies and deletes flow entries") {}
 P4ControllerActionProfileTestCase::P4ControllerActionProfileTestCase()
     : TestCase("P4 controller action profile test case") {}
 
@@ -39,10 +38,9 @@ P4ControllerCheckFlowEntryTestCase::~P4ControllerCheckFlowEntryTestCase() {}
 P4ControllerActionProfileTestCase::~P4ControllerActionProfileTestCase() {}
 
 void P4ControllerCheckFlowEntryTestCase::DoRun() {
-  // std::string appDataRate = "3Mbps"; // Default application data rate
-  // std::string ns3_link_rate = "1000Mbps";
-
-  std::string p4SrcDir = GetP4ExamplePath() + "/simple_v1model";
+  SetDataDir(NS_TEST_SOURCEDIR);
+  Config::SetDefault("ns3::P4SwitchNetDevice::BmLogLevel", StringValue("off"));
+  std::string p4SrcDir = CreateDataDirFilename("p4src/simple_v1model");
   std::string p4JsonPath = p4SrcDir + "/simple_v1model.json";
   std::string flowTablePath = p4SrcDir + "/flowtable_0.txt";
   std::string topoInput = p4SrcDir + "/topo.txt";
@@ -165,10 +163,9 @@ void P4ControllerCheckFlowEntryTestCase::DoRun() {
 }
 
 void P4ControllerActionProfileTestCase::DoRun() {
-  // std::string appDataRate = "3Mbps"; // Default application data rate
-  // std::string ns3_link_rate = "1000Mbps";
-  
-  std::string p4SrcDir = GetP4TestPath() + "/action_profile_v1model";
+  SetDataDir(NS_TEST_SOURCEDIR);
+  Config::SetDefault("ns3::P4SwitchNetDevice::BmLogLevel", StringValue("off"));
+  std::string p4SrcDir = CreateDataDirFilename("p4src/action_profile_v1model");
   std::string p4JsonPath = p4SrcDir + "/action-profile.json";
   
   std::string flowTablePath = p4SrcDir + "/flowtable_0.txt";
