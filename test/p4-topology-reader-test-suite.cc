@@ -1,7 +1,6 @@
 #include "ns3/test.h"
 #include "ns3/log.h"
 #include "ns3/p4-topology-reader-helper.h"
-#include "ns3/format-utils.h"
 
 using namespace ns3;
 
@@ -11,7 +10,7 @@ using namespace ns3;
 class P4TopologyReaderTestCase : public TestCase
 {
 public:
-  P4TopologyReaderTestCase () : TestCase ("Test P4TopologyReader functionality")
+  P4TopologyReaderTestCase () : TestCase ("Read the dumbbell topology")
   {
   }
 
@@ -19,8 +18,8 @@ private:
   virtual void
   DoRun ()
   {
-    // \@TODO [Now only can use a default file for test]
-    std::string fileName = GetFileNameFromArgsOrDefault ();
+    SetDataDir (NS_TEST_SOURCEDIR);
+    std::string fileName = CreateDataDirFilename ("p4src/topology-files/dumbbell-topo.txt");
     std::string fileType = "P2P";
 
     // Set up topology reader
@@ -48,25 +47,6 @@ private:
     NS_TEST_ASSERT_MSG_EQ (reader->LinksSize (), 7, "Topology contains incorrect number of links.");
   }
 
-  // Helper function to get filename from arguments or use a default
-  std::string
-  GetFileNameFromArgsOrDefault ()
-  {
-     std::string p4SrcDir = GetP4SimDir();
-     std::cout<<p4SrcDir<<std::endl;
-    std::string defaultFileName =
-       p4SrcDir  +
-      "/test/p4src/topology-files/dumbbell-topo.txt";
-
-    const char *envFileName = std::getenv ("TOPOLOGY_FILE");
-
-    if (envFileName != nullptr)
-      {
-        return std::string (envFileName);
-      }
-
-    return defaultFileName;
-  }
 };
 
 // Define a TestSuite for P4 topology reader
