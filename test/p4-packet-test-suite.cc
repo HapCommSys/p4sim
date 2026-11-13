@@ -58,12 +58,16 @@ Matches(const std::string& expected, const std::string& frame)
 
 } // namespace
 
-/// Runs one .stf file of p4src/forward on a switch of one architecture
+/// Runs p4src/<program>/<stf> on p4src/<program>/<program>_<archName>.json
 class StfTestCase : public TestCase
 {
   public:
-    StfTestCase(const std::string& archName, uint32_t arch, const std::string& stf)
+    StfTestCase(const std::string& program,
+                const std::string& archName,
+                uint32_t arch,
+                const std::string& stf)
         : TestCase(archName + ": " + stf),
+          m_program(program),
           m_archName(archName),
           m_arch(arch),
           m_stf(stf)
@@ -92,6 +96,7 @@ class StfTestCase : public TestCase
                  const Address& to,
                  NetDevice::PacketType type);
 
+    std::string m_program;
     std::string m_archName;
     uint32_t m_arch;
     std::string m_stf;
@@ -187,7 +192,8 @@ void
 StfTestCase::DoRun()
 {
     SetDataDir(NS_TEST_SOURCEDIR);
-    std::string error = ReadStf(CreateDataDirFilename("p4src/forward/" + m_stf));
+    std::string dir = "p4src/" + m_program + "/";
+    std::string error = ReadStf(CreateDataDirFilename(dir + m_stf));
     NS_TEST_ASSERT_MSG_EQ(error, "", "Invalid .stf file");
     if (!error.empty())
     {
@@ -201,7 +207,7 @@ StfTestCase::DoRun()
     sw->SetAttribute("P4SwitchArch", UintegerValue(m_arch));
     sw->SetAttribute(
         "JsonPath",
-        StringValue(CreateDataDirFilename("p4src/forward/forward_" + m_archName + ".json")));
+        StringValue(CreateDataDirFilename(dir + m_program + "_" + m_archName + ".json")));
     sw->SetAttribute("FlowTablePath", StringValue(""));
     sw->SetAttribute("BmLogLevel", StringValue("off"));
     switchNode->AddDevice(sw);
@@ -260,7 +266,8 @@ StfTestCase::DoRun()
     }
 }
 
-/// Every architecture runs the same program, p4src/forward, with the same .stf files
+/// Every architecture runs the same program, p4src/forward, with the same .stf
+/// files; p4src/priority checks the priority queues of v1model
 static class P4PacketTestSuite : public TestSuite
 {
   public:
@@ -276,8 +283,10 @@ static class P4PacketTestSuite : public TestSuite
         {
             for (const char* stf : {"ipv4.stf", "drop.stf", "ports.stf"})
             {
-                AddTestCase(new StfTestCase(name, arch, stf), TestCase::QUICK);
+                AddTestCase(new StfTestCase("forward", name, arch, stf), TestCase::QUICK);
             }
         }
+        AddTestCase(new StfTestCase("priority", "v1model", P4SWITCH_ARCH_V1MODEL, "priority.stf"),
+                    TestCase::QUICK);
     }
 } g_p4PacketTestSuite;

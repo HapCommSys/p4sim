@@ -1,0 +1,19 @@
+# Strict priority on one port, as in BMv2's simple_switch: a higher priority
+# leaves first (7 is the highest), FIFO within a priority. Queue depths count
+# the frames of the same priority queue only.
+# The priority is the low 3 bits of the EtherType. The egress writes enq_qdepth
+# into the upper and deq_qdepth into the lower 24 bits of the source MAC. All
+# frames arrive at the same time, so they queue up before the first one leaves.
+
+packet 0 000000000001 0000000000aa 9000  00000001   # L1, priority 0
+packet 0 000000000001 0000000000aa 9000  00000002   # L2
+packet 0 000000000001 0000000000aa 9000  00000003   # L3
+packet 0 000000000001 0000000000aa 9007  00000004   # H1, priority 7
+packet 0 000000000001 0000000000aa 9007  00000005   # H2
+
+#        dst          enq    deq    type
+expect 1 000000000001 000000 000001 9007  00000004  # H1: 0 ahead, 1 (H2) left
+expect 1 000000000001 000001 000000 9007  00000005  # H2
+expect 1 000000000001 000000 000002 9000  00000001  # L1: 0 ahead, 2 left
+expect 1 000000000001 000001 000001 9000  00000002  # L2
+expect 1 000000000001 000002 000000 9000  00000003  # L3
