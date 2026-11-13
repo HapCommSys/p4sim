@@ -21,8 +21,10 @@
 #ifndef ETH_NET_DEVICE_H
 #define ETH_NET_DEVICE_H
 
+#include "ns3/event-id.h"
 #include "ns3/mac48-address.h"
 #include "ns3/net-device.h"
+#include "ns3/queue.h"
 #include "ns3/traced-callback.h"
 
 namespace ns3
@@ -73,6 +75,18 @@ class SwitchedEthernetHostDevice : public NetDevice
      */
     void ReceiveFrame(Ptr<Packet> frame);
 
+    /**
+     * \brief Set the transmit queue.
+     *
+     * Frames that arrive while the device is sending wait here and leave back
+     * to back; a frame that does not fit is dropped (MacTxDrop). The default
+     * is a DropTailQueue of 100 packets.
+     */
+    void SetQueue(Ptr<Queue<Packet>> queue);
+
+    /** \return The transmit queue. */
+    Ptr<Queue<Packet>> GetQueue() const;
+
     // -----------------------------------------------------------------------
     // NetDevice interface
     // -----------------------------------------------------------------------
@@ -104,7 +118,20 @@ class SwitchedEthernetHostDevice : public NetDevice
     void SetPromiscReceiveCallback(NetDevice::PromiscReceiveCallback cb) override;
     bool SupportsSendFrom() const override;
 
+  protected:
+    void DoDispose() override;
+
   private:
+    /// Puts the next queued frame on the wire, unless a frame is being sent
+    void TransmitStart();
+
+    /// The frame on the wire has been serialised: free the channel slot and
+    /// send the next one
+    void TransmitComplete();
+
+    Ptr<Queue<Packet>> m_queue; ///< frames waiting to be sent
+    bool m_txBusy{false};       ///< true while a frame is being serialised
+    EventId m_txCompleteEvent;
     Ptr<SwitchedEthernetChannel> m_channel;
     uint32_t m_devId{0};
     Mac48Address m_address;
