@@ -42,12 +42,13 @@ class SwitchedEthernetChannel;
  * this device strips/adds the Ethernet header when handing off to/from the
  * IP stack, exactly like a CsmaNetDevice.
  *
- * Typical setup via P4Helper:
+ * Typical setup via SwitchedEthernetHelper:
  * \code
- *   NetDeviceContainer devs = p4.Install(switchNode, hosts);
- *   // devs[0] = P4SwitchNetDevice on switchNode
- *   // devs[1] = SwitchedEthernetHostDevice on hosts[0]
- *   // devs[2] = SwitchedEthernetHostDevice on hosts[1]
+ *   Ptr<P4SwitchNetDevice> sw =
+ *       DynamicCast<P4SwitchNetDevice>(p4.Install(switchNode).Get(0));
+ *   SwitchedEthernetHelper eth;
+ *   NetDeviceContainer devs = eth.Install(sw, hosts);
+ *   // devs.Get(i) = SwitchedEthernetHostDevice on hosts.Get(i)
  * \endcode
  */
 class SwitchedEthernetHostDevice : public NetDevice

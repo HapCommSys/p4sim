@@ -1,4 +1,4 @@
-# intro
+# Switched Ethernet: switch and host devices
 
 ## The Two Devices
 
@@ -10,7 +10,7 @@ Configured with: JsonPath, FlowTablePath, P4SwitchArch, SwitchRate
 
 **SwitchedEthernetHostDevice (on each host node)**
 A plain Ethernet NIC — no P4 knowledge at all
-Send path: IP stack → Send() → adds Ethernet header → hands to channel → arrives at switch port
+Send path: IP stack → queue disc → Send() → adds Ethernet header → transmit queue → channel, one frame at a time → arrives at switch port
 Receive path: switch forwards a frame → channel delivers to ReceiveFrame() → strips Ethernet header → passes payload up to IP stack
 Configured with: a MAC address; SwitchedEthernetHelper sets its transmit queue and flow control (see below)
 
@@ -87,5 +87,3 @@ queue disc is then installed by default, and an installed one passes every
 packet on at once.
 
 The key insight: the host device is intentionally dumb — it only adds/strips Ethernet headers and passes frames to/from the channel. All intelligence (routing, forwarding) lives in the P4 program on the switch. The two helpers enforce this separation so P4 parameters never bleed into host setup and vice versa.
-
-Does this match your intent? If so I can verify the current code matches this design (or fix any gaps).
