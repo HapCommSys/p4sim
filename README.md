@@ -23,6 +23,14 @@ P4sim is open-source software licensed under the Apache License 2.0.
 
 ---
 
+### Architectural Overview
+
+This repository provides two P4 switch architectures in ns-3. Arch 1 (`main branch`) follows a `bridge-based` design, where each port corresponds to an external NetDevice (e.g., `CSMA` or `P2P`), offering flexibility but limited control over port-level behavior. Arch 2 (`switch_channel branch`) introduces a `switch-centric` design, in which ports are internal components of the `P4SwitchNetDevice` and interconnected via a switched Ethernet channel, enabling fine-grained control, improved modularity, and closer alignment with real-world programmable switch architectures.
+
+![Two architectures](./doc/figures/p4sim_arch.drawio.png)
+
+The branch `switch_channel` now is ongoing development and may contain breaking changes. The `main` branch is stable and recommended for users who want to get started with P4sim immediately.
+
 ### Publications
 
 - Mingyu Ma, Giang T. Nguyen. **"P4sim: Programming Protocol-independent Packet Processors in ns-3."** 2025. [[ACM DL]](https://dl.acm.org/doi/10.1145/3747204.3747210) [[arXiv]](https://arxiv.org/abs/2503.17554)
