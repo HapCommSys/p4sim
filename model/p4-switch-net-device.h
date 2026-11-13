@@ -56,6 +56,7 @@ class SwitchedEthernetChannel;
 class P4CoreV1model;
 class P4CorePsa;
 class P4PnaNic;
+class P4SwitchCore;
 class P4CorePipeline;
 class P4BridgeChannel;
 
@@ -236,6 +237,12 @@ class P4SwitchNetDevice : public NetDevice
     P4CoreV1model* GetV1ModelCore() const;
 
     /**
+     * \brief Get the Thrift port of the P4 core of this switch
+     * \return the port, or 0 if the core is not created yet (or already released)
+     */
+    int GetThriftPort() const;
+
+    /**
      * \brief Emit a switch event trace (called by pipeline cores).
      */
     void EmitSwitchEvent(uint32_t id, const std::string& msg);
@@ -329,6 +336,13 @@ class P4SwitchNetDevice : public NetDevice
     void PortTransmitEnd(uint32_t port);
 
     /**
+     * \brief Pass the BMv2 options of this device (BmLogLevel, ThriftPort) to
+     *        its P4 core, before the core loads the P4 JSON.
+     * \param core the P4 core created by DoInitialize()
+     */
+    void ConfigureCore(P4SwitchCore& core) const;
+
+    /**
      * \brief Feed \p frame, a full Ethernet frame received on \p inPort, into
      *        the P4 core.
      */
@@ -363,6 +377,8 @@ class P4SwitchNetDevice : public NetDevice
 
     std::string m_jsonPath;
     std::string m_flowTablePath;
+    std::string m_bmLogLevel; //!< BMv2 log level ("trace" ... "off")
+    uint16_t m_thriftPort;    //!< Requested Thrift port, 0 = automatic
 
     // The device owns its P4 core: DoInitialize() creates the one selected by
     // m_switchArch (the others stay null) and DoDispose() releases it.

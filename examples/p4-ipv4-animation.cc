@@ -41,6 +41,9 @@ main(int argc, char* argv[])
 {
     LogComponentEnable("P4Ipv4Animation", LOG_LEVEL_INFO);
 
+    CommandLine cmd(__FILE__);
+    cmd.Parse(argc, argv);
+
     std::string ns3_link_rate = "1000Mbps";
 
     // Use P4SIM_DIR environment variable for portable paths

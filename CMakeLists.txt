@@ -136,10 +136,11 @@ build_lib(
         test/p4-bridge-port-test-suite.cc
         test/p4-pna-test-suite.cc
         test/p4-switch-rate-test-suite.cc
-        # test/p4-controller-test-suite.cc
-        #  test/p4sim-test-suite.cc
+        test/p4-controller-test-suite.cc
+        test/p4sim-test-suite.cc
         test/format-utils-test-suite.cc
-        #  test/p4-topology-reader-test-suite.cc
-        #  test/p4-p2p-channel-test-suite.cc
+        test/p4-topology-reader-test-suite.cc
+        test/p4-p2p-channel-test-suite.cc
+        test/p4-queue-test-suite.cc
         ${examples_as_tests_sources}
 )

@@ -61,6 +61,34 @@ class P4SwitchCore : public bm::Switch
     void InitializeSwitchFromP4Json(const std::string& jsonPath);
 
     /**
+     * @brief Set the BMv2 log level used by InitializeSwitchFromP4Json()
+     * @param level one of "trace" (default), "debug", "info", "notice", "warn",
+     *        "error", "critical", "alert", "emerg" or "off". With "off", no
+     *        pipeline log file is written.
+     * @note The BMv2 logger is shared by all switches of a process, so the level
+     *       of the switch initialized last applies to all of them.
+     */
+    void SetBmLogLevel(const std::string& level);
+
+    /**
+     * @brief Choose the Thrift port, before InitializeSwitchFromP4Json() is called
+     * @param port the port to use, or 0 (default) for the first free port starting
+     *        at $P4SIM_THRIFT_PORT_BASE (9090 if unset)
+     *
+     * A port is free if no other p4sim process has reserved it (lock file
+     * /tmp/p4sim-thrift-<port>.lock, held until the process exits) and no other
+     * program listens on it. The port also names the BMv2 IPC sockets and the
+     * pipeline log file, so those do not collide either.
+     */
+    void SetThriftPort(uint16_t port);
+
+    /**
+     * @brief Get the Thrift port of this switch
+     * @return the port, or 0 before InitializeSwitchFromP4Json() is called
+     */
+    int GetThriftPort() const;
+
+    /**
      * @brief Load the flow table to the switch
      * @param flowTablePath the path to the flow table file
      * @return int the status code
@@ -243,7 +271,9 @@ class P4SwitchCore : public bm::Switch
     std::map<Address, int> m_addressMap;    //!< Map for fast lookup
   private:
     class MirroringSessions;            //!< Mirroring sessions for clone .etc
-    int m_thriftPort;                   //!< Thrift port for the switch (default 9090)
+    int m_thriftPort{0};                //!< Thrift port of the switch (allocated at init)
+    uint16_t m_requestedThriftPort{0};  //!< Requested Thrift port, 0 = automatic
+    std::string m_bmLogLevel{"trace"};  //!< BMv2 log level
     size_t m_nbQueuesPerPort;           //!< Number of queues per port (default 8)
     uint64_t m_packetId{0};             //!< Packet ID
     uint64_t m_startTimestamp;          //!< Start time of the switch

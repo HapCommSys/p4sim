@@ -1,0 +1,764 @@
+{
+  "header_types" : [
+    {
+      "name" : "ethernet_t",
+      "id" : 0,
+      "fields" : [
+        ["dstAddr", 48, false],
+        ["srcAddr", 48, false],
+        ["etherType", 16, false]
+      ]
+    },
+    {
+      "name" : "arp_t",
+      "id" : 1,
+      "fields" : [
+        ["hw_type", 16, false],
+        ["protocol_type", 16, false],
+        ["hw_size", 8, false],
+        ["protocol_size", 8, false],
+        ["opcode", 16, false],
+        ["srcMac", 48, false],
+        ["srcIp", 32, false],
+        ["dstMac", 48, false],
+        ["dstIp", 32, false]
+      ]
+    },
+    {
+      "name" : "ipv4_t",
+      "id" : 2,
+      "fields" : [
+        ["version", 4, false],
+        ["ihl", 4, false],
+        ["diffserv", 8, false],
+        ["totalLen", 16, false],
+        ["identification", 16, false],
+        ["flags", 3, false],
+        ["fragOffset", 13, false],
+        ["ttl", 8, false],
+        ["protocol", 8, false],
+        ["hdrChecksum", 16, false],
+        ["srcAddr", 32, false],
+        ["dstAddr", 32, false]
+      ]
+    },
+    {
+      "name" : "pna_main_parser_input_metadata_t",
+      "id" : 3,
+      "fields" : [
+        ["direction", 32, false],
+        ["pass", 3, false],
+        ["loopedback", 1, false],
+        ["input_port", 32, false],
+        ["_padding", 4, false]
+      ]
+    },
+    {
+      "name" : "pna_main_input_metadata_t",
+      "id" : 4,
+      "fields" : [
+        ["direction", 32, false],
+        ["pass", 3, false],
+        ["loopedback", 1, false],
+        ["timestamp", 64, false],
+        ["parser_error", 32, false],
+        ["class_of_service", 8, false],
+        ["input_port", 32, false],
+        ["_padding_0", 4, false]
+      ]
+    },
+    {
+      "name" : "pna_main_output_metadata_t",
+      "id" : 5,
+      "fields" : [
+        ["class_of_service", 8, false]
+      ]
+    },
+    {
+      "name" : "scalars_t",
+      "id" : 6,
+      "fields" : [
+        ["pna_pre_input_metadata_t.loopedback", 1, false],
+        ["pna_pre_input_metadata_t.pass", 3, false],
+        ["pna_pre_input_metadata_t.direction", 32, false],
+        [],
+        ["pna_pre_input_metadata_t.input_port", 32, false],
+        ["pna_pre_output_metadata_t.decrypt", 1, false],
+        ["pna_main_parser_input_metadata_t.input_port", 32, false],
+        ["pna_main_parser_input_metadata_t.loopedback", 1, false],
+        ["pna_main_parser_input_metadata_t.pass", 3, false],
+        ["pna_main_parser_input_metadata_t.direction", 32, false],
+        ["pna_pre_output_metadata_t.decrypt_start_offset", 16, false],
+        ["pna_pre_output_metadata_t.said", 32, false],
+        ["pna_main_input_metadata_t.input_port", 32, false],
+        ["pna_main_input_metadata_t.class_of_service", 8, false],
+        [],
+        ["pna_main_input_metadata_t.timestamp", 64, false],
+        ["pna_main_input_metadata_t.loopedback", 1, false],
+        ["pna_main_input_metadata_t.pass", 3, false],
+        ["pna_main_input_metadata_t.direction", 32, false],
+        ["pna_main_output_metadata_t.class_of_service", 8, false],
+        ["_padding_1", 3, false]
+      ]
+    }
+  ],
+  "headers" : [
+    {
+      "name" : "ethernet",
+      "id" : 0,
+      "header_type" : "ethernet_t",
+      "metadata" : false,
+      "pi_omit" : true
+    },
+    {
+      "name" : "arp",
+      "id" : 1,
+      "header_type" : "arp_t",
+      "metadata" : false,
+      "pi_omit" : true
+    },
+    {
+      "name" : "ipv4",
+      "id" : 2,
+      "header_type" : "ipv4_t",
+      "metadata" : false,
+      "pi_omit" : true
+    },
+    {
+      "name" : "pna_main_parser_input_metadata",
+      "id" : 3,
+      "header_type" : "pna_main_parser_input_metadata_t",
+      "metadata" : true,
+      "pi_omit" : true
+    },
+    {
+      "name" : "pna_main_input_metadata",
+      "id" : 4,
+      "header_type" : "pna_main_input_metadata_t",
+      "metadata" : true,
+      "pi_omit" : true
+    },
+    {
+      "name" : "pna_main_output_metadata",
+      "id" : 5,
+      "header_type" : "pna_main_output_metadata_t",
+      "metadata" : true,
+      "pi_omit" : true
+    },
+    {
+      "name" : "scalars",
+      "id" : 6,
+      "header_type" : "scalars_t",
+      "metadata" : false,
+      "pi_omit" : true
+    }
+  ],
+  "header_stacks" : [],
+  "header_union_types" : [],
+  "header_unions" : [],
+  "header_union_stacks" : [],
+  "field_lists" : [],
+  "errors" : [],
+  "enums" : [
+    {
+      "name" : "PNA_MeterColor_t",
+      "entries" : [
+        ["RED", 0],
+        ["GREEN", 1],
+        ["YELLOW", 2]
+      ]
+    },
+    {
+      "name" : "PNA_Direction_t",
+      "entries" : [
+        ["NET_TO_HOST", 0],
+        ["HOST_TO_NET", 1]
+      ]
+    }
+  ],
+  "parsers" : [
+    {
+      "name" : "main_parser",
+      "id" : 0,
+      "init_state" : "start",
+      "parse_states" : [
+        {
+          "name" : "start",
+          "id" : 0,
+          "parser_ops" : [
+            {
+              "parameters" : [
+                {
+                  "type" : "regular",
+                  "value" : "ethernet"
+                }
+              ],
+              "op" : "extract"
+            }
+          ],
+          "transitions" : [
+            {
+              "type" : "hexstr",
+              "value" : "0x0800",
+              "mask" : null,
+              "next_state" : "parse_ipv4"
+            },
+            {
+              "type" : "hexstr",
+              "value" : "0x0806",
+              "mask" : null,
+              "next_state" : "parse_arp"
+            },
+            {
+              "type" : "default",
+              "value" : null,
+              "mask" : null,
+              "next_state" : null
+            }
+          ],
+          "transition_key" : [
+            {
+              "type" : "field",
+              "value" : ["ethernet", "etherType"]
+            }
+          ]
+        },
+        {
+          "name" : "parse_arp",
+          "id" : 1,
+          "parser_ops" : [
+            {
+              "parameters" : [
+                {
+                  "type" : "regular",
+                  "value" : "arp"
+                }
+              ],
+              "op" : "extract"
+            }
+          ],
+          "transitions" : [
+            {
+              "type" : "default",
+              "value" : null,
+              "mask" : null,
+              "next_state" : null
+            }
+          ],
+          "transition_key" : []
+        },
+        {
+          "name" : "parse_ipv4",
+          "id" : 2,
+          "parser_ops" : [
+            {
+              "parameters" : [
+                {
+                  "type" : "regular",
+                  "value" : "ipv4"
+                }
+              ],
+              "op" : "extract"
+            }
+          ],
+          "transitions" : [
+            {
+              "type" : "default",
+              "value" : null,
+              "mask" : null,
+              "next_state" : null
+            }
+          ],
+          "transition_key" : []
+        }
+      ]
+    }
+  ],
+  "parse_vsets" : [],
+  "deparsers" : [
+    {
+      "name" : "main_deparser",
+      "id" : 0,
+      "source_info" : {
+        "filename" : "simple_pna_ipv4.p4",
+        "line" : 229,
+        "column" : 8,
+        "source_fragment" : "MainDeparserImpl"
+      },
+      "order" : ["ethernet", "arp", "ipv4"],
+      "primitives" : []
+    }
+  ],
+  "meter_arrays" : [],
+  "counter_arrays" : [],
+  "register_arrays" : [],
+  "calculations" : [],
+  "learn_lists" : [],
+  "actions" : [
+    {
+      "name" : "MainControlImpl.drop",
+      "id" : 0,
+      "runtime_data" : [],
+      "primitives" : [
+        {
+          "op" : "drop_packet",
+          "source_info" : {
+            "filename" : "simple_pna_ipv4.p4",
+            "line" : 151,
+            "column" : 8,
+            "source_fragment" : "drop_packet()"
+          },
+          "parameters" : []
+        }
+      ]
+    },
+    {
+      "name" : "MainControlImpl.drop",
+      "id" : 1,
+      "runtime_data" : [],
+      "primitives" : [
+        {
+          "op" : "drop_packet",
+          "source_info" : {
+            "filename" : "simple_pna_ipv4.p4",
+            "line" : 151,
+            "column" : 8,
+            "source_fragment" : "drop_packet()"
+          },
+          "parameters" : []
+        }
+      ]
+    },
+    {
+      "name" : "MainControlImpl.drop",
+      "id" : 2,
+      "runtime_data" : [],
+      "primitives" : [
+        {
+          "op" : "drop_packet",
+          "source_info" : {
+            "filename" : "simple_pna_ipv4.p4",
+            "line" : 151,
+            "column" : 8,
+            "source_fragment" : "drop_packet()"
+          },
+          "parameters" : []
+        }
+      ]
+    },
+    {
+      "name" : "MainControlImpl.ipv4_forward",
+      "id" : 3,
+      "runtime_data" : [
+        {
+          "name" : "dstMac",
+          "bitwidth" : 48
+        },
+        {
+          "name" : "port",
+          "bitwidth" : 32
+        }
+      ],
+      "primitives" : [
+        {
+          "op" : "send_to_port",
+          "source_info" : {
+            "filename" : "simple_pna_ipv4.p4",
+            "line" : 159,
+            "column" : 8,
+            "source_fragment" : "send_to_port(port)"
+          },
+          "parameters" : [
+            {
+              "type" : "runtime_data",
+              "value" : 1
+            }
+          ]
+        },
+        {
+          "op" : "assign",
+          "parameters" : [
+            {
+              "type" : "field",
+              "value" : ["ethernet", "srcAddr"]
+            },
+            {
+              "type" : "field",
+              "value" : ["ethernet", "dstAddr"]
+            }
+          ],
+          "source_info" : {
+            "filename" : "simple_pna_ipv4.p4",
+            "line" : 160,
+            "column" : 8,
+            "source_fragment" : "hdr.ethernet.srcAddr = hdr.ethernet.dstAddr"
+          }
+        },
+        {
+          "op" : "assign",
+          "parameters" : [
+            {
+              "type" : "field",
+              "value" : ["ethernet", "dstAddr"]
+            },
+            {
+              "type" : "runtime_data",
+              "value" : 0
+            }
+          ],
+          "source_info" : {
+            "filename" : "simple_pna_ipv4.p4",
+            "line" : 161,
+            "column" : 8,
+            "source_fragment" : "hdr.ethernet.dstAddr = dstMac"
+          }
+        },
+        {
+          "op" : "assign",
+          "parameters" : [
+            {
+              "type" : "field",
+              "value" : ["ipv4", "ttl"]
+            },
+            {
+              "type" : "expression",
+              "value" : {
+                "type" : "expression",
+                "value" : {
+                  "op" : "&",
+                  "left" : {
+                    "type" : "expression",
+                    "value" : {
+                      "op" : "+",
+                      "left" : {
+                        "type" : "field",
+                        "value" : ["ipv4", "ttl"]
+                      },
+                      "right" : {
+                        "type" : "hexstr",
+                        "value" : "0xff"
+                      }
+                    }
+                  },
+                  "right" : {
+                    "type" : "hexstr",
+                    "value" : "0xff"
+                  }
+                }
+              }
+            }
+          ],
+          "source_info" : {
+            "filename" : "simple_pna_ipv4.p4",
+            "line" : 162,
+            "column" : 8,
+            "source_fragment" : "hdr.ipv4.ttl = hdr.ipv4.ttl - 1"
+          }
+        }
+      ]
+    },
+    {
+      "name" : "MainControlImpl.set_arp_nhop",
+      "id" : 4,
+      "runtime_data" : [
+        {
+          "name" : "port",
+          "bitwidth" : 32
+        }
+      ],
+      "primitives" : [
+        {
+          "op" : "send_to_port",
+          "source_info" : {
+            "filename" : "simple_pna_ipv4.p4",
+            "line" : 170,
+            "column" : 8,
+            "source_fragment" : "send_to_port(port)"
+          },
+          "parameters" : [
+            {
+              "type" : "runtime_data",
+              "value" : 0
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "pipelines" : [
+    {
+      "name" : "main_control",
+      "id" : 0,
+      "source_info" : {
+        "filename" : "simple_pna_ipv4.p4",
+        "line" : 142,
+        "column" : 8,
+        "source_fragment" : "MainControlImpl"
+      },
+      "init_table" : "node_2",
+      "tables" : [
+        {
+          "name" : "MainControlImpl.ipv4_nhop",
+          "id" : 0,
+          "source_info" : {
+            "filename" : "simple_pna_ipv4.p4",
+            "line" : 182,
+            "column" : 10,
+            "source_fragment" : "ipv4_nhop"
+          },
+          "key" : [
+            {
+              "match_type" : "exact",
+              "name" : "hdr.ipv4.dstAddr",
+              "target" : ["ipv4", "dstAddr"],
+              "mask" : null
+            }
+          ],
+          "match_type" : "exact",
+          "type" : "simple",
+          "max_size" : 2,
+          "with_counters" : false,
+          "support_timeout" : false,
+          "direct_meters" : null,
+          "action_ids" : [3, 0],
+          "actions" : ["MainControlImpl.ipv4_forward", "MainControlImpl.drop"],
+          "base_default_next" : null,
+          "next_tables" : {
+            "MainControlImpl.ipv4_forward" : null,
+            "MainControlImpl.drop" : null
+          },
+          "default_entry" : {
+            "action_id" : 0,
+            "action_const" : false,
+            "action_data" : [],
+            "action_entry_const" : false
+          },
+          "entries" : [
+            {
+              "source_info" : {
+                "filename" : "simple_pna_ipv4.p4",
+                "line" : 193,
+                "column" : 12,
+                "source_fragment" : "0x0a010101: ipv4_forward(0x000000000001, (PortId_t) 0)"
+              },
+              "match_key" : [
+                {
+                  "match_type" : "exact",
+                  "key" : "0x0a010101"
+                }
+              ],
+              "action_entry" : {
+                "action_id" : 3,
+                "action_data" : ["0x1", "0x0"]
+              },
+              "priority" : 1
+            },
+            {
+              "source_info" : {
+                "filename" : "simple_pna_ipv4.p4",
+                "line" : 195,
+                "column" : 12,
+                "source_fragment" : "0x0a010102: ipv4_forward(0x000000000003, (PortId_t) 1)"
+              },
+              "match_key" : [
+                {
+                  "match_type" : "exact",
+                  "key" : "0x0a010102"
+                }
+              ],
+              "action_entry" : {
+                "action_id" : 3,
+                "action_data" : ["0x3", "0x1"]
+              },
+              "priority" : 2
+            }
+          ]
+        },
+        {
+          "name" : "MainControlImpl.arp_simple",
+          "id" : 1,
+          "source_info" : {
+            "filename" : "simple_pna_ipv4.p4",
+            "line" : 199,
+            "column" : 10,
+            "source_fragment" : "arp_simple"
+          },
+          "key" : [
+            {
+              "match_type" : "exact",
+              "name" : "hdr.arp.dstIp",
+              "target" : ["arp", "dstIp"],
+              "mask" : null
+            }
+          ],
+          "match_type" : "exact",
+          "type" : "simple",
+          "max_size" : 2,
+          "with_counters" : false,
+          "support_timeout" : false,
+          "direct_meters" : null,
+          "action_ids" : [4, 1],
+          "actions" : ["MainControlImpl.set_arp_nhop", "MainControlImpl.drop"],
+          "base_default_next" : null,
+          "next_tables" : {
+            "MainControlImpl.set_arp_nhop" : null,
+            "MainControlImpl.drop" : null
+          },
+          "default_entry" : {
+            "action_id" : 1,
+            "action_const" : false,
+            "action_data" : [],
+            "action_entry_const" : false
+          },
+          "entries" : [
+            {
+              "source_info" : {
+                "filename" : "simple_pna_ipv4.p4",
+                "line" : 209,
+                "column" : 12,
+                "source_fragment" : "0x0a010101: set_arp_nhop((PortId_t) 0)"
+              },
+              "match_key" : [
+                {
+                  "match_type" : "exact",
+                  "key" : "0x0a010101"
+                }
+              ],
+              "action_entry" : {
+                "action_id" : 4,
+                "action_data" : ["0x0"]
+              },
+              "priority" : 1
+            },
+            {
+              "source_info" : {
+                "filename" : "simple_pna_ipv4.p4",
+                "line" : 210,
+                "column" : 12,
+                "source_fragment" : "0x0a010102: set_arp_nhop((PortId_t) 1)"
+              },
+              "match_key" : [
+                {
+                  "match_type" : "exact",
+                  "key" : "0x0a010102"
+                }
+              ],
+              "action_entry" : {
+                "action_id" : 4,
+                "action_data" : ["0x1"]
+              },
+              "priority" : 2
+            }
+          ]
+        },
+        {
+          "name" : "tbl_drop",
+          "id" : 2,
+          "source_info" : {
+            "filename" : "simple_pna_ipv4.p4",
+            "line" : 221,
+            "column" : 12,
+            "source_fragment" : "drop()"
+          },
+          "key" : [],
+          "match_type" : "exact",
+          "type" : "simple",
+          "max_size" : 1024,
+          "with_counters" : false,
+          "support_timeout" : false,
+          "direct_meters" : null,
+          "action_ids" : [2],
+          "actions" : ["MainControlImpl.drop"],
+          "base_default_next" : null,
+          "next_tables" : {
+            "MainControlImpl.drop" : null
+          },
+          "default_entry" : {
+            "action_id" : 2,
+            "action_const" : true,
+            "action_data" : [],
+            "action_entry_const" : true
+          }
+        }
+      ],
+      "action_profiles" : [],
+      "conditionals" : [
+        {
+          "name" : "node_2",
+          "id" : 0,
+          "source_info" : {
+            "filename" : "simple_pna_ipv4.p4",
+            "line" : 216,
+            "column" : 12,
+            "source_fragment" : "hdr.ipv4.isValid() && hdr.ipv4.ttl > 0"
+          },
+          "expression" : {
+            "type" : "expression",
+            "value" : {
+              "op" : "and",
+              "left" : {
+                "type" : "expression",
+                "value" : {
+                  "op" : "d2b",
+                  "left" : null,
+                  "right" : {
+                    "type" : "field",
+                    "value" : ["ipv4", "$valid$"]
+                  }
+                }
+              },
+              "right" : {
+                "type" : "expression",
+                "value" : {
+                  "op" : ">",
+                  "left" : {
+                    "type" : "field",
+                    "value" : ["ipv4", "ttl"]
+                  },
+                  "right" : {
+                    "type" : "hexstr",
+                    "value" : "0x00"
+                  }
+                }
+              }
+            }
+          },
+          "true_next" : "MainControlImpl.ipv4_nhop",
+          "false_next" : "node_4"
+        },
+        {
+          "name" : "node_4",
+          "id" : 1,
+          "source_info" : {
+            "filename" : "simple_pna_ipv4.p4",
+            "line" : 218,
+            "column" : 19,
+            "source_fragment" : "hdr.arp.isValid()"
+          },
+          "expression" : {
+            "type" : "expression",
+            "value" : {
+              "op" : "d2b",
+              "left" : null,
+              "right" : {
+                "type" : "field",
+                "value" : ["arp", "$valid$"]
+              }
+            }
+          },
+          "true_next" : "MainControlImpl.arp_simple",
+          "false_next" : "tbl_drop"
+        }
+      ]
+    }
+  ],
+  "checksums" : [],
+  "force_arith" : [],
+  "extern_instances" : [],
+  "field_aliases" : [],
+  "program" : "simple_pna_ipv4.p4",
+  "__meta__" : {
+    "version" : [2, 23],
+    "compiler" : "https://github.com/p4lang/p4c"
+  }
+}
