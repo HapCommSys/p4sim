@@ -4,28 +4,15 @@
       "name" : "scalars_0",
       "id" : 0,
       "fields" : [
-        ["tmp_0", 32, false],
-        ["tmp_1", 1, false],
-        ["tmp_2", 1, false],
-        ["tmp_4", 8, false],
         ["key_0", 16, false],
         ["metadata._mystruct1_a0", 4, false],
         ["metadata._mystruct1_b1", 4, false],
-        ["metadata._hash12", 16, false],
-        ["_padding_0", 6, false]
-      ]
-    },
-    {
-      "name" : "IPv4_up_to_ihl_only_h",
-      "id" : 1,
-      "fields" : [
-        ["version", 4, false],
-        ["ihl", 4, false]
+        ["metadata._hash12", 16, false]
       ]
     },
     {
       "name" : "standard_metadata",
-      "id" : 2,
+      "id" : 1,
       "fields" : [
         ["ingress_port", 9, false],
         ["egress_spec", 9, false],
@@ -43,16 +30,32 @@
         ["checksum_error", 1, false],
         ["parser_error", 32, false],
         ["priority", 3, false],
+        ["lag_hash", 16, false],
         ["_padding", 3, false]
       ]
     },
     {
       "name" : "ethernet_t",
-      "id" : 3,
+      "id" : 2,
       "fields" : [
         ["dstAddr", 48, false],
         ["srcAddr", 48, false],
         ["etherType", 16, false]
+      ]
+    },
+    {
+      "name" : "arp_t",
+      "id" : 3,
+      "fields" : [
+        ["hw_type", 16, false],
+        ["protocol_type", 16, false],
+        ["hw_size", 8, false],
+        ["protocol_size", 8, false],
+        ["opcode", 16, false],
+        ["srcMac", 48, false],
+        ["srcIp", 32, false],
+        ["dstMac", 48, false],
+        ["dstIp", 32, false]
       ]
     },
     {
@@ -70,10 +73,8 @@
         ["protocol", 8, false],
         ["hdrChecksum", 16, false],
         ["srcAddr", 32, false],
-        ["dstAddr", 32, false],
-        ["options", "*"]
-      ],
-      "max_length" : 60
+        ["dstAddr", 32, false]
+      ]
     },
     {
       "name" : "tcp_t",
@@ -95,30 +96,30 @@
   ],
   "headers" : [
     {
-      "name" : "tmp",
-      "id" : 0,
-      "header_type" : "IPv4_up_to_ihl_only_h",
-      "metadata" : false,
-      "pi_omit" : true
-    },
-    {
       "name" : "scalars",
-      "id" : 1,
+      "id" : 0,
       "header_type" : "scalars_0",
       "metadata" : true,
       "pi_omit" : true
     },
     {
       "name" : "standard_metadata",
-      "id" : 2,
+      "id" : 1,
       "header_type" : "standard_metadata",
       "metadata" : true,
       "pi_omit" : true
     },
     {
       "name" : "ethernet",
-      "id" : 3,
+      "id" : 2,
       "header_type" : "ethernet_t",
+      "metadata" : false,
+      "pi_omit" : true
+    },
+    {
+      "name" : "arp",
+      "id" : 3,
+      "header_type" : "arp_t",
       "metadata" : false,
       "pi_omit" : true
     },
@@ -149,10 +150,7 @@
     ["StackOutOfBounds", 3],
     ["HeaderTooShort", 4],
     ["ParserTimeout", 5],
-    ["ParserInvalidArgument", 6],
-    ["IPv4HeaderTooShort", 7],
-    ["IPv4IncorrectVersion", 8],
-    ["IPv4ChecksumError", 9]
+    ["ParserInvalidArgument", 6]
   ],
   "enums" : [],
   "parsers" : [
@@ -178,6 +176,12 @@
           "transitions" : [
             {
               "type" : "hexstr",
+              "value" : "0x0806",
+              "mask" : null,
+              "next_state" : "parse_arp"
+            },
+            {
+              "type" : "hexstr",
               "value" : "0x0800",
               "mask" : null,
               "next_state" : "parse_ipv4"
@@ -197,335 +201,41 @@
           ]
         },
         {
-          "name" : "parse_ipv4",
+          "name" : "parse_arp",
           "id" : 1,
           "parser_ops" : [
             {
               "parameters" : [
                 {
-                  "type" : "field",
-                  "value" : ["scalars", "tmp_4"]
-                },
-                {
-                  "type" : "lookahead",
-                  "value" : [0, 8]
+                  "type" : "regular",
+                  "value" : "arp"
                 }
               ],
-              "op" : "set"
-            },
+              "op" : "extract"
+            }
+          ],
+          "transitions" : [
             {
-              "parameters" : [
-                {
-                  "parameters" : [
-                    {
-                      "type" : "header",
-                      "value" : "tmp"
-                    }
-                  ],
-                  "op" : "add_header"
-                }
-              ],
-              "op" : "primitive"
-            },
-            {
-              "parameters" : [
-                {
-                  "type" : "field",
-                  "value" : ["tmp", "version"]
-                },
-                {
-                  "type" : "expression",
-                  "value" : {
-                    "type" : "expression",
-                    "value" : {
-                      "op" : "&",
-                      "left" : {
-                        "type" : "expression",
-                        "value" : {
-                          "op" : "&",
-                          "left" : {
-                            "type" : "expression",
-                            "value" : {
-                              "op" : ">>",
-                              "left" : {
-                                "type" : "field",
-                                "value" : ["scalars", "tmp_4"]
-                              },
-                              "right" : {
-                                "type" : "hexstr",
-                                "value" : "0x4"
-                              }
-                            }
-                          },
-                          "right" : {
-                            "type" : "hexstr",
-                            "value" : "0xff"
-                          }
-                        }
-                      },
-                      "right" : {
-                        "type" : "hexstr",
-                        "value" : "0x0f"
-                      }
-                    }
-                  }
-                }
-              ],
-              "op" : "set"
-            },
-            {
-              "parameters" : [
-                {
-                  "type" : "field",
-                  "value" : ["tmp", "ihl"]
-                },
-                {
-                  "type" : "expression",
-                  "value" : {
-                    "type" : "expression",
-                    "value" : {
-                      "op" : "&",
-                      "left" : {
-                        "type" : "field",
-                        "value" : ["scalars", "tmp_4"]
-                      },
-                      "right" : {
-                        "type" : "hexstr",
-                        "value" : "0x0f"
-                      }
-                    }
-                  }
-                }
-              ],
-              "op" : "set"
-            },
-            {
-              "parameters" : [
-                {
-                  "type" : "field",
-                  "value" : ["scalars", "tmp_0"]
-                },
-                {
-                  "type" : "expression",
-                  "value" : {
-                    "type" : "expression",
-                    "value" : {
-                      "op" : "&",
-                      "left" : {
-                        "type" : "expression",
-                        "value" : {
-                          "op" : "&",
-                          "left" : {
-                            "type" : "expression",
-                            "value" : {
-                              "op" : "<<",
-                              "left" : {
-                                "type" : "expression",
-                                "value" : {
-                                  "op" : "&",
-                                  "left" : {
-                                    "type" : "expression",
-                                    "value" : {
-                                      "op" : "+",
-                                      "left" : {
-                                        "type" : "expression",
-                                        "value" : {
-                                          "op" : "&",
-                                          "left" : {
-                                            "type" : "expression",
-                                            "value" : {
-                                              "op" : "<<",
-                                              "left" : {
-                                                "type" : "expression",
-                                                "value" : {
-                                                  "op" : "&",
-                                                  "left" : {
-                                                    "type" : "expression",
-                                                    "value" : {
-                                                      "op" : "&",
-                                                      "left" : {
-                                                        "type" : "field",
-                                                        "value" : ["scalars", "tmp_4"]
-                                                      },
-                                                      "right" : {
-                                                        "type" : "hexstr",
-                                                        "value" : "0x0f"
-                                                      }
-                                                    }
-                                                  },
-                                                  "right" : {
-                                                    "type" : "hexstr",
-                                                    "value" : "0x01ff"
-                                                  }
-                                                }
-                                              },
-                                              "right" : {
-                                                "type" : "hexstr",
-                                                "value" : "0x2"
-                                              }
-                                            }
-                                          },
-                                          "right" : {
-                                            "type" : "hexstr",
-                                            "value" : "0x01ff"
-                                          }
-                                        }
-                                      },
-                                      "right" : {
-                                        "type" : "hexstr",
-                                        "value" : "0x01ec"
-                                      }
-                                    }
-                                  },
-                                  "right" : {
-                                    "type" : "hexstr",
-                                    "value" : "0x01ff"
-                                  }
-                                }
-                              },
-                              "right" : {
-                                "type" : "hexstr",
-                                "value" : "0x3"
-                              }
-                            }
-                          },
-                          "right" : {
-                            "type" : "hexstr",
-                            "value" : "0x01ff"
-                          }
-                        }
-                      },
-                      "right" : {
-                        "type" : "hexstr",
-                        "value" : "0xffffffff"
-                      }
-                    }
-                  }
-                }
-              ],
-              "op" : "set"
-            },
+              "type" : "default",
+              "value" : null,
+              "mask" : null,
+              "next_state" : null
+            }
+          ],
+          "transition_key" : []
+        },
+        {
+          "name" : "parse_ipv4",
+          "id" : 2,
+          "parser_ops" : [
             {
               "parameters" : [
                 {
                   "type" : "regular",
                   "value" : "ipv4"
-                },
-                {
-                  "type" : "expression",
-                  "value" : {
-                    "type" : "field",
-                    "value" : ["scalars", "tmp_0"]
-                  }
                 }
               ],
-              "op" : "extract_VL"
-            },
-            {
-              "parameters" : [
-                {
-                  "type" : "field",
-                  "value" : ["scalars", "tmp_1"]
-                },
-                {
-                  "type" : "expression",
-                  "value" : {
-                    "type" : "expression",
-                    "value" : {
-                      "op" : "b2d",
-                      "left" : null,
-                      "right" : {
-                        "type" : "expression",
-                        "value" : {
-                          "op" : "==",
-                          "left" : {
-                            "type" : "field",
-                            "value" : ["ipv4", "version"]
-                          },
-                          "right" : {
-                            "type" : "hexstr",
-                            "value" : "0x04"
-                          }
-                        }
-                      }
-                    }
-                  }
-                }
-              ],
-              "op" : "set"
-            },
-            {
-              "parameters" : [
-                {
-                  "type" : "expression",
-                  "value" : {
-                    "op" : "d2b",
-                    "left" : null,
-                    "right" : {
-                      "type" : "field",
-                      "value" : ["scalars", "tmp_1"]
-                    }
-                  }
-                },
-                {
-                  "type" : "hexstr",
-                  "value" : "0x8"
-                }
-              ],
-              "op" : "verify"
-            },
-            {
-              "parameters" : [
-                {
-                  "type" : "field",
-                  "value" : ["scalars", "tmp_2"]
-                },
-                {
-                  "type" : "expression",
-                  "value" : {
-                    "type" : "expression",
-                    "value" : {
-                      "op" : "b2d",
-                      "left" : null,
-                      "right" : {
-                        "type" : "expression",
-                        "value" : {
-                          "op" : ">=",
-                          "left" : {
-                            "type" : "field",
-                            "value" : ["ipv4", "ihl"]
-                          },
-                          "right" : {
-                            "type" : "hexstr",
-                            "value" : "0x05"
-                          }
-                        }
-                      }
-                    }
-                  }
-                }
-              ],
-              "op" : "set"
-            },
-            {
-              "parameters" : [
-                {
-                  "type" : "expression",
-                  "value" : {
-                    "op" : "d2b",
-                    "left" : null,
-                    "right" : {
-                      "type" : "field",
-                      "value" : ["scalars", "tmp_2"]
-                    }
-                  }
-                },
-                {
-                  "type" : "hexstr",
-                  "value" : "0x7"
-                }
-              ],
-              "op" : "verify"
+              "op" : "extract"
             }
           ],
           "transitions" : [
@@ -551,7 +261,7 @@
         },
         {
           "name" : "parse_tcp",
-          "id" : 2,
+          "id" : 3,
           "parser_ops" : [
             {
               "parameters" : [
@@ -582,19 +292,77 @@
       "name" : "deparser",
       "id" : 0,
       "source_info" : {
-        "filename" : "contrib/p4sim/test/p4src/action_profile_v1model/action-profile.p4",
-        "line" : 216,
+        "filename" : "action-profile.p4",
+        "line" : 288,
         "column" : 8,
         "source_fragment" : "DeparserI"
       },
-      "order" : ["ethernet", "ipv4", "tcp"],
+      "order" : ["ethernet", "arp", "ipv4", "tcp"],
       "primitives" : []
     }
   ],
   "meter_arrays" : [],
   "counter_arrays" : [],
   "register_arrays" : [],
-  "calculations" : [],
+  "calculations" : [
+    {
+      "name" : "calc",
+      "id" : 0,
+      "source_info" : {
+        "filename" : "action-profile.p4",
+        "line" : 270,
+        "column" : 8,
+        "source_fragment" : "update_checksum( ..."
+      },
+      "algo" : "csum16",
+      "input" : [
+        {
+          "type" : "field",
+          "value" : ["ipv4", "version"]
+        },
+        {
+          "type" : "field",
+          "value" : ["ipv4", "ihl"]
+        },
+        {
+          "type" : "field",
+          "value" : ["ipv4", "diffserv"]
+        },
+        {
+          "type" : "field",
+          "value" : ["ipv4", "totalLen"]
+        },
+        {
+          "type" : "field",
+          "value" : ["ipv4", "identification"]
+        },
+        {
+          "type" : "field",
+          "value" : ["ipv4", "flags"]
+        },
+        {
+          "type" : "field",
+          "value" : ["ipv4", "fragOffset"]
+        },
+        {
+          "type" : "field",
+          "value" : ["ipv4", "ttl"]
+        },
+        {
+          "type" : "field",
+          "value" : ["ipv4", "protocol"]
+        },
+        {
+          "type" : "field",
+          "value" : ["ipv4", "srcAddr"]
+        },
+        {
+          "type" : "field",
+          "value" : ["ipv4", "dstAddr"]
+        }
+      ]
+    }
+  ],
   "learn_lists" : [],
   "actions" : [
     {
@@ -616,66 +384,16 @@
       "primitives" : []
     },
     {
-      "name" : "cIngress.foo1",
+      "name" : "NoAction",
       "id" : 3,
-      "runtime_data" : [
-        {
-          "name" : "dstAddr",
-          "bitwidth" : 32
-        }
-      ],
-      "primitives" : [
-        {
-          "op" : "assign",
-          "parameters" : [
-            {
-              "type" : "field",
-              "value" : ["ipv4", "dstAddr"]
-            },
-            {
-              "type" : "runtime_data",
-              "value" : 0
-            }
-          ],
-          "source_info" : {
-            "filename" : "contrib/p4sim/test/p4src/action_profile_v1model/action-profile.p4",
-            "line" : 130,
-            "column" : 8,
-            "source_fragment" : "hdr.ipv4.dstAddr = dstAddr"
-          }
-        }
-      ]
+      "runtime_data" : [],
+      "primitives" : []
     },
     {
-      "name" : "cIngress.foo1",
+      "name" : "NoAction",
       "id" : 4,
-      "runtime_data" : [
-        {
-          "name" : "dstAddr",
-          "bitwidth" : 32
-        }
-      ],
-      "primitives" : [
-        {
-          "op" : "assign",
-          "parameters" : [
-            {
-              "type" : "field",
-              "value" : ["ipv4", "dstAddr"]
-            },
-            {
-              "type" : "runtime_data",
-              "value" : 0
-            }
-          ],
-          "source_info" : {
-            "filename" : "contrib/p4sim/test/p4src/action_profile_v1model/action-profile.p4",
-            "line" : 130,
-            "column" : 8,
-            "source_fragment" : "hdr.ipv4.dstAddr = dstAddr"
-          }
-        }
-      ]
+      "runtime_data" : [],
+      "primitives" : []
     },
     {
       "name" : "cIngress.foo1",
@@ -700,8 +418,8 @@
             }
           ],
           "source_info" : {
-            "filename" : "contrib/p4sim/test/p4src/action_profile_v1model/action-profile.p4",
-            "line" : 130,
+            "filename" : "action-profile.p4",
+            "line" : 139,
             "column" : 8,
             "source_fragment" : "hdr.ipv4.dstAddr = dstAddr"
           }
@@ -709,11 +427,11 @@
       ]
     },
     {
-      "name" : "cIngress.foo2",
+      "name" : "cIngress.foo1",
       "id" : 6,
       "runtime_data" : [
         {
-          "name" : "srcAddr",
+          "name" : "dstAddr",
           "bitwidth" : 32
         }
       ],
@@ -723,7 +441,7 @@
           "parameters" : [
             {
               "type" : "field",
-              "value" : ["ipv4", "srcAddr"]
+              "value" : ["ipv4", "dstAddr"]
             },
             {
               "type" : "runtime_data",
@@ -731,20 +449,20 @@
             }
           ],
           "source_info" : {
-            "filename" : "contrib/p4sim/test/p4src/action_profile_v1model/action-profile.p4",
-            "line" : 133,
+            "filename" : "action-profile.p4",
+            "line" : 139,
             "column" : 8,
-            "source_fragment" : "hdr.ipv4.srcAddr = srcAddr"
+            "source_fragment" : "hdr.ipv4.dstAddr = dstAddr"
           }
         }
       ]
     },
     {
-      "name" : "cIngress.foo2",
+      "name" : "cIngress.foo1",
       "id" : 7,
       "runtime_data" : [
         {
-          "name" : "srcAddr",
+          "name" : "dstAddr",
           "bitwidth" : 32
         }
       ],
@@ -754,7 +472,7 @@
           "parameters" : [
             {
               "type" : "field",
-              "value" : ["ipv4", "srcAddr"]
+              "value" : ["ipv4", "dstAddr"]
             },
             {
               "type" : "runtime_data",
@@ -762,10 +480,10 @@
             }
           ],
           "source_info" : {
-            "filename" : "contrib/p4sim/test/p4src/action_profile_v1model/action-profile.p4",
-            "line" : 133,
+            "filename" : "action-profile.p4",
+            "line" : 139,
             "column" : 8,
-            "source_fragment" : "hdr.ipv4.srcAddr = srcAddr"
+            "source_fragment" : "hdr.ipv4.dstAddr = dstAddr"
           }
         }
       ]
@@ -793,8 +511,8 @@
             }
           ],
           "source_info" : {
-            "filename" : "contrib/p4sim/test/p4src/action_profile_v1model/action-profile.p4",
-            "line" : 133,
+            "filename" : "action-profile.p4",
+            "line" : 142,
             "column" : 8,
             "source_fragment" : "hdr.ipv4.srcAddr = srcAddr"
           }
@@ -802,8 +520,434 @@
       ]
     },
     {
-      "name" : "actionprofile192",
+      "name" : "cIngress.foo2",
       "id" : 9,
+      "runtime_data" : [
+        {
+          "name" : "srcAddr",
+          "bitwidth" : 32
+        }
+      ],
+      "primitives" : [
+        {
+          "op" : "assign",
+          "parameters" : [
+            {
+              "type" : "field",
+              "value" : ["ipv4", "srcAddr"]
+            },
+            {
+              "type" : "runtime_data",
+              "value" : 0
+            }
+          ],
+          "source_info" : {
+            "filename" : "action-profile.p4",
+            "line" : 142,
+            "column" : 8,
+            "source_fragment" : "hdr.ipv4.srcAddr = srcAddr"
+          }
+        }
+      ]
+    },
+    {
+      "name" : "cIngress.foo2",
+      "id" : 10,
+      "runtime_data" : [
+        {
+          "name" : "srcAddr",
+          "bitwidth" : 32
+        }
+      ],
+      "primitives" : [
+        {
+          "op" : "assign",
+          "parameters" : [
+            {
+              "type" : "field",
+              "value" : ["ipv4", "srcAddr"]
+            },
+            {
+              "type" : "runtime_data",
+              "value" : 0
+            }
+          ],
+          "source_info" : {
+            "filename" : "action-profile.p4",
+            "line" : 142,
+            "column" : 8,
+            "source_fragment" : "hdr.ipv4.srcAddr = srcAddr"
+          }
+        }
+      ]
+    },
+    {
+      "name" : "cIngress.drop",
+      "id" : 11,
+      "runtime_data" : [],
+      "primitives" : [
+        {
+          "op" : "assign",
+          "parameters" : [
+            {
+              "type" : "field",
+              "value" : ["standard_metadata", "egress_spec"]
+            },
+            {
+              "type" : "hexstr",
+              "value" : "0x01ff"
+            }
+          ],
+          "source_info" : {
+            "filename" : "action-profile.p4",
+            "line" : 192,
+            "column" : 8,
+            "source_fragment" : "mark_to_drop2(stdmeta)"
+          }
+        },
+        {
+          "op" : "assign",
+          "parameters" : [
+            {
+              "type" : "field",
+              "value" : ["standard_metadata", "mcast_grp"]
+            },
+            {
+              "type" : "hexstr",
+              "value" : "0x0000"
+            }
+          ],
+          "source_info" : {
+            "filename" : "action-profile.p4",
+            "line" : 192,
+            "column" : 8,
+            "source_fragment" : "mark_to_drop2(stdmeta)"
+          }
+        }
+      ]
+    },
+    {
+      "name" : "cIngress.drop",
+      "id" : 12,
+      "runtime_data" : [],
+      "primitives" : [
+        {
+          "op" : "assign",
+          "parameters" : [
+            {
+              "type" : "field",
+              "value" : ["standard_metadata", "egress_spec"]
+            },
+            {
+              "type" : "hexstr",
+              "value" : "0x01ff"
+            }
+          ],
+          "source_info" : {
+            "filename" : "action-profile.p4",
+            "line" : 192,
+            "column" : 8,
+            "source_fragment" : "mark_to_drop2(stdmeta)"
+          }
+        },
+        {
+          "op" : "assign",
+          "parameters" : [
+            {
+              "type" : "field",
+              "value" : ["standard_metadata", "mcast_grp"]
+            },
+            {
+              "type" : "hexstr",
+              "value" : "0x0000"
+            }
+          ],
+          "source_info" : {
+            "filename" : "action-profile.p4",
+            "line" : 192,
+            "column" : 8,
+            "source_fragment" : "mark_to_drop2(stdmeta)"
+          }
+        }
+      ]
+    },
+    {
+      "name" : "cIngress.drop",
+      "id" : 13,
+      "runtime_data" : [],
+      "primitives" : [
+        {
+          "op" : "assign",
+          "parameters" : [
+            {
+              "type" : "field",
+              "value" : ["standard_metadata", "egress_spec"]
+            },
+            {
+              "type" : "hexstr",
+              "value" : "0x01ff"
+            }
+          ],
+          "source_info" : {
+            "filename" : "action-profile.p4",
+            "line" : 192,
+            "column" : 8,
+            "source_fragment" : "mark_to_drop2(stdmeta)"
+          }
+        },
+        {
+          "op" : "assign",
+          "parameters" : [
+            {
+              "type" : "field",
+              "value" : ["standard_metadata", "mcast_grp"]
+            },
+            {
+              "type" : "hexstr",
+              "value" : "0x0000"
+            }
+          ],
+          "source_info" : {
+            "filename" : "action-profile.p4",
+            "line" : 192,
+            "column" : 8,
+            "source_fragment" : "mark_to_drop2(stdmeta)"
+          }
+        }
+      ]
+    },
+    {
+      "name" : "cIngress.drop",
+      "id" : 14,
+      "runtime_data" : [],
+      "primitives" : [
+        {
+          "op" : "assign",
+          "parameters" : [
+            {
+              "type" : "field",
+              "value" : ["standard_metadata", "egress_spec"]
+            },
+            {
+              "type" : "hexstr",
+              "value" : "0x01ff"
+            }
+          ],
+          "source_info" : {
+            "filename" : "action-profile.p4",
+            "line" : 192,
+            "column" : 8,
+            "source_fragment" : "mark_to_drop2(stdmeta)"
+          }
+        },
+        {
+          "op" : "assign",
+          "parameters" : [
+            {
+              "type" : "field",
+              "value" : ["standard_metadata", "mcast_grp"]
+            },
+            {
+              "type" : "hexstr",
+              "value" : "0x0000"
+            }
+          ],
+          "source_info" : {
+            "filename" : "action-profile.p4",
+            "line" : 192,
+            "column" : 8,
+            "source_fragment" : "mark_to_drop2(stdmeta)"
+          }
+        }
+      ]
+    },
+    {
+      "name" : "cIngress.ipv4_forward",
+      "id" : 15,
+      "runtime_data" : [
+        {
+          "name" : "dstAddr",
+          "bitwidth" : 48
+        },
+        {
+          "name" : "port",
+          "bitwidth" : 9
+        }
+      ],
+      "primitives" : [
+        {
+          "op" : "assign",
+          "parameters" : [
+            {
+              "type" : "field",
+              "value" : ["standard_metadata", "egress_spec"]
+            },
+            {
+              "type" : "runtime_data",
+              "value" : 1
+            }
+          ],
+          "source_info" : {
+            "filename" : "action-profile.p4",
+            "line" : 195,
+            "column" : 8,
+            "source_fragment" : "stdmeta.egress_spec = port"
+          }
+        },
+        {
+          "op" : "assign",
+          "parameters" : [
+            {
+              "type" : "field",
+              "value" : ["standard_metadata", "egress_port"]
+            },
+            {
+              "type" : "runtime_data",
+              "value" : 1
+            }
+          ],
+          "source_info" : {
+            "filename" : "action-profile.p4",
+            "line" : 196,
+            "column" : 8,
+            "source_fragment" : "stdmeta.egress_port = port"
+          }
+        },
+        {
+          "op" : "assign",
+          "parameters" : [
+            {
+              "type" : "field",
+              "value" : ["ethernet", "srcAddr"]
+            },
+            {
+              "type" : "field",
+              "value" : ["ethernet", "dstAddr"]
+            }
+          ],
+          "source_info" : {
+            "filename" : "action-profile.p4",
+            "line" : 197,
+            "column" : 8,
+            "source_fragment" : "hdr.ethernet.srcAddr = hdr.ethernet.dstAddr"
+          }
+        },
+        {
+          "op" : "assign",
+          "parameters" : [
+            {
+              "type" : "field",
+              "value" : ["ethernet", "dstAddr"]
+            },
+            {
+              "type" : "runtime_data",
+              "value" : 0
+            }
+          ],
+          "source_info" : {
+            "filename" : "action-profile.p4",
+            "line" : 198,
+            "column" : 8,
+            "source_fragment" : "hdr.ethernet.dstAddr = dstAddr"
+          }
+        },
+        {
+          "op" : "assign",
+          "parameters" : [
+            {
+              "type" : "field",
+              "value" : ["ipv4", "ttl"]
+            },
+            {
+              "type" : "expression",
+              "value" : {
+                "type" : "expression",
+                "value" : {
+                  "op" : "&",
+                  "left" : {
+                    "type" : "expression",
+                    "value" : {
+                      "op" : "+",
+                      "left" : {
+                        "type" : "field",
+                        "value" : ["ipv4", "ttl"]
+                      },
+                      "right" : {
+                        "type" : "hexstr",
+                        "value" : "0xff"
+                      }
+                    }
+                  },
+                  "right" : {
+                    "type" : "hexstr",
+                    "value" : "0xff"
+                  }
+                }
+              }
+            }
+          ],
+          "source_info" : {
+            "filename" : "action-profile.p4",
+            "line" : 199,
+            "column" : 8,
+            "source_fragment" : "hdr.ipv4.ttl = hdr.ipv4.ttl - 1"
+          }
+        }
+      ]
+    },
+    {
+      "name" : "cIngress.set_arp_nhop",
+      "id" : 16,
+      "runtime_data" : [
+        {
+          "name" : "port",
+          "bitwidth" : 9
+        }
+      ],
+      "primitives" : [
+        {
+          "op" : "assign",
+          "parameters" : [
+            {
+              "type" : "field",
+              "value" : ["standard_metadata", "egress_spec"]
+            },
+            {
+              "type" : "runtime_data",
+              "value" : 0
+            }
+          ],
+          "source_info" : {
+            "filename" : "action-profile.p4",
+            "line" : 202,
+            "column" : 8,
+            "source_fragment" : "stdmeta.egress_spec = port"
+          }
+        },
+        {
+          "op" : "assign",
+          "parameters" : [
+            {
+              "type" : "field",
+              "value" : ["standard_metadata", "egress_port"]
+            },
+            {
+              "type" : "runtime_data",
+              "value" : 0
+            }
+          ],
+          "source_info" : {
+            "filename" : "action-profile.p4",
+            "line" : 203,
+            "column" : 8,
+            "source_fragment" : "stdmeta.egress_port = port"
+          }
+        }
+      ]
+    },
+    {
+      "name" : "actionprofile237",
+      "id" : 17,
       "runtime_data" : [],
       "primitives" : [
         {
@@ -832,9 +976,9 @@
             }
           ],
           "source_info" : {
-            "filename" : "contrib/p4sim/test/p4src/action_profile_v1model/action-profile.p4",
-            "line" : 192,
-            "column" : 8,
+            "filename" : "action-profile.p4",
+            "line" : 237,
+            "column" : 12,
             "source_fragment" : "meta.hash1 = hdr.ipv4.dstAddr[15:0]"
           }
         },
@@ -864,9 +1008,9 @@
             }
           ],
           "source_info" : {
-            "filename" : "contrib/p4sim/test/p4src/action_profile_v1model/action-profile.p4",
-            "line" : 192,
-            "column" : 21,
+            "filename" : "action-profile.p4",
+            "line" : 237,
+            "column" : 25,
             "source_fragment" : "hdr.ipv4.dstAddr[15:0]"
           }
         }
@@ -878,19 +1022,19 @@
       "name" : "ingress",
       "id" : 0,
       "source_info" : {
-        "filename" : "contrib/p4sim/test/p4src/action_profile_v1model/action-profile.p4",
-        "line" : 125,
+        "filename" : "action-profile.p4",
+        "line" : 134,
         "column" : 8,
         "source_fragment" : "cIngress"
       },
-      "init_table" : "cIngress.t0",
+      "init_table" : "node_2",
       "tables" : [
         {
           "name" : "cIngress.t0",
           "id" : 0,
           "source_info" : {
-            "filename" : "contrib/p4sim/test/p4src/action_profile_v1model/action-profile.p4",
-            "line" : 142,
+            "filename" : "action-profile.p4",
+            "line" : 151,
             "column" : 10,
             "source_fragment" : "t0"
           },
@@ -908,7 +1052,7 @@
           "with_counters" : false,
           "support_timeout" : false,
           "direct_meters" : null,
-          "action_ids" : [3, 6, 0],
+          "action_ids" : [5, 8, 0],
           "actions" : ["cIngress.foo1", "cIngress.foo2", "NoAction"],
           "base_default_next" : "cIngress.t1",
           "next_tables" : {
@@ -927,8 +1071,8 @@
           "name" : "cIngress.t1",
           "id" : 1,
           "source_info" : {
-            "filename" : "contrib/p4sim/test/p4src/action_profile_v1model/action-profile.p4",
-            "line" : 152,
+            "filename" : "action-profile.p4",
+            "line" : 161,
             "column" : 10,
             "source_fragment" : "t1"
           },
@@ -947,22 +1091,22 @@
           "with_counters" : false,
           "support_timeout" : false,
           "direct_meters" : null,
-          "action_ids" : [4, 7, 1],
+          "action_ids" : [6, 9, 1],
           "actions" : ["cIngress.foo1", "cIngress.foo2", "NoAction"],
-          "base_default_next" : "tbl_actionprofile192",
+          "base_default_next" : "tbl_actionprofile237",
           "next_tables" : {
-            "cIngress.foo1" : "tbl_actionprofile192",
-            "cIngress.foo2" : "tbl_actionprofile192",
-            "NoAction" : "tbl_actionprofile192"
+            "cIngress.foo1" : "tbl_actionprofile237",
+            "cIngress.foo2" : "tbl_actionprofile237",
+            "NoAction" : "tbl_actionprofile237"
           }
         },
         {
-          "name" : "tbl_actionprofile192",
+          "name" : "tbl_actionprofile237",
           "id" : 2,
           "source_info" : {
-            "filename" : "contrib/p4sim/test/p4src/action_profile_v1model/action-profile.p4",
-            "line" : 192,
-            "column" : 19,
+            "filename" : "action-profile.p4",
+            "line" : 237,
+            "column" : 23,
             "source_fragment" : "= hdr.ipv4.dstAddr[15:0]"
           },
           "key" : [],
@@ -972,14 +1116,14 @@
           "with_counters" : false,
           "support_timeout" : false,
           "direct_meters" : null,
-          "action_ids" : [9],
-          "actions" : ["actionprofile192"],
+          "action_ids" : [17],
+          "actions" : ["actionprofile237"],
           "base_default_next" : "cIngress.t2",
           "next_tables" : {
-            "actionprofile192" : "cIngress.t2"
+            "actionprofile237" : "cIngress.t2"
           },
           "default_entry" : {
-            "action_id" : 9,
+            "action_id" : 17,
             "action_const" : true,
             "action_data" : [],
             "action_entry_const" : true
@@ -989,8 +1133,8 @@
           "name" : "cIngress.t2",
           "id" : 3,
           "source_info" : {
-            "filename" : "contrib/p4sim/test/p4src/action_profile_v1model/action-profile.p4",
-            "line" : 163,
+            "filename" : "action-profile.p4",
+            "line" : 172,
             "column" : 10,
             "source_fragment" : "t2"
           },
@@ -1009,13 +1153,147 @@
           "with_counters" : false,
           "support_timeout" : false,
           "direct_meters" : null,
-          "action_ids" : [5, 8, 2],
+          "action_ids" : [7, 10, 2],
           "actions" : ["cIngress.foo1", "cIngress.foo2", "NoAction"],
+          "base_default_next" : "node_7",
+          "next_tables" : {
+            "cIngress.foo1" : "node_7",
+            "cIngress.foo2" : "node_7",
+            "NoAction" : "node_7"
+          }
+        },
+        {
+          "name" : "cIngress.ipv4_nhop",
+          "id" : 4,
+          "source_info" : {
+            "filename" : "action-profile.p4",
+            "line" : 205,
+            "column" : 10,
+            "source_fragment" : "ipv4_nhop"
+          },
+          "key" : [
+            {
+              "match_type" : "exact",
+              "name" : "hdr.ipv4.dstAddr",
+              "target" : ["ipv4", "dstAddr"],
+              "mask" : null
+            }
+          ],
+          "match_type" : "exact",
+          "type" : "simple",
+          "max_size" : 1024,
+          "with_counters" : false,
+          "support_timeout" : false,
+          "direct_meters" : null,
+          "action_ids" : [15, 11, 3],
+          "actions" : ["cIngress.ipv4_forward", "cIngress.drop", "NoAction"],
           "base_default_next" : null,
           "next_tables" : {
-            "cIngress.foo1" : null,
-            "cIngress.foo2" : null,
+            "cIngress.ipv4_forward" : null,
+            "cIngress.drop" : null,
             "NoAction" : null
+          },
+          "default_entry" : {
+            "action_id" : 11,
+            "action_const" : false,
+            "action_data" : [],
+            "action_entry_const" : false
+          }
+        },
+        {
+          "name" : "tbl_drop",
+          "id" : 5,
+          "source_info" : {
+            "filename" : "action-profile.p4",
+            "line" : 243,
+            "column" : 16,
+            "source_fragment" : "drop()"
+          },
+          "key" : [],
+          "match_type" : "exact",
+          "type" : "simple",
+          "max_size" : 1024,
+          "with_counters" : false,
+          "support_timeout" : false,
+          "direct_meters" : null,
+          "action_ids" : [13],
+          "actions" : ["cIngress.drop"],
+          "base_default_next" : null,
+          "next_tables" : {
+            "cIngress.drop" : null
+          },
+          "default_entry" : {
+            "action_id" : 13,
+            "action_const" : true,
+            "action_data" : [],
+            "action_entry_const" : true
+          }
+        },
+        {
+          "name" : "cIngress.arp_simple",
+          "id" : 6,
+          "source_info" : {
+            "filename" : "action-profile.p4",
+            "line" : 217,
+            "column" : 10,
+            "source_fragment" : "arp_simple"
+          },
+          "key" : [
+            {
+              "match_type" : "exact",
+              "name" : "hdr.arp.dstIp",
+              "target" : ["arp", "dstIp"],
+              "mask" : null
+            }
+          ],
+          "match_type" : "exact",
+          "type" : "simple",
+          "max_size" : 1024,
+          "with_counters" : false,
+          "support_timeout" : false,
+          "direct_meters" : null,
+          "action_ids" : [16, 12, 4],
+          "actions" : ["cIngress.set_arp_nhop", "cIngress.drop", "NoAction"],
+          "base_default_next" : null,
+          "next_tables" : {
+            "cIngress.set_arp_nhop" : null,
+            "cIngress.drop" : null,
+            "NoAction" : null
+          },
+          "default_entry" : {
+            "action_id" : 4,
+            "action_const" : false,
+            "action_data" : [],
+            "action_entry_const" : false
+          }
+        },
+        {
+          "name" : "tbl_drop_0",
+          "id" : 7,
+          "source_info" : {
+            "filename" : "action-profile.p4",
+            "line" : 248,
+            "column" : 12,
+            "source_fragment" : "drop()"
+          },
+          "key" : [],
+          "match_type" : "exact",
+          "type" : "simple",
+          "max_size" : 1024,
+          "with_counters" : false,
+          "support_timeout" : false,
+          "direct_meters" : null,
+          "action_ids" : [14],
+          "actions" : ["cIngress.drop"],
+          "base_default_next" : null,
+          "next_tables" : {
+            "cIngress.drop" : null
+          },
+          "default_entry" : {
+            "action_id" : 14,
+            "action_const" : true,
+            "action_data" : [],
+            "action_entry_const" : true
           }
         }
       ],
@@ -1024,8 +1302,8 @@
           "name" : "action_profile_0",
           "id" : 0,
           "source_info" : {
-            "filename" : "contrib/p4sim/test/p4src/action_profile_v1model/action-profile.p4",
-            "line" : 161,
+            "filename" : "action-profile.p4",
+            "line" : 170,
             "column" : 25,
             "source_fragment" : "action_profile(4)"
           },
@@ -1035,8 +1313,8 @@
           "name" : "action_profile_1",
           "id" : 1,
           "source_info" : {
-            "filename" : "contrib/p4sim/test/p4src/action_profile_v1model/action-profile.p4",
-            "line" : 174,
+            "filename" : "action-profile.p4",
+            "line" : 183,
             "column" : 12,
             "source_fragment" : "action_selector(HashAlgorithm.identity, 16, 4)"
           },
@@ -1052,14 +1330,87 @@
           "max_size" : 16
         }
       ],
-      "conditionals" : []
+      "conditionals" : [
+        {
+          "name" : "node_2",
+          "id" : 0,
+          "source_info" : {
+            "filename" : "action-profile.p4",
+            "line" : 229,
+            "column" : 12,
+            "source_fragment" : "hdr.ipv4.isValid()"
+          },
+          "expression" : {
+            "type" : "expression",
+            "value" : {
+              "op" : "d2b",
+              "left" : null,
+              "right" : {
+                "type" : "field",
+                "value" : ["ipv4", "$valid$"]
+              }
+            }
+          },
+          "true_next" : "cIngress.t0",
+          "false_next" : "node_10"
+        },
+        {
+          "name" : "node_7",
+          "id" : 1,
+          "source_info" : {
+            "filename" : "action-profile.p4",
+            "line" : 240,
+            "column" : 16,
+            "source_fragment" : "hdr.ipv4.ttl > 8w0"
+          },
+          "expression" : {
+            "type" : "expression",
+            "value" : {
+              "op" : ">",
+              "left" : {
+                "type" : "field",
+                "value" : ["ipv4", "ttl"]
+              },
+              "right" : {
+                "type" : "hexstr",
+                "value" : "0x00"
+              }
+            }
+          },
+          "true_next" : "cIngress.ipv4_nhop",
+          "false_next" : "tbl_drop"
+        },
+        {
+          "name" : "node_10",
+          "id" : 2,
+          "source_info" : {
+            "filename" : "action-profile.p4",
+            "line" : 245,
+            "column" : 19,
+            "source_fragment" : "hdr.arp.isValid()"
+          },
+          "expression" : {
+            "type" : "expression",
+            "value" : {
+              "op" : "d2b",
+              "left" : null,
+              "right" : {
+                "type" : "field",
+                "value" : ["arp", "$valid$"]
+              }
+            }
+          },
+          "true_next" : "cIngress.arp_simple",
+          "false_next" : "tbl_drop_0"
+        }
+      ]
     },
     {
       "name" : "egress",
       "id" : 1,
       "source_info" : {
-        "filename" : "contrib/p4sim/test/p4src/action_profile_v1model/action-profile.p4",
-        "line" : 197,
+        "filename" : "action-profile.p4",
+        "line" : 253,
         "column" : 8,
         "source_fragment" : "cEgress"
       },
@@ -1069,7 +1420,34 @@
       "conditionals" : []
     }
   ],
-  "checksums" : [],
+  "checksums" : [
+    {
+      "name" : "cksum",
+      "id" : 0,
+      "source_info" : {
+        "filename" : "action-profile.p4",
+        "line" : 270,
+        "column" : 8,
+        "source_fragment" : "update_checksum( ..."
+      },
+      "target" : ["ipv4", "hdrChecksum"],
+      "type" : "generic",
+      "calculation" : "calc",
+      "verify" : false,
+      "update" : true,
+      "if_cond" : {
+        "type" : "expression",
+        "value" : {
+          "op" : "d2b",
+          "left" : null,
+          "right" : {
+            "type" : "field",
+            "value" : ["ipv4", "$valid$"]
+          }
+        }
+      }
+    }
+  ],
   "force_arith" : [],
   "extern_instances" : [],
   "field_aliases" : [
@@ -1108,9 +1486,13 @@
     [
       "intrinsic_metadata.priority",
       ["standard_metadata", "priority"]
+    ],
+    [
+      "intrinsic_metadata.lag_hash",
+      ["standard_metadata", "lag_hash"]
     ]
   ],
-  "program" : "action_profile_v1model.json/action-profile.p4i",
+  "program" : "./action-profile.p4i",
   "__meta__" : {
     "version" : [2, 23],
     "compiler" : "https://github.com/p4lang/p4c"
