@@ -78,8 +78,6 @@ class P4CoreV1model : public P4SwitchCore
 
     // === Scheduling ===
     void CalculateScheduleTime();
-    /** @deprecated Legacy polling callback – superseded by event-driven scheduler. */
-    void SetEgressTimerEvent();
     void EventDrivenEgressDequeue(uint32_t port);
     void ScheduleEgressIfNeeded(uint32_t port);
     void PortTxComplete(uint32_t port);
@@ -162,8 +160,6 @@ class P4CoreV1model : public P4SwitchCore
     double m_virtualQueueRate; ///< Per-queue rate (pps)
 
     size_t m_nbQueuesPerPort;
-    EventId m_egressTimeEvent; ///< Legacy polling event (unused in event-driven mode)
-    Time m_egressTimeRef;      ///< Legacy, equal to m_ingressServiceTime
     uint64_t m_startTimestamp; ///< Simulation start timestamp
 
     static constexpr size_t m_nbEgressThreads = 1u;
@@ -190,8 +186,6 @@ class P4CoreV1model : public P4SwitchCore
     Time m_ingressServiceTime; ///< 1/SwitchRate, the pipeline's time per packet; 0 = no limit
     Time m_ingressFreeAt;      ///< when the pipeline can take the next packet
     EventId m_ingressEvent;    ///< the pending ServeIngress()
-
-    bool m_firstPacket;
 
     // ---- Event-driven scheduler state ----
 
