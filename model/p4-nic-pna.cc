@@ -255,21 +255,20 @@ P4PnaNic::Enqueue(uint32_t egress_port, std::unique_ptr<bm::Packet>&& packet)
 void
 P4PnaNic::CalculateScheduleTime()
 {
-    // Try to read the physical link rate from the first bridge port so that
+    // Try to read the physical link rate from port 0 so that
     // serialisation delay is modelled accurately.  Falls back to 1 Gbps.
     if (m_switchNetDevice && m_switchNetDevice->GetNPorts() > 0)
     {
-        Ptr<SwitchedEthernetChannel> ch = m_switchNetDevice->GetPortChannel(0);
-        if (ch)
+        uint64_t rate = m_switchNetDevice->GetPortDataRate(0).GetBitRate();
+        if (rate > 0)
         {
-            m_linkRateBps = ch->GetDataRate().GetBitRate();
+            m_linkRateBps = rate;
             NS_LOG_INFO("PNA NIC ID " << m_p4SwitchId
                                       << ": link rate from port 0 = " << m_linkRateBps << " bps");
         }
         else
         {
-            NS_LOG_DEBUG("PNA NIC ID " << m_p4SwitchId
-                                       << ": no channel on port 0; using 1 Gbps");
+            NS_LOG_DEBUG("PNA NIC ID " << m_p4SwitchId << ": no data rate on port 0; using 1 Gbps");
         }
     }
 }

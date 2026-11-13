@@ -99,6 +99,20 @@ class P4Helper : public PcapHelperForDevice, public AsciiTraceHelperForDevice
      */
     NetDeviceContainer Install(const std::string& switchNodeName) const;
 
+    /**
+     * \brief Install a P4SwitchNetDevice on \p node whose ports are the
+     *        devices in \p ports (bridge ports, see
+     *        P4SwitchNetDevice::AddBridgePort()), in that order.
+     * \return A container with the new P4SwitchNetDevice.
+     */
+    NetDeviceContainer Install(Ptr<Node> node, const NetDeviceContainer& ports) const;
+
+    /**
+     * \brief Install a P4SwitchNetDevice on the named node with the devices in
+     *        \p ports as its ports.
+     */
+    NetDeviceContainer Install(const std::string& nodeName, const NetDeviceContainer& ports) const;
+
   private:
     Ptr<P4SwitchNetDevice> InstallSwitchPriv(Ptr<Node> node) const;
 
