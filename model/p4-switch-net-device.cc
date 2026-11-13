@@ -596,18 +596,22 @@ int P4SwitchNetDevice::GetThriftPort() const {
   return 0;
 }
 
+P4SwitchCore *P4SwitchNetDevice::GetCore() const {
+  if (m_v1modelSwitch) {
+    return m_v1modelSwitch.get();
+  }
+  if (m_psaSwitch) {
+    return m_psaSwitch.get();
+  }
+  if (m_pnaNic) {
+    return m_pnaNic.get();
+  }
+  return m_p4Pipeline.get();
+}
+
 bool P4SwitchNetDevice::AddMirroringSession(uint32_t sessionId,
                                             uint32_t egressPort) {
-  P4SwitchCore *core = nullptr;
-  if (m_v1modelSwitch) {
-    core = m_v1modelSwitch.get();
-  } else if (m_psaSwitch) {
-    core = m_psaSwitch.get();
-  } else if (m_pnaNic) {
-    core = m_pnaNic.get();
-  } else if (m_p4Pipeline) {
-    core = m_p4Pipeline.get();
-  }
+  P4SwitchCore *core = GetCore();
   if (!core) {
     NS_LOG_WARN("Cannot add mirroring session "
                 << sessionId << ": the P4 core is not created yet");
@@ -617,6 +621,21 @@ bool P4SwitchNetDevice::AddMirroringSession(uint32_t sessionId,
   config.egress_port = egressPort;
   config.egress_port_valid = true;
   config.mgid_valid = false;
+  return core->AddMirroringSession(static_cast<int>(sessionId), config);
+}
+
+bool P4SwitchNetDevice::AddMulticastMirroringSession(uint32_t sessionId,
+                                                     uint32_t mgid) {
+  P4SwitchCore *core = GetCore();
+  if (!core) {
+    NS_LOG_WARN("Cannot add mirroring session "
+                << sessionId << ": the P4 core is not created yet");
+    return false;
+  }
+  P4SwitchCore::MirroringSessionConfig config{};
+  config.egress_port_valid = false;
+  config.mgid = mgid;
+  config.mgid_valid = true;
   return core->AddMirroringSession(static_cast<int>(sessionId), config);
 }
 

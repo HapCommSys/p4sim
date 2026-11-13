@@ -1,0 +1,28 @@
+# Mirroring sessions whose clones go to a multicast group, as with mirroring_add_mc
+# of simple_switch_CLI: as in BMv2's simple_switch, the packet replication engine
+# makes one copy per port of the group. Session 5 sends its clones to group 1, whose
+# only node (rid 7) has the ports 0 and 2. The low 4 bits of the EtherType select
+# the operation (see clone_v1model.p4). The egress writes the instance type into
+# bits 15:8 of the destination MAC (1 = ingress clone, 2 = egress clone), the
+# egress_rid into bits 15:8 of the source MAC, and meta.tag, which the ingress sets
+# to ab, into its low byte.
+
+mc_mgrp_create 1
+mc_node_create 7 0 2
+mc_node_associate 1 0
+mirroring_add_mc 5 1
+
+packet 0 000000000001 000000000000 9001  00000002   # B, clone at the ingress
+packet 0 000000000001 000000000000 9002  00000003   # C, clone at the egress
+packet 0 000000000001 000000000000 9004  00000005   # E, clone at the ingress, keeping meta.tag
+
+#        dst          src          type
+expect 1 000000000001 0000000000ab 9001  00000002   # the original frames
+expect 1 000000000001 0000000000ab 9002  00000003
+expect 1 000000000001 0000000000ab 9004  00000005
+expect 0 000000000101 000000000700 9001  00000002   # B's clone: ingress clone, rid 7
+expect 0 000000000101 0000000007ab 9004  00000005   # E's clone: meta.tag kept
+expect 0 000000000201 000000000700 9002  00000003   # C's clone: egress clone, made after the others
+expect 2 000000000101 000000000700 9001  00000002   # the same clones on port 2
+expect 2 000000000101 0000000007ab 9004  00000005
+expect 2 000000000201 000000000700 9002  00000003
