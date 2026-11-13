@@ -531,12 +531,6 @@ void P4CoreV1model::Enqueue(uint32_t egress_port,
 
   bm::PHV *phv = packet->get_phv();
 
-  if (m_enableQueueingMetadata) {
-    phv->get_field("queueing_metadata.enq_timestamp").set(GetTimeStamp());
-    phv->get_field("queueing_metadata.enq_qdepth")
-        .set(egress_buffer.size(egress_port));
-  }
-
   size_t priority =
       phv->has_field("intrinsic_metadata.priority")
           ? phv->get_field("intrinsic_metadata.priority").get<size_t>()
@@ -546,8 +540,15 @@ void P4CoreV1model::Enqueue(uint32_t egress_port,
     return;
   }
 
-  egress_buffer.push_front(egress_port, m_nbQueuesPerPort - 1 - priority,
-                           std::move(packet));
+  if (m_enableQueueingMetadata) {
+    phv->get_field("queueing_metadata.enq_timestamp").set(GetTimeStamp());
+    phv->get_field("queueing_metadata.enq_qdepth")
+        .set(egress_buffer.size(egress_port, priority));
+  }
+
+  // As in BMv2's simple_switch, priority p goes to queue p, and the queue
+  // with the highest index is served first: priority 7 is the highest.
+  egress_buffer.push_front(egress_port, priority, std::move(packet));
 
   NS_LOG_DEBUG("Packet enqueued in queue buffer with Port: "
                << egress_port << ", Priority: " << priority);
@@ -595,22 +596,12 @@ bool P4CoreV1model::HandleEgressPipeline(size_t workerId) {
         phv->get_field("queueing_metadata.enq_timestamp").get<uint64_t>();
     phv->get_field("queueing_metadata.deq_timedelta")
         .set(GetTimeStamp() - enq_timestamp);
-
-    size_t priority =
-        phv->has_field("intrinsic_metadata.priority")
-            ? phv->get_field("intrinsic_metadata.priority").get<size_t>()
-            : 0u;
-    if (priority >= m_nbQueuesPerPort) {
-      NS_LOG_ERROR("Priority out of range (m_nbQueuesPerPort = "
-                   << m_nbQueuesPerPort << "), dropping packet");
-      return true;
-    }
-
+    // priority is the queue the packet came from, as in simple_switch
     phv->get_field("queueing_metadata.deq_qdepth")
-        .set(egress_buffer.size(port));
+        .set(egress_buffer.size(port, priority));
     if (phv->has_field("queueing_metadata.qid")) {
       auto &qid_f = phv->get_field("queueing_metadata.qid");
-      qid_f.set(m_nbQueuesPerPort - 1 - priority);
+      qid_f.set(priority);
     }
   }
 
