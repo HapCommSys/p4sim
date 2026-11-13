@@ -80,7 +80,9 @@ class SwitchedEthernetHostDevice : public NetDevice
      *
      * Frames that arrive while the device is sending wait here and leave back
      * to back; a frame that does not fit is dropped (MacTxDrop). The default
-     * is a DropTailQueue of 100 packets.
+     * is a DropTailQueue of 100 packets. SwitchedEthernetHelper sets the
+     * queue and connects it to the traffic control layer (flow control); a
+     * queue set later is not connected.
      */
     void SetQueue(Ptr<Queue<Packet>> queue);
 

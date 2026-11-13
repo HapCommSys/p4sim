@@ -12,7 +12,7 @@ Configured with: JsonPath, FlowTablePath, P4SwitchArch, SwitchRate
 A plain Ethernet NIC — no P4 knowledge at all
 Send path: IP stack → Send() → adds Ethernet header → hands to channel → arrives at switch port
 Receive path: switch forwards a frame → channel delivers to ReceiveFrame() → strips Ethernet header → passes payload up to IP stack
-Configured with: just a MAC address
+Configured with: a MAC address; SwitchedEthernetHelper sets its transmit queue and flow control (see below)
 
 ## The Two Helpers (clean separation)
 
@@ -53,6 +53,38 @@ eth.SetChannelAttribute("Delay",    StringValue("0.01ms"));
 NetDeviceContainer hostDevs = eth.Install(sw, terminals);
 // hostDevs[0] = NIC on terminals[0], hostDevs[1] = NIC on terminals[1]
 ```
+
+## Queues and traffic control on hosts
+
+A host device sends one frame at a time; the frames handed to it meanwhile wait
+in its transmit queue, a `DropTailQueue<Packet>` of 100 packets by default.
+
+Like `PointToPointHelper` and `CsmaHelper`, `SwitchedEthernetHelper` enables
+flow control on the host devices: when the transmit queue is full, the device
+stops the ns-3 traffic control layer, and the packets wait in the queue disc of
+the device, which decides what is sent next. `Ipv4AddressHelper` installs
+`FqCoDelQueueDisc` on each host device; choose another one with
+`TrafficControlHelper` before assigning the addresses:
+
+```
+SwitchedEthernetHelper eth;
+eth.SetQueue("ns3::DropTailQueue<Packet>", "MaxSize", StringValue("5p"));
+NetDeviceContainer hostDevs = eth.Install(sw, terminals);
+
+InternetStackHelper internet;
+internet.Install(terminals);
+TrafficControlHelper tch;
+tch.SetRootQueueDisc("ns3::PfifoFastQueueDisc");
+tch.Install(hostDevs);
+Ipv4AddressHelper ipv4;
+ipv4.SetBase("10.1.1.0", "255.255.255.0");
+ipv4.Assign(hostDevs);
+```
+
+A queue disc can only schedule packets that wait in it, so a small device queue
+leaves it more to do. `eth.DisableFlowControl()` turns flow control off: no
+queue disc is then installed by default, and an installed one passes every
+packet on at once.
 
 The key insight: the host device is intentionally dumb — it only adds/strips Ethernet headers and passes frames to/from the channel. All intelligence (routing, forwarding) lives in the P4 program on the switch. The two helpers enforce this separation so P4 parameters never bleed into host setup and vice versa.
 
