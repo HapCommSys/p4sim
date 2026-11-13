@@ -1,0 +1,16 @@
+# Resubmit, as in BMv2's simple_switch: a resubmitted frame goes through the
+# ingress again at once, starting from the frame that arrived.
+# The low 4 bits of the EtherType say how often a frame is resubmitted. The
+# ingress counts its passes in a preserved metadata field and writes the count
+# into the low byte of the source MAC and the instance type of the pass into
+# bits 15:8 of the destination MAC (6 = resubmitted). A frame is resubmitted
+# before the next one enters the ingress, so the frames keep their order.
+
+packet 0 000000000001 000000000000 9000  00000001   # A, not resubmitted
+packet 0 000000000001 000000000000 9002  00000002   # B, resubmitted twice
+packet 0 000000000001 000000000000 9000  00000003   # C, not resubmitted
+
+#        dst          src          type
+expect 1 000000000001 000000000001 9000  00000001   # A: 1 pass
+expect 1 000000000601 000000000003 9002  00000002   # B: 3 passes, the last one resubmitted
+expect 1 000000000001 000000000001 9000  00000003   # C: 1 pass

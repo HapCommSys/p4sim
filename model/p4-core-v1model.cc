@@ -695,6 +695,9 @@ bool P4CoreV1model::HandleEgressPipeline(size_t workerId) {
     packet_copy->set_ingress_length(packet_size);
     input_buffer->push_front(InputBuffer::PacketType::RECIRCULATE,
                              std::move(packet_copy));
+    // As for resubmit, the packet goes through the ingress at once; nothing
+    // else would take it out of the input buffer.
+    HandleIngressPipeline();
     return true;
   }
 
