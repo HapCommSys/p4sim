@@ -75,7 +75,6 @@ P4CorePsa::P4CorePsa(P4SwitchNetDevice* net_device,
                      size_t nb_queues_per_port)
     : P4SwitchCore(net_device, enable_swap, enable_tracing),
       m_packetId(0),
-      m_firstPacket(false),
       m_switchRate(packet_rate),
       m_nbQueuesPerPort(nb_queues_per_port),
       m_inputBufferSize(input_buffer_size),
@@ -138,14 +137,10 @@ P4CorePsa::P4CorePsa(P4SwitchNetDevice* net_device,
 P4CorePsa::~P4CorePsa()
 {
     NS_LOG_FUNCTION(this << " Switch ID: " << m_p4SwitchId);
-    // There is no ingress thread to stop in ns-3 (pushing a sentinel could
-    // wait forever on a full buffer); only a pending ServeIngress() to cancel.
+    // BMv2 pushes a sentinel into each buffer to stop its worker threads. In
+    // ns-3 there are no such threads, and a push into a full queue would wait
+    // or retry forever; only a pending ServeIngress() is left to cancel.
     Simulator::Cancel(m_ingressEvent);
-    for (size_t i = 0; i < nb_egress_threads; i++)
-    {
-        egress_buffer.push_front(i, 0, nullptr);
-    }
-    output_buffer.push_front(nullptr);
 }
 
 void
@@ -155,24 +150,6 @@ P4CorePsa::start_and_return_()
     CheckQueueingMetadata();
     // The event-driven scheduler is triggered on-demand from Enqueue().
     // No initial polling event is scheduled.
-}
-
-// ---------------------------------------------------------------------------
-// Legacy polling callback – retained for reference, no longer scheduled.
-// ---------------------------------------------------------------------------
-void
-P4CorePsa::SetEgressTimerEvent()
-{
-    NS_LOG_FUNCTION("p4_switch has been triggered by the egress timer event (legacy)");
-    bool checkflag = HandleEgressPipeline(0);
-    m_egressTimeEvent = Simulator::Schedule(m_egressTimeRef, &P4CorePsa::SetEgressTimerEvent, this);
-    if (!m_firstPacket && checkflag)
-        m_firstPacket = true;
-    if (m_firstPacket && !checkflag)
-    {
-        NS_LOG_INFO("Egress timer event needs additional scheduling due to !checkflag.");
-        Simulator::Schedule(Time(NanoSeconds(10)), &P4CorePsa::HandleEgressPipeline, this, 0);
-    }
 }
 
 // ---------------------------------------------------------------------------
@@ -732,14 +709,11 @@ P4CorePsa::MultiCastPacket(bm::Packet* packet,
 void
 P4CorePsa::CalculateScheduleTime()
 {
-    m_egressTimeEvent = EventId();
-
     // SwitchRate limits the whole pipeline (see AdmitToIngress()); 0 = no limit.
     // The egress queues have no rate limit unless SetEgressQueueRate() and the
     // like set one, as in BMv2.
     m_ingressServiceTime =
         (m_switchRate == 0) ? Time(0) : Seconds(1.0 / static_cast<double>(m_switchRate));
-    m_egressTimeRef = m_ingressServiceTime;
 
     // Try to obtain the physical link rate from the first bridge port so that
     // the event-driven scheduler can model per-packet transmission delay

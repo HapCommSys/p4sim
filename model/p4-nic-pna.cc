@@ -60,7 +60,8 @@ P4PnaNic::P4PnaNic(P4SwitchNetDevice* net_device, bool enable_swap)
 
 P4PnaNic::~P4PnaNic()
 {
-    input_buffer.push_front(nullptr);
+    // BMv2 pushes a sentinel to stop the ingress thread. ns-3 has no such
+    // thread, and the push would wait forever on a full buffer.
 }
 
 bool
