@@ -5,7 +5,9 @@
  * The transmit queue of SwitchedEthernetHostDevice: two hosts on one 1 Gbps
  * channel, host 0 hands its device a burst of frames at the same time. The
  * device must queue what it cannot send at once and send it back to back, and
- * drop only what does not fit into the queue.
+ * drop only what does not fit into the queue. When the link of host 0 is
+ * detached, its device drops the frames and reports them: through MacTxDrop
+ * before a frame is sent, through PhyTxDrop for the frame being sent.
  */
 
 #include "ns3/core-module.h"
@@ -34,6 +36,13 @@ void
 Count(uint32_t* drops, Ptr<const Packet> frame)
 {
     (*drops)++;
+}
+
+/// Records the size of a dropped frame
+void
+RecordSize(std::vector<uint32_t>* sizes, Ptr<const Packet> frame)
+{
+    sizes->push_back(frame->GetSize());
 }
 
 } // namespace
@@ -113,6 +122,89 @@ HostTxQueueTestCase::DoRun()
     }
 }
 
+/// The link of host 0 is detached before a burst, and during the first frame of
+/// another burst; then it is attached again
+class HostDetachTestCase : public TestCase
+{
+  public:
+    HostDetachTestCase()
+        : TestCase("Frames on a detached link are dropped and counted")
+    {
+    }
+
+  private:
+    void DoRun() override;
+
+    void DoTeardown() override
+    {
+        Simulator::Destroy();
+    }
+
+    /// Host 0 hands \p n frames to its device
+    void Send(uint32_t n);
+
+    Ptr<SwitchedEthernetHostDevice> m_hosts[2];
+};
+
+void
+HostDetachTestCase::Send(uint32_t n)
+{
+    for (uint32_t k = 0; k < n; k++)
+    {
+        m_hosts[0]->Send(Create<Packet>(PAYLOAD), m_hosts[1]->GetAddress(), 0x88b5);
+    }
+}
+
+void
+HostDetachTestCase::DoRun()
+{
+    Ptr<SwitchedEthernetChannel> channel = CreateObject<SwitchedEthernetChannel>();
+    channel->SetAttribute("DataRate", DataRateValue(DataRate("1Gbps")));
+    for (auto& host : m_hosts)
+    {
+        Ptr<Node> node = CreateObject<Node>();
+        host = CreateObject<SwitchedEthernetHostDevice>();
+        host->SetAddress(Mac48Address::Allocate());
+        node->AddDevice(host);
+        host->Attach(channel);
+    }
+    const uint32_t slot = 0; // host 0 was attached first
+    std::vector<Time> arrivals;
+    uint32_t macDrops = 0;
+    std::vector<uint32_t> phyDrops;
+    m_hosts[1]->TraceConnectWithoutContext("MacRx", MakeBoundCallback(&Record, &arrivals));
+    m_hosts[0]->TraceConnectWithoutContext("MacTxDrop", MakeBoundCallback(&Count, &macDrops));
+    m_hosts[0]->TraceConnectWithoutContext("PhyTxDrop",
+                                           MakeBoundCallback(&RecordSize, &phyDrops));
+
+    // 1) Detached: a burst of 3 frames is dropped (MacTxDrop)
+    Simulator::Schedule(MicroSeconds(1), [channel]() { channel->Detach(slot); });
+    Simulator::Schedule(MicroSeconds(2), &HostDetachTestCase::Send, this, 3);
+    // 2) Attached, then detached 2 us into the first frame of a burst of 3: the
+    //    first frame is lost (PhyTxDrop), the other two are dropped (MacTxDrop)
+    Simulator::Schedule(MicroSeconds(50), [channel]() { channel->Reattach(slot); });
+    Simulator::Schedule(MicroSeconds(60), &HostDetachTestCase::Send, this, 3);
+    Simulator::Schedule(MicroSeconds(62), [channel]() { channel->Detach(slot); });
+    // 3) Attached again: a burst of 2 frames arrives, back to back
+    Simulator::Schedule(MicroSeconds(100), [channel]() { channel->Reattach(slot); });
+    Simulator::Schedule(MicroSeconds(110), &HostDetachTestCase::Send, this, 2);
+    Simulator::Run();
+
+    NS_TEST_EXPECT_MSG_EQ(macDrops, 5, "Wrong number of frames dropped before sending");
+    NS_TEST_EXPECT_MSG_EQ(phyDrops.size(), 1, "Wrong number of frames lost while sending");
+    if (!phyDrops.empty())
+    {
+        NS_TEST_EXPECT_MSG_EQ(phyDrops[0], PAYLOAD + 14, "PhyTxDrop reported the wrong frame");
+    }
+    NS_TEST_EXPECT_MSG_EQ(arrivals.size(), 2, "Wrong number of frames received");
+    if (arrivals.size() == 2)
+    {
+        NS_TEST_EXPECT_MSG_EQ(arrivals[1] - arrivals[0],
+                              DataRate("1Gbps").CalculateBytesTxTime(PAYLOAD + 14),
+                              "The last burst was not sent back to back");
+    }
+}
+
 static class SwitchedEthernetHostTestSuite : public TestSuite
 {
   public:
@@ -121,5 +213,6 @@ static class SwitchedEthernetHostTestSuite : public TestSuite
     {
         AddTestCase(new HostTxQueueTestCase(0), TestCase::QUICK);
         AddTestCase(new HostTxQueueTestCase(5), TestCase::QUICK);
+        AddTestCase(new HostDetachTestCase(), TestCase::QUICK);
     }
 } g_switchedEthernetHostTestSuite;

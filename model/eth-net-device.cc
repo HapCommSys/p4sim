@@ -63,6 +63,11 @@ SwitchedEthernetHostDevice::GetTypeId()
                             "A packet was dropped before transmission.",
                             MakeTraceSourceAccessor(&SwitchedEthernetHostDevice::m_macTxDropTrace),
                             "ns3::Packet::TracedCallback")
+            .AddTraceSource("PhyTxDrop",
+                            "A frame was lost while it was being sent, because the "
+                            "link was detached.",
+                            MakeTraceSourceAccessor(&SwitchedEthernetHostDevice::m_phyTxDropTrace),
+                            "ns3::Packet::TracedCallback")
             //
             // Trace sources designed to simulate a packet sniffer facility (tcpdump).
             //
@@ -96,7 +101,9 @@ SwitchedEthernetHostDevice::DoDispose()
 {
     NS_LOG_FUNCTION_NOARGS();
     Simulator::Cancel(m_txCompleteEvent);
+    Simulator::Cancel(m_txRetryEvent);
     m_queue = nullptr;
+    m_currentPkt = nullptr;
     m_channel = nullptr;
     m_node = nullptr;
     NetDevice::DoDispose();
@@ -234,10 +241,16 @@ SwitchedEthernetHostDevice::TransmitStart()
     {
         NS_LOG_WARN("TransmitStart: channel refused the frame — drop");
         m_macTxDropTrace(packet);
-        Simulator::ScheduleNow(&SwitchedEthernetHostDevice::TransmitStart, this);
+        // One retry at a time: it drops the refused frames one by one
+        if (!m_txRetryEvent.IsRunning())
+        {
+            m_txRetryEvent =
+                Simulator::ScheduleNow(&SwitchedEthernetHostDevice::TransmitStart, this);
+        }
         return;
     }
     m_txBusy = true;
+    m_currentPkt = packet;
     Time txTime = m_channel->GetDataRate().CalculateBytesTxTime(packet->GetSize());
     m_txCompleteEvent =
         Simulator::Schedule(txTime, &SwitchedEthernetHostDevice::TransmitComplete, this);
@@ -246,7 +259,13 @@ SwitchedEthernetHostDevice::TransmitStart()
 void
 SwitchedEthernetHostDevice::TransmitComplete()
 {
-    m_channel->TransmitEnd(m_devId);
+    if (!m_channel->TransmitEnd(m_devId))
+    {
+        // The link was detached while the frame was being sent: it is lost
+        NS_LOG_WARN("TransmitComplete: link detached during the frame — lost");
+        m_phyTxDropTrace(m_currentPkt);
+    }
+    m_currentPkt = nullptr;
     m_txBusy = false;
     TransmitStart();
 }

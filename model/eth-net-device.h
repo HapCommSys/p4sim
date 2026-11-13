@@ -126,12 +126,15 @@ class SwitchedEthernetHostDevice : public NetDevice
     void TransmitStart();
 
     /// The frame on the wire has been serialised: free the channel slot and
-    /// send the next one
+    /// send the next one. If the link was detached meanwhile, the frame is
+    /// lost and reported through PhyTxDrop.
     void TransmitComplete();
 
     Ptr<Queue<Packet>> m_queue; ///< frames waiting to be sent
     bool m_txBusy{false};       ///< true while a frame is being serialised
-    EventId m_txCompleteEvent;
+    Ptr<Packet> m_currentPkt;   ///< the frame being serialised
+    EventId m_txCompleteEvent;  ///< the pending TransmitComplete()
+    EventId m_txRetryEvent;     ///< the pending TransmitStart() after a refused frame
     Ptr<SwitchedEthernetChannel> m_channel;
     uint32_t m_devId{0};
     Mac48Address m_address;
@@ -144,6 +147,7 @@ class SwitchedEthernetHostDevice : public NetDevice
     TracedCallback<Ptr<const Packet>> m_macTxTrace;
     TracedCallback<Ptr<const Packet>> m_macRxTrace;
     TracedCallback<Ptr<const Packet>> m_macTxDropTrace;
+    TracedCallback<Ptr<const Packet>> m_phyTxDropTrace; ///< a frame lost on a detached link
     /**
      * A trace source that emulates a non-promiscuous protocol sniffer connected
      * to the device.  Unlike your average everyday sniffer, this trace source
