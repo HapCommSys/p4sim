@@ -53,6 +53,12 @@ if(RUNTIMESTUBS_LIB)
   list(APPEND third_party_libs ${RUNTIMESTUBS_LIB})
 endif()
 
+# The "simple_switch" Thrift service of simple_switch_CLI (p4-core-v1model-thrift.cc)
+find_library(SIMPLESWITCH_THRIFT_LIB simpleswitch_thrift PATHS /usr/local/lib)
+if(SIMPLESWITCH_THRIFT_LIB)
+  list(APPEND third_party_libs ${SIMPLESWITCH_THRIFT_LIB})
+endif()
+
 find_library(THRIFT_LIB thrift PATHS /usr/local/lib)
 if(THRIFT_LIB)
   list(APPEND third_party_libs ${THRIFT_LIB})
@@ -74,6 +80,7 @@ build_lib(
         model/p4-topology-reader.cc
         model/p4-switch-core.cc
         model/p4-core-v1model.cc
+        model/p4-core-v1model-thrift.cc
         model/p4-core-pipeline.cc
         model/p4-core-psa.cc
         model/p4-nic-pna.cc
