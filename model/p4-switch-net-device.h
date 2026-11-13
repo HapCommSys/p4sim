@@ -177,6 +177,15 @@ class P4SwitchNetDevice : public NetDevice
     uint32_t GetPortNumber(Ptr<P4SwitchNetDevice> sender) const;
     /** \return Device-slot ID for port \p n in its channel, or UNIT32_MAX if invalid. */
     uint32_t GetPortDeviceId(uint32_t n) const;
+
+    /**
+     * \brief Set the callback that runs when a port has finished serialising a
+     *        frame, with the port number as argument.
+     *
+     * The P4 core uses it to start the next frame on that port: the channel,
+     * not the core, decides when a port is free again.
+     */
+    void SetPortTxDoneCallback(Callback<void, uint32_t> cb);
     // -----------------------------------------------------------------------
     // P4 core accessor
     // -----------------------------------------------------------------------
@@ -255,18 +264,24 @@ class P4SwitchNetDevice : public NetDevice
     // -----------------------------------------------------------------------
 
     /**
-     * \brief Transmit \p packet on \p channel using slot \p devId.
-     *        Schedules TransmitEnd() based on the channel's DataRate.
+     * \brief Transmit \p packet on port \p port.
+     *        Schedules PortTransmitEnd() based on the channel's DataRate.
      *
      * \param [out] txTime  if non-null, set to the frame's serialisation time
      *                      when the transmission started (unchanged on failure).
      * \return true if the channel accepted the frame; false if it was busy or
      *         the device was inactive (frame dropped).
      */
-    bool TransmitOn(Ptr<SwitchedEthernetChannel> channel,
-                    uint32_t devId,
-                    Ptr<Packet> packet,
-                    Time* txTime = nullptr);
+    bool TransmitOn(uint32_t port, Ptr<Packet> packet, Time* txTime = nullptr);
+
+    /**
+     * \brief The frame on port \p port has been serialised: free the channel
+     *        slot, then run the port-TX-done callback.
+     */
+    void PortTransmitEnd(uint32_t port);
+
+    /// Runs when a port has finished serialising a frame (see SetPortTxDoneCallback())
+    Callback<void, uint32_t> m_portTxDone;
 
     // -----------------------------------------------------------------------
     // P4 switch configuration
