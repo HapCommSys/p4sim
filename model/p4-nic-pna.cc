@@ -66,6 +66,11 @@ P4PnaNic::~P4PnaNic()
 {
     // BMv2 pushes a sentinel to stop the ingress thread. ns-3 has no such
     // thread, and the push would wait forever on a full buffer.
+    // Cancel the pending transmit-complete events, which point to this NIC.
+    for (auto& kv : m_portTxState)
+    {
+        Simulator::Cancel(kv.second.pendingEvent);
+    }
 }
 
 bool
