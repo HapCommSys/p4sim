@@ -25,6 +25,7 @@
 #include "ns3/node-container.h"
 #include "ns3/object-factory.h"
 #include "ns3/p4-switch-net-device.h"
+#include "ns3/queue.h"
 #include "ns3/trace-helper.h"
 
 #include <string>
@@ -59,6 +60,14 @@ class SwitchedEthernetHostDevice;
  *   eth.SetChannelAttribute("Delay",    TimeValue(MicroSeconds(5)));
  *   NetDeviceContainer hostDevs = eth.Install(sw, hosts);
  * \endcode
+ *
+ * Like PointToPointHelper and CsmaHelper, the helper enables flow control on
+ * the host devices by default: a host device tells the traffic control layer
+ * when its transmit queue is full, so that the packets wait in the queue disc
+ * installed on it (FqCoDelQueueDisc by default, see Ipv4AddressHelper) and the
+ * queue disc decides which packet is sent next. Choose another queue disc with
+ * TrafficControlHelper, the device queue with SetQueue(), or disable flow
+ * control with DisableFlowControl().
  */
 class SwitchedEthernetHelper : public PcapHelperForDevice, public AsciiTraceHelperForDevice
 {
@@ -75,6 +84,31 @@ class SwitchedEthernetHelper : public PcapHelperForDevice, public AsciiTraceHelp
      *        this helper (e.g. "DataRate", "Delay").
      */
     void SetChannelAttribute(const std::string& name, const AttributeValue& value);
+
+    /**
+     * \brief Set the type and attributes of the transmit queue of every host
+     *        device created by this helper. The default is a
+     *        DropTailQueue<Packet> of 100 packets.
+     *
+     * With flow control, packets wait in the queue disc only once this queue
+     * is full, so a small queue gives the queue disc more to schedule.
+     *
+     * \tparam Ts \deduced Argument types
+     * \param type the type of queue
+     * \param [in] args Name and AttributeValue pairs to set.
+     */
+    template <typename... Ts>
+    void SetQueue(std::string type, Ts&&... args);
+
+    /**
+     * \brief Disable flow control on the host devices created by this helper.
+     *
+     * Without flow control, the host device never tells the traffic control
+     * layer that its queue is full: a queue disc then passes every packet on
+     * at once and never schedules anything, and Ipv4AddressHelper installs no
+     * queue disc. This was the behaviour before flow control was added.
+     */
+    void DisableFlowControl();
 
     // -----------------------------------------------------------------------
     // Install
@@ -122,7 +156,22 @@ class SwitchedEthernetHelper : public PcapHelperForDevice, public AsciiTraceHelp
                              bool explicitFilename) override;
 
     ObjectFactory m_channelFactory; ///< SwitchedEthernetChannel factory
+    ObjectFactory m_queueFactory;   ///< factory for the transmit queues of the host devices
+    bool m_enableFlowControl{true}; ///< whether to enable flow control
 };
+
+/***************************************************************
+ *  Implementation of the templates declared above.
+ ***************************************************************/
+
+template <typename... Ts>
+void
+SwitchedEthernetHelper::SetQueue(std::string type, Ts&&... args)
+{
+    QueueBase::AppendItemTypeIfNotPresent(type, "Packet");
+    m_queueFactory.SetTypeId(type);
+    m_queueFactory.Set(std::forward<Ts>(args)...);
+}
 
 } // namespace ns3
 
