@@ -149,8 +149,8 @@ This is a strict leaky-bucket model; no burst beyond one packet at the configure
 is possible.
 
 **Priority scheduling:**
-`Enqueue()` puts a packet of P4 priority *p* into queue index `N-1-p`, and `pop_back_for_port()`
-scans the indices from `N-1` down to `0` and takes the first eligible packet. So P4 priority 0 is
-served first and priority 7 last. BMv2's `simple_switch` does the opposite: priority 7 first. Main
-fixed this in #37; syncing #37 into this branch will fix it here. Scheduling is strict priority: a
-queue that is never empty starves the queues served after it.
+`Enqueue()` puts a packet of P4 priority *p* into queue *p*, and `pop_back_for_port()` scans the
+queues from `N-1` down to `0` and takes the first eligible packet. So priority 7 is served first,
+as in BMv2's `simple_switch` (main's #37). `enq_qdepth` and `deq_qdepth` count the packets of the
+packet's own priority queue, and `qid` is that queue. Scheduling is strict priority: a queue that
+is never empty starves the queues served after it.

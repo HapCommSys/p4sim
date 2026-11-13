@@ -355,22 +355,11 @@ P4CoreV1model::EventDrivenEgressDequeue(uint32_t port)
         uint64_t enq_timestamp = phv->get_field("queueing_metadata.enq_timestamp").get<uint64_t>();
         phv->get_field("queueing_metadata.deq_timedelta").set(GetTimeStamp() - enq_timestamp);
 
-        size_t pkt_priority = phv->has_field("intrinsic_metadata.priority")
-                                  ? phv->get_field("intrinsic_metadata.priority").get<size_t>()
-                                  : 0u;
-        if (pkt_priority >= m_nbQueuesPerPort)
-        {
-            NS_LOG_ERROR("Priority out of range (m_nbQueuesPerPort = " << m_nbQueuesPerPort
-                                                                       << "), dropping packet");
-            // Still need to check remaining queues for the port.
-            PortTxComplete(static_cast<uint32_t>(out_port));
-            return;
-        }
-
-        phv->get_field("queueing_metadata.deq_qdepth").set(egress_buffer.size(out_port));
+        // priority is the queue the packet came from, as in simple_switch
+        phv->get_field("queueing_metadata.deq_qdepth").set(egress_buffer.size(out_port, priority));
         if (phv->has_field("queueing_metadata.qid"))
         {
-            phv->get_field("queueing_metadata.qid").set(m_nbQueuesPerPort - 1 - pkt_priority);
+            phv->get_field("queueing_metadata.qid").set(priority);
         }
     }
 
@@ -908,12 +897,6 @@ P4CoreV1model::Enqueue(uint32_t egress_port, std::unique_ptr<bm::Packet>&& packe
 
     bm::PHV* phv = packet->get_phv();
 
-    if (m_enableQueueingMetadata)
-    {
-        phv->get_field("queueing_metadata.enq_timestamp").set(GetTimeStamp());
-        phv->get_field("queueing_metadata.enq_qdepth").set(egress_buffer.size(egress_port));
-    }
-
     size_t priority = phv->has_field("intrinsic_metadata.priority")
                           ? phv->get_field("intrinsic_metadata.priority").get<size_t>()
                           : 0u;
@@ -923,7 +906,16 @@ P4CoreV1model::Enqueue(uint32_t egress_port, std::unique_ptr<bm::Packet>&& packe
         return;
     }
 
-    egress_buffer.push_front(egress_port, m_nbQueuesPerPort - 1 - priority, std::move(packet));
+    if (m_enableQueueingMetadata)
+    {
+        phv->get_field("queueing_metadata.enq_timestamp").set(GetTimeStamp());
+        phv->get_field("queueing_metadata.enq_qdepth")
+            .set(egress_buffer.size(egress_port, priority));
+    }
+
+    // As in BMv2's simple_switch, priority p goes to queue p, and the queue
+    // with the highest index is served first: priority 7 is the highest.
+    egress_buffer.push_front(egress_port, priority, std::move(packet));
 
     NS_LOG_DEBUG("Packet enqueued in queue buffer with Port: " << egress_port
                                                                << ", Priority: " << priority);
@@ -2409,7 +2401,7 @@ P4CoreV1model::TmTransmit(uint32_t outPort, uint8_t priority, std::unique_ptr<Tm
             .set(m_trafficManager->EgressLength(outPort, priority));
         if (phv->has_field("queueing_metadata.qid") && priority < m_nbQueuesPerPort)
         {
-            phv->get_field("queueing_metadata.qid").set(m_nbQueuesPerPort - 1 - priority);
+            phv->get_field("queueing_metadata.qid").set(priority);
         }
     }
 
