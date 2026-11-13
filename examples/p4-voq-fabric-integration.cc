@@ -110,7 +110,6 @@ RunScenario(bool enableVoq)
     p4.SetDeviceAttribute("JsonPath", StringValue(p4Dir + "/simple_v1model.json"));
     p4.SetDeviceAttribute("FlowTablePath", StringValue(p4Dir + "/flowtable_0.txt"));
     p4.SetDeviceAttribute("P4SwitchArch", UintegerValue(0)); // V1model
-    p4.SetDeviceAttribute("SwitchRate", UintegerValue(10000));
     p4.SetDeviceAttribute("EnableVoqFabric", BooleanValue(enableVoq));
     Ptr<P4SwitchNetDevice> sw = DynamicCast<P4SwitchNetDevice>(p4.Install(switchNode).Get(0));
 
