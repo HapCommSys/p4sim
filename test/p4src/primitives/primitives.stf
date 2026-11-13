@@ -1,0 +1,12 @@
+# v1model primitives with arguments that BMv2 stores outside the PHV or checks
+# first. The low 4 bits of the EtherType select the operation (see
+# primitives_v1model.p4).
+
+packet 0 000000000001 000000000000 9001  00000001   # digest()
+packet 0 000000000001 000000000000 9002  00000002   # hash() with max 0
+packet 0 000000000001 000000000000 9003  00000003   # random() with lo > hi
+
+#        dst          src          type
+expect 1 000000000001 000000000000 9001  00000001   # unchanged
+expect 1 000000000001 000000000007 9002  00000002   # the hash is the base, 7
+expect 1 000000000001 000000000000 9003  00000003   # meta.r keeps its initial value, 0
