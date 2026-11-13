@@ -18,6 +18,8 @@
 #include "ns3/network-module.h"
 #include "ns3/p4-p2p-helper.h"
 #include "ns3/p4-switch-net-device.h"
+#include "ns3/simple-channel.h"
+#include "ns3/simple-net-device.h"
 #include "ns3/switched-ethernet-channel.h"
 #include "ns3/test.h"
 
@@ -197,6 +199,91 @@ BridgePortTestCase::DoRun()
     }
 }
 
+/**
+ * A bridge port whose device does not report the end of a transmission
+ * (SimpleNetDevice has no PhyTxEnd trace): the port is free again as soon as
+ * the device has taken a frame, so all frames for it leave the switch.
+ */
+class BridgePortNoTxEndTestCase : public TestCase
+{
+  public:
+    BridgePortNoTxEndTestCase()
+        : TestCase("v1model: a bridge port without PhyTxEnd sends every frame")
+    {
+    }
+
+  private:
+    void DoRun() override;
+
+    void DoTeardown() override
+    {
+        Simulator::Destroy();
+    }
+
+    /// Counts a frame that host 1 receives
+    bool Receive(Ptr<NetDevice>, Ptr<const Packet>, uint16_t, const Address&)
+    {
+        m_received++;
+        return true;
+    }
+
+    /// Host 0 sends one frame to host 1
+    void Send()
+    {
+        m_host0->Send(Create<Packet>(PAYLOAD), Mac48Address("00:00:00:00:00:01"), 0x88b5);
+    }
+
+    Ptr<SwitchedEthernetHostDevice> m_host0;
+    uint32_t m_received{0};
+};
+
+void
+BridgePortNoTxEndTestCase::DoRun()
+{
+    SetDataDir(NS_TEST_SOURCEDIR);
+    Ptr<Node> switchNode = CreateObject<Node>();
+    Ptr<Node> node0 = CreateObject<Node>();
+    Ptr<Node> node1 = CreateObject<Node>();
+
+    Ptr<P4SwitchNetDevice> sw = CreateObject<P4SwitchNetDevice>();
+    sw->SetAttribute("JsonPath",
+                     StringValue(CreateDataDirFilename(
+                         "p4src/egress_ports/egress_ports_v1model.json")));
+    sw->SetAttribute("FlowTablePath", StringValue(""));
+    switchNode->AddDevice(sw);
+
+    // 10 Gbps: host 0 sends a frame in 0.81 us, before its next one is due
+    Ptr<SwitchedEthernetChannel> channel = CreateObject<SwitchedEthernetChannel>();
+    channel->SetAttribute("DataRate", DataRateValue(DataRate("10Gbps")));
+    sw->Attach(channel);
+    m_host0 = CreateObject<SwitchedEthernetHostDevice>();
+    m_host0->SetAddress(Mac48Address("00:00:00:00:00:10"));
+    node0->AddDevice(m_host0);
+    m_host0->Attach(channel);
+
+    Ptr<SimpleChannel> simple = CreateObject<SimpleChannel>();
+    Ptr<SimpleNetDevice> port = CreateObject<SimpleNetDevice>();
+    Ptr<SimpleNetDevice> host1 = CreateObject<SimpleNetDevice>();
+    port->SetAddress(Mac48Address("00:00:00:00:00:20"));
+    host1->SetAddress(Mac48Address("00:00:00:00:00:01"));
+    port->SetChannel(simple);
+    host1->SetChannel(simple);
+    switchNode->AddDevice(port);
+    node1->AddDevice(host1);
+    sw->AddBridgePort(port);
+    host1->SetReceiveCallback(MakeCallback(&BridgePortNoTxEndTestCase::Receive, this));
+    sw->Initialize();
+
+    for (uint32_t k = 0; k < 5; k++)
+    {
+        Simulator::Schedule(MicroSeconds(1 + k), &BridgePortNoTxEndTestCase::Send, this);
+    }
+    Simulator::Stop(MilliSeconds(10));
+    Simulator::Run();
+
+    NS_TEST_EXPECT_MSG_EQ(m_received, 5, "Frames for the SimpleNetDevice port were lost");
+}
+
 static class P4BridgePortTestSuite : public TestSuite
 {
   public:
@@ -205,5 +292,6 @@ static class P4BridgePortTestSuite : public TestSuite
     {
         AddTestCase(new BridgePortTestCase("v1model", P4SWITCH_ARCH_V1MODEL), TestCase::QUICK);
         AddTestCase(new BridgePortTestCase("psa", P4SWITCH_ARCH_PSA), TestCase::QUICK);
+        AddTestCase(new BridgePortNoTxEndTestCase(), TestCase::QUICK);
     }
 } g_p4BridgePortTestSuite;

@@ -334,6 +334,7 @@ P4SwitchNetDevice::DoDispose()
     m_portChannels.clear();
     m_portDeviceIds.clear();
     m_bridgePorts.clear();
+    m_bridgePortTxEnd.clear();
     m_bridgeChannel = nullptr;
     m_node = nullptr;
 
@@ -356,6 +357,7 @@ P4SwitchNetDevice::Attach(Ptr<SwitchedEthernetChannel> channel)
     m_portChannels.push_back(channel);
     m_portDeviceIds.push_back(static_cast<uint32_t>(devId));
     m_bridgePorts.push_back(nullptr);
+    m_bridgePortTxEnd.push_back(false);
 
     NS_LOG_INFO("Attached to channel as port " << (m_portChannels.size() - 1) << " (channel slot "
                                                << devId << ")");
@@ -596,9 +598,15 @@ P4SwitchNetDevice::AddBridgePort(Ptr<NetDevice> bridgePort)
             trace,
             MakeCallback(&P4SwitchNetDevice::BridgePortTxEnd, this).Bind(port));
     }
-    NS_ABORT_MSG_UNLESS(connected,
-                        "AddBridgePort: " << bridgePort->GetInstanceTypeId().GetName()
-                                          << " has no PhyTxEnd trace");
+    // Without these traces the port is free again as soon as the device has
+    // taken a frame (see SendOnBridgePort()).
+    m_bridgePortTxEnd.push_back(connected);
+    if (!connected)
+    {
+        NS_LOG_INFO("AddBridgePort: " << bridgePort->GetInstanceTypeId().GetName()
+                                      << " reports no end of transmission; its queue holds "
+                                         "the frames that wait");
+    }
 
     if (!m_bridgeChannel)
     {
@@ -724,6 +732,15 @@ P4SwitchNetDevice::SendOnBridgePort(uint32_t port, Ptr<Packet> frame, Time* txTi
     if (txTime)
     {
         *txTime = GetPortDataRate(port).CalculateBytesTxTime(frame->GetSize());
+    }
+    if (!m_bridgePortTxEnd[port])
+    {
+        // The device will not report the end of the transmission: the port is
+        // free again now, and the device's queue holds the frames that wait.
+        Simulator::ScheduleNow(&P4SwitchNetDevice::BridgePortTxEnd,
+                               this,
+                               port,
+                               Ptr<const Packet>());
     }
     return true;
 }
