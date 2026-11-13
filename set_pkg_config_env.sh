@@ -32,3 +32,14 @@ Description: Behavioral Model Target Simple Switch
 Version: 1.15.0
 Libs: -L\${libdir} -lsimpleswitch_thrift
 Cflags: -I\${includedir}" >/usr/local/lib/pkgconfig/simple_switch.pc
+
+echo "prefix=/usr/local
+exec_prefix=\${prefix}
+libdir=\${exec_prefix}/lib
+includedir=/usr/local/include/bm
+
+Name: psa switch
+Description: Behavioral Model Target PSA Switch
+Version: 1.15.0
+Libs: -L\${libdir} -lpsaswitch_thrift
+Cflags: -I\${includedir}" >/usr/local/lib/pkgconfig/psa_switch.pc

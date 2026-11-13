@@ -26,6 +26,12 @@
 
 NS_LOG_COMPONENT_DEFINE("P4CorePsa");
 
+#undef LOG_INFO
+#undef LOG_ERROR
+#undef LOG_DEBUG
+#undef LOG_WARN
+#undef LOG_LOGIC
+
 namespace ns3
 {
 
