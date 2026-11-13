@@ -522,7 +522,10 @@ void P4SwitchNetDevice::SendNs3Packet(Ptr<Packet> packetOut, int outPort,
                  << ", Destination MAC: " << Mac48Address::ConvertFrom(dst)
                  << ", Protocol: 0x" << std::hex << protocol << std::dec);
 
-    if (outPort != 511) {
+    // A frame for the drop port is dropped without a warning. The pipeline
+    // core, for example, passes the egress_spec of the ingress, which
+    // mark_to_drop() sets to the drop port.
+    if (outPort != SSWITCH_DROP_PORT) {
       NS_LOG_DEBUG("EgressPortNum: " << outPort);
       Ptr<NetDevice> outNetDevice = GetBridgePort(outPort);
       if (!outNetDevice) {
