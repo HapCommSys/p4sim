@@ -32,6 +32,10 @@ cpp_examples = [
     ("p4-topo-fattree --ns3::P4SwitchNetDevice::BmLogLevel=off", "True", "False"),
     ("p4-spine-leaf-topo --numFlows=10 --duration=2 --ns3::P4SwitchNetDevice::BmLogLevel=off", "True", "False"),
     ("topo-fattree", "True", "False"),
+    ("p4-v1model-ipv4-forwarding-bridge --channelType=csma --ns3::P4SwitchNetDevice::BmLogLevel=off", "True", "False"),
+    ("p4-voq-fabric-integration --ns3::P4SwitchNetDevice::BmLogLevel=off", "True", "False"),
+    ("p4-voq-fabric-priority --ns3::P4SwitchNetDevice::BmLogLevel=off", "True", "False"),
+    ("p4-voq-fabric-throughput --ns3::P4SwitchNetDevice::BmLogLevel=off", "True", "False"),
 ]
 
 python_examples = []

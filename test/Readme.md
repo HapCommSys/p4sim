@@ -24,6 +24,13 @@ full BMv2 log to `/tmp`.
 | `p4-queue` | egress queue: capacity, rate, FIFO, per-port rate, priorities | no |
 | `p4sim` | v1model, PSA and PNA load their program; Thrift ports; `BmLogLevel` | yes |
 | `p4-controller` | flow entries and action profiles, read back from the switch | yes, and `simple_switch_CLI` |
+| `p4-egress` | switched-Ethernet ports: a congested port sends back to back at its line rate; a switch with a full egress queue can be destroyed | yes |
+| `p4-switch-rate` | `SwitchRate` limits the whole pipeline, 0 means no limit, a full input buffer drops | yes |
+| `p4-bridge-port` | CSMA and point-to-point bridge ports next to a switched-Ethernet port | yes |
+| `p4-pna` | a PNA switch forwards, and drops what its program does not send | yes |
+| `p4-traffic-manager` | the VOQ + fabric Traffic Manager | no |
+| `channel-state-test-suite` | the states of the switched-Ethernet channel | no |
+| `p4-switch-queue-item-test-suite` | the items in the queue discs of the switch ports | no |
 
 [`examples-to-run.py`](examples-to-run.py) lists the examples that `test.py` runs
 as smoke tests: each must exit with 0. It keeps the examples from breaking unnoticed.
