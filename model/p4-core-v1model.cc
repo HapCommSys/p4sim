@@ -728,7 +728,13 @@ void P4CoreV1model::MulticastPacket(bm::Packet *packet, unsigned int mgid) {
   NS_LOG_FUNCTION(this);
   auto *phv = packet->get_phv();
   auto &f_rid = phv->get_field("intrinsic_metadata.egress_rid");
-  const auto pre_out = m_pre->replicate({mgid});
+  // As in simple_switch, the LAG hash of the P4 program (lag_hash in
+  // standard_metadata) selects the member port of each LAG in the group
+  uint64_t lag_hash = 0;
+  if (phv->has_field("intrinsic_metadata.lag_hash")) {
+    lag_hash = phv->get_field("intrinsic_metadata.lag_hash").get<uint64_t>();
+  }
+  const auto pre_out = m_pre->replicate({mgid, lag_hash});
   auto packet_size =
       packet->get_register(RegisterAccess::PACKET_LENGTH_REG_IDX);
   for (const auto &out : pre_out) {
