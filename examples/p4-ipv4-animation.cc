@@ -48,7 +48,7 @@ main(int argc, char* argv[])
     // Update the subdirectory below to match your actual P4 program location.
     std::string p4SrcDir = GetP4ExamplePath() + "/simple_v1model";
     std::string p4JsonPath = p4SrcDir + "/simple_v1model.json";
-    std::string flowTablePath = p4SrcDir + "/flowtable_0.txt";
+    std::string flowTablePath = p4SrcDir + "/flowtable_bridge.txt";
     std::string topoInput = p4SrcDir + "/topo.txt";
     std::string topoFormat("CsmaTopo");
 

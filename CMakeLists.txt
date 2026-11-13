@@ -80,6 +80,15 @@ build_lib(
         helper/p4-helper.cc
         helper/switched-ethernet-helper.cc
         helper/build-flowtable-helper.cc
+        model/p4-bridge-channel.cc
+        model/p4-p2p-channel.cc
+        model/custom-header.cc
+        model/p4-topology-reader.cc
+        model/p4-core-pipeline.cc
+        model/custom-p2p-net-device.cc
+        model/p4-controller.cc
+        helper/p4-topology-reader-helper.cc
+        helper/p4-p2p-helper.cc
     HEADER_FILES # equivalent to headers.source
         utils/p4-queue.h
         utils/p4-traffic-manager.h
@@ -100,22 +109,36 @@ build_lib(
         helper/p4-helper.h
         helper/switched-ethernet-helper.h
         helper/build-flowtable-helper.h
+        model/p4-bridge-channel.h
+        model/p4-p2p-channel.h
+        model/custom-header.h
+        model/p4-topology-reader.h
+        model/p4-core-pipeline.h
+        model/custom-p2p-net-device.h
+        model/p4-controller.h
+        helper/p4-topology-reader-helper.h
+        helper/p4-p2p-helper.h
+        helper/p4-net-builder.h
     LIBRARIES_TO_LINK 
         ${libcore} 
         ${libnetwork}  
         ${libtraffic-control}
         ${libapplications}
+        ${libpoint-to-point}
+        ${libcsma}
+        ${libbridge}
         ${third_party_libs}
     TEST_SOURCES # equivalent to module_test.source
         test/p4-switch-queue-item-test-suite.cc
         test/p4-traffic-manager-test-suite.cc
         test/channel-state-test-suite.cc
         test/p4-egress-test-suite.cc
+        test/p4-bridge-port-test-suite.cc
         test/p4-pna-test-suite.cc
         test/p4-switch-rate-test-suite.cc
         # test/p4-controller-test-suite.cc
         #  test/p4sim-test-suite.cc
-        #  test/format-utils-test-suite.cc
+        test/format-utils-test-suite.cc
         #  test/p4-topology-reader-test-suite.cc
         #  test/p4-p2p-channel-test-suite.cc
         ${examples_as_tests_sources}

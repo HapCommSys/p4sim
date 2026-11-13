@@ -726,22 +726,22 @@ P4CorePsa::CalculateScheduleTime()
     m_ingressServiceTime =
         (m_switchRate == 0) ? Time(0) : Seconds(1.0 / static_cast<double>(m_switchRate));
 
-    // Try to obtain the physical link rate from the first bridge port so that
+    // Try to obtain the physical link rate from port 0 so that
     // the event-driven scheduler can model per-packet transmission delay
     // accurately.  Fall back to 1 Gbps if no port is attached yet.
     if (m_switchNetDevice && m_switchNetDevice->GetNPorts() > 0)
     {
-        Ptr<SwitchedEthernetChannel> ch = m_switchNetDevice->GetPortChannel(0);
-        if (ch)
+        uint64_t rate = m_switchNetDevice->GetPortDataRate(0).GetBitRate();
+        if (rate > 0)
         {
-            m_linkRateBps = ch->GetDataRate().GetBitRate();
+            m_linkRateBps = rate;
             NS_LOG_INFO("PSA Switch ID "
                         << m_p4SwitchId << ": link rate from port 0 = " << m_linkRateBps << " bps");
         }
         else
         {
             NS_LOG_DEBUG("PSA Switch ID " << m_p4SwitchId
-                                          << ": no channel on port 0; using default 1 Gbps");
+                                          << ": no data rate on port 0; using default 1 Gbps");
         }
     }
 
