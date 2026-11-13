@@ -9,13 +9,21 @@
  *   packet <port> <hex>   send this Ethernet frame into the switch on <port>
  *   expect <port> <hex>   this frame leaves the switch on <port>; '*' matches any nibble
  *   mirroring_add <session> <port>   the clones of this mirroring session leave on <port>
+ *   mirroring_add_mc <session> <group>   they go to multicast group <group> (v1model)
  * Spaces in <hex> are ignored. All frames are sent at the same time, in file order.
  * A test passes if every port sends exactly the frames expected on it, in that
  * order. The switch has three ports, 0 to 2.
+ *
+ * On v1model, these commands of simple_switch_CLI configure multicast:
+ *   mc_mgrp_create <group>                       create a multicast group
+ *   mc_node_create <rid> <port>... [| <lag>...]  create a node; nodes get the handles 0, 1, ...
+ *   mc_node_associate <group> <node handle>      add a node to a group
+ *   mc_set_lag_membership <lag> <port>...        set the member ports of a LAG
  */
 
 #include "ns3/core-module.h"
 #include "ns3/network-module.h"
+#include "ns3/p4-core-v1model.h"
 #include "ns3/p4-switch-net-device.h"
 #include "ns3/test.h"
 
@@ -36,6 +44,15 @@ struct StfFrame
 {
     uint32_t port;
     std::string hex; ///< lower case, no spaces
+    int line;
+};
+
+/// A multicast command of an .stf file, as in simple_switch_CLI
+struct StfMcCommand
+{
+    std::string cmd;
+    std::vector<uint32_t> args; ///< the numbers, without the LAGs of mc_node_create
+    std::vector<uint32_t> lags; ///< mc_node_create: the LAGs, after '|'
     int line;
 };
 
@@ -86,6 +103,13 @@ class StfTestCase : public TestCase
     /// Reads the .stf file; returns an error message, empty on success
     std::string ReadStf(const std::string& path);
 
+    /// Reads the arguments of a multicast command; returns an error message, empty on success
+    std::string ReadMcCommand(const std::string& cmd, std::istringstream& words, int line);
+
+    /// Configures the packet replication engine of the switch with the multicast
+    /// commands; returns an error message, empty on success
+    std::string ApplyMcCommands(Ptr<P4SwitchNetDevice> sw) const;
+
     /// The host on the frame's port sends it to the switch
     void Send(const StfFrame& frame);
 
@@ -101,9 +125,11 @@ class StfTestCase : public TestCase
     std::string m_archName;
     uint32_t m_arch;
     std::string m_stf;
+    std::vector<StfMcCommand> m_mcCommands; ///< in file order
     std::vector<StfFrame> m_packets;
     std::vector<StfFrame> m_expects;
     std::vector<std::pair<uint32_t, uint32_t>> m_mirroringSessions; ///< (session, port)
+    std::vector<std::pair<uint32_t, uint32_t>> m_mcMirroringSessions; ///< (session, group)
     std::vector<Ptr<SimpleNetDevice>> m_hosts;        ///< one per switch port
     std::vector<std::string> m_received[N_PORTS]; ///< frames sent by each port, in hex
 };
@@ -139,6 +165,28 @@ StfTestCase::ReadStf(const std::string& path)
             m_mirroringSessions.emplace_back(session, port);
             continue;
         }
+        if (cmd == "mirroring_add_mc")
+        {
+            uint32_t session = 0;
+            uint32_t group = 0;
+            if (!(words >> session >> group) || (words >> word))
+            {
+                return m_stf + " line " + std::to_string(n) +
+                       ": expected 'mirroring_add_mc <session> <group>'";
+            }
+            m_mcMirroringSessions.emplace_back(session, group);
+            continue;
+        }
+        if (cmd == "mc_mgrp_create" || cmd == "mc_node_create" || cmd == "mc_node_associate" ||
+            cmd == "mc_set_lag_membership")
+        {
+            std::string error = ReadMcCommand(cmd, words, n);
+            if (!error.empty())
+            {
+                return error;
+            }
+            continue;
+        }
         bool valid = (cmd == "packet" || cmd == "expect") && (words >> port) && port < N_PORTS;
         while (words >> word)
         {
@@ -154,6 +202,110 @@ StfTestCase::ReadStf(const std::string& path)
                    ": expected 'packet|expect <port 0-2> <Ethernet frame in hex>'";
         }
         (cmd == "packet" ? m_packets : m_expects).push_back({port, hex, n});
+    }
+    return "";
+}
+
+std::string
+StfTestCase::ReadMcCommand(const std::string& cmd, std::istringstream& words, int line)
+{
+    StfMcCommand mc{cmd, {}, {}, line};
+    bool valid = true;
+    bool afterPipe = false;
+    std::string word;
+    while (words >> word)
+    {
+        if (word == "|" && cmd == "mc_node_create" && !afterPipe)
+        {
+            afterPipe = true;
+        }
+        else if (word.size() <= 9 && word.find_first_not_of("0123456789") == std::string::npos)
+        {
+            (afterPipe ? mc.lags : mc.args).push_back(std::stoul(word));
+        }
+        else
+        {
+            valid = false;
+        }
+    }
+    // The first number is a group, a rid or a LAG. The numbers after it are
+    // ports (mc_node_create, mc_set_lag_membership) or a node handle.
+    size_t count = mc.args.size();
+    bool hasPorts = (cmd == "mc_node_create" || cmd == "mc_set_lag_membership");
+    valid = valid && count >= 1 && (hasPorts || count == (cmd == "mc_mgrp_create" ? 1u : 2u));
+    for (size_t i = 1; hasPorts && i < count; i++)
+    {
+        valid = valid && mc.args[i] < bm::McSimplePre::PORT_MAP_SIZE;
+    }
+    valid = valid && (cmd != "mc_set_lag_membership" || mc.args[0] < bm::McSimplePre::LAG_MAP_SIZE);
+    for (uint32_t lag : mc.lags)
+    {
+        valid = valid && lag < bm::McSimplePre::LAG_MAP_SIZE;
+    }
+    if (!valid)
+    {
+        return m_stf + " line " + std::to_string(line) +
+               ": expected 'mc_mgrp_create <group>', 'mc_node_create <rid> <port>... [| "
+               "<lag>...]', 'mc_node_associate <group> <node handle>' or "
+               "'mc_set_lag_membership <lag> <port>...', with ports and LAGs below 512";
+    }
+    m_mcCommands.push_back(mc);
+    return "";
+}
+
+std::string
+StfTestCase::ApplyMcCommands(Ptr<P4SwitchNetDevice> sw) const
+{
+    if (m_mcCommands.empty())
+    {
+        return "";
+    }
+    if (!sw->GetV1ModelCore())
+    {
+        return m_stf + ": the multicast commands need v1model";
+    }
+    auto pre = sw->GetV1ModelCore()->get_component<bm::McSimplePreLAG>();
+    for (const StfMcCommand& mc : m_mcCommands)
+    {
+        bm::McSimplePre::PortMap ports;
+        bm::McSimplePre::LagMap lags;
+        if (mc.cmd == "mc_node_create" || mc.cmd == "mc_set_lag_membership")
+        {
+            for (size_t i = 1; i < mc.args.size(); i++)
+            {
+                ports[mc.args[i]] = true;
+            }
+        }
+        for (uint32_t lag : mc.lags)
+        {
+            lags[lag] = true;
+        }
+        bm::McSimplePre::mgrp_hdl_t group = 0;
+        bm::McSimplePre::l1_hdl_t node = 0;
+        bm::McSimplePre::McReturnCode rc;
+        if (mc.cmd == "mc_mgrp_create")
+        {
+            rc = pre->mc_mgrp_create(mc.args[0], &group);
+        }
+        else if (mc.cmd == "mc_node_create")
+        {
+            rc = pre->mc_node_create(mc.args[0], ports, lags, &node);
+        }
+        else if (mc.cmd == "mc_node_associate")
+        {
+            // As with simple_switch_CLI, the handle of a group is its ID
+            rc = pre->mc_node_associate(mc.args[0], mc.args[1]);
+        }
+        else
+        {
+            rc = pre->mc_set_lag_membership(static_cast<bm::McSimplePreLAG::lag_id_t>(mc.args[0]),
+                                            ports);
+        }
+        if (rc != bm::McSimplePre::SUCCESS)
+        {
+            return m_stf + " line " + std::to_string(mc.line) + ": " + mc.cmd +
+                   " failed with code " + std::to_string(rc);
+        }
     }
     return "";
 }
@@ -246,6 +398,14 @@ StfTestCase::DoRun()
                               true,
                               "Cannot add mirroring session " << session);
     }
+    for (const auto& [session, group] : m_mcMirroringSessions)
+    {
+        NS_TEST_ASSERT_MSG_EQ(sw->AddMulticastMirroringSession(session, group),
+                              true,
+                              "Cannot add mirroring session " << session);
+    }
+    error = ApplyMcCommands(sw);
+    NS_TEST_ASSERT_MSG_EQ(error, "", "Cannot configure multicast");
 
     // All frames at once, in file order: frames to the same port queue up
     for (const StfFrame& frame : m_packets)
@@ -287,7 +447,8 @@ StfTestCase::DoRun()
 
 /// Every architecture runs the same program, p4src/forward, with the same .stf
 /// files; p4src/priority checks the priority queues of v1model, p4src/resubmit
-/// and p4src/recirculate its resubmit and recirculation, p4src/clone its clones,
+/// and p4src/recirculate its resubmit and recirculation, p4src/clone its clones
+/// (also to a multicast group),
 /// and p4src/primitives digest(), hash() with max 0 and random() with lo > hi
 static class P4PacketTestSuite : public TestSuite
 {
@@ -315,6 +476,8 @@ static class P4PacketTestSuite : public TestSuite
             new StfTestCase("recirculate", "v1model", P4SWITCH_ARCH_V1MODEL, "recirculate.stf"),
             TestCase::QUICK);
         AddTestCase(new StfTestCase("clone", "v1model", P4SWITCH_ARCH_V1MODEL, "clone.stf"),
+                    TestCase::QUICK);
+        AddTestCase(new StfTestCase("clone", "v1model", P4SWITCH_ARCH_V1MODEL, "clone_mc.stf"),
                     TestCase::QUICK);
         AddTestCase(
             new StfTestCase("primitives", "v1model", P4SWITCH_ARCH_V1MODEL, "primitives.stf"),

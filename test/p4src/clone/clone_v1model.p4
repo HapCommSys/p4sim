@@ -1,18 +1,18 @@
 // SPDX-License-Identifier: GPL-2.0-only
 // Copyright (c) 2025 TU Dresden. Author: Mingyu Ma <mingyu.ma@tu-dresden.de>
 
-// Packet test program for cloning (v1model). Every frame goes to port 1. The
-// .stf file adds mirroring sessions 5 and 0, whose clones leave on port 2;
-// session 6 does not exist. The low 4 bits of the EtherType select the operation:
+// Packet test program for cloning (v1model). Every frame goes to port 1. In
+// clone.stf, mirroring sessions 5 and 0 send their clones to port 2; session 6
+// does not exist. The low 4 bits of the EtherType select the operation:
 //   1  clone(I2E, 5)                           clone at the end of the ingress
 //   2  clone(E2E, 5)                           clone at the end of the egress
 //   3  clone(I2E, 6)                           no clone, as the session does not exist
 //   4  clone_preserving_field_list(I2E, 5, 1)  clone that keeps meta.tag
 //   5  clone(I2E, 0)                           clone with session 0
-// The ingress sets meta.tag to 0xab. The egress writes the instance type into
-// bits 15:8 of the destination MAC (1 for an ingress clone, 2 for an egress
-// clone) and meta.tag into the low byte of the source MAC: a clone has 0 there
-// unless its field list keeps meta.tag (@field_list(1)).
+// The ingress sets meta.tag to 0xab. The egress writes the instance type into bits
+// 15:8 of the destination MAC (1: ingress clone, 2: egress clone), egress_rid (set
+// in multicast copies) into bits 15:8 of the source MAC and meta.tag into its low
+// byte: a clone has 0 there unless its field list keeps meta.tag (@field_list(1)).
 
 #include <core.p4>
 #include <v1model.p4>
@@ -66,6 +66,7 @@ control MyEgress(inout headers_t hdr, inout metadata_t meta,
     apply {
         hdr.ethernet.dstAddr[15:8] = (bit<8>) smeta.instance_type;
         hdr.ethernet.srcAddr[7:0] = meta.tag;
+        hdr.ethernet.srcAddr[15:8] = (bit<8>) smeta.egress_rid;
         if (smeta.instance_type == 0 && hdr.ethernet.etherType[3:0] == 2) {
             clone(CloneType.E2E, 5);
         }
