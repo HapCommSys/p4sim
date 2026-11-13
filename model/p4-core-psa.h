@@ -167,15 +167,14 @@ class P4CorePsa : public P4SwitchCore
     /**
      * @brief Per-port transmission state.
      *
-     * busy         : true while a packet is being serialised on the link.
-     * busyUntil    : simulation time when the link becomes free.
+     * busy         : true while a packet is being serialised on the link; the
+     *                device clears it through PortTxComplete().
      * pendingEvent : EventId of the next scheduled dequeue attempt; allows
      *                cancellation when a new packet arrives earlier.
      */
     struct PortTxState
     {
         bool busy{false};
-        Time busyUntil{Time(0)};
         EventId pendingEvent{};
     };
 
@@ -183,9 +182,8 @@ class P4CorePsa : public P4SwitchCore
     std::unordered_map<uint32_t, PortTxState> m_portTxState;
 
     /**
-     * @brief Link rate for transmission-delay modelling (bits per second).
-     * Queried from the underlying NetDevice in CalculateScheduleTime().
-     * Defaults to 1 Gbps when no port is available.
+     * @brief Link rate of port 0 (bits per second), for log messages only.
+     * Serialisation is timed by each port's channel.
      */
     uint64_t m_linkRateBps{1000000000ULL};
 };
