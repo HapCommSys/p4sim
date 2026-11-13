@@ -1,0 +1,28 @@
+# Cloning, as in BMv2's simple_switch. Mirroring sessions 5 and 0 send their
+# clones to port 2; session 6 does not exist. The low 4 bits of the EtherType
+# select the operation (see clone_v1model.p4). The egress writes the instance
+# type into bits 15:8 of the destination MAC (1 = ingress clone, 2 = egress
+# clone) and meta.tag, which the ingress sets to ab, into the low byte of the
+# source MAC.
+
+mirroring_add 5 2
+mirroring_add 0 2
+
+packet 0 000000000001 000000000000 9000  00000001   # A, no clone
+packet 0 000000000001 000000000000 9001  00000002   # B, clone at the ingress
+packet 0 000000000001 000000000000 9002  00000003   # C, clone at the egress
+packet 0 000000000001 000000000000 9003  00000004   # D, clone to session 6
+packet 0 000000000001 000000000000 9004  00000005   # E, clone at the ingress, keeping meta.tag
+packet 0 000000000001 000000000000 9005  00000006   # F, clone at the ingress to session 0
+
+#        dst          src          type
+expect 1 000000000001 0000000000ab 9000  00000001   # the original frames
+expect 1 000000000001 0000000000ab 9001  00000002
+expect 1 000000000001 0000000000ab 9002  00000003
+expect 1 000000000001 0000000000ab 9003  00000004
+expect 1 000000000001 0000000000ab 9004  00000005
+expect 1 000000000001 0000000000ab 9005  00000006
+expect 2 000000000101 000000000000 9001  00000002   # B's clone: ingress clone, meta.tag not kept
+expect 2 000000000101 0000000000ab 9004  00000005   # E's clone: ingress clone, meta.tag kept
+expect 2 000000000101 000000000000 9005  00000006   # F's clone: ingress clone
+expect 2 000000000201 000000000000 9002  00000003   # C's clone: egress clone, made after the others

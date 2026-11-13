@@ -18,17 +18,24 @@
  *
  */
 
+#include "ns3/p4-switch-core.h"
 #include "ns3/register-access-v1model.h"
 
 #include <bm/bm_sim/actions.h>
 #include <bm/bm_sim/calculations.h>
 #include <bm/bm_sim/core/primitives.h>
 #include <bm/bm_sim/counters.h>
+#include <bm/bm_sim/logger.h>
 #include <bm/bm_sim/meters.h>
 #include <bm/bm_sim/packet.h>
 #include <bm/bm_sim/phv.h>
 #include <random>
 #include <thread>
+
+// The BMv2 logger includes <syslog.h>, whose LOG_INFO and LOG_DEBUG macros would
+// break ns-3's NS_LOG_INFO and NS_LOG_DEBUG (as in p4-switch-core.cc)
+#undef LOG_INFO
+#undef LOG_DEBUG
 
 template <typename... Args>
 using ActionPrimitive = bm::ActionPrimitive<Args...>;
@@ -62,7 +69,15 @@ class modify_field_rng_uniform : public ActionPrimitive<Data&, const Data&, cons
         using hash = std::hash<std::thread::id>;
         static thread_local engine generator(hash()(std::this_thread::get_id()));
         using distrib64 = std::uniform_int_distribution<uint64_t>;
-        distrib64 distribution(b.get_uint64(), e.get_uint64());
+        auto lo = b.get_uint64();
+        auto hi = e.get_uint64();
+        if (lo > hi)
+        {
+            // As in BMv2: the result is not specified, so the field is not written
+            bm::Logger::get()->warn("random result is not specified when lo > hi");
+            return;
+        }
+        distrib64 distribution(lo, hi);
         f.set(distribution(generator));
     }
 };
@@ -163,7 +178,7 @@ class drop : public ActionPrimitive<>
 {
     void operator()()
     {
-        get_field("standard_metadata.egress_spec").set(511);
+        get_field("standard_metadata.egress_spec").set(SSWITCH_DROP_PORT);
         if (get_phv().has_field("intrinsic_metadata.mcast_grp"))
         {
             get_field("intrinsic_metadata.mcast_grp").set(0);
@@ -183,7 +198,7 @@ class mark_to_drop : public ActionPrimitive<Header&>
         int mcastGrp = type.get_field_offset("mcast_grp");
         if (egressSpec != -1)
         {
-            standardMetadata.get_field(egressSpec).set(511);
+            standardMetadata.get_field(egressSpec).set(SSWITCH_DROP_PORT);
         }
         if (mcastGrp != -1)
         {
@@ -208,9 +223,10 @@ class generate_digest : public ActionPrimitive<const Data&, const Data&>
 {
     void operator()(const Data& receiver, const Data& learn_id)
     {
-        // discared receiver for now
+        // As in BMv2, the receiver is not used. The learn list goes into a packet
+        // register, which the core reads at the end of the ingress.
         (void)receiver;
-        get_field("intrinsic_metadata.lf_field_list").set(learn_id);
+        RegisterAccess::set_lf_field_list(&get_packet(), learn_id.get<uint16_t>());
     }
 };
 
@@ -270,15 +286,22 @@ class copy_header : public ActionPrimitive<Header&, const Header&>
 
 REGISTER_PRIMITIVE(copy_header);
 
-/* standard_metadata.clone_spec will contain the mirror id (16 LSB) and the
-     field list id to copy (16 MSB) */
+// The clone, resubmit and recirculate primitives store their arguments in packet
+// registers, which the core reads at the end of the ingress and the egress, as in
+// BMv2 1.15.8's simple_switch. (BMv2 versions before 1.14.0 used PHV fields such as
+// standard_metadata.clone_spec, which the JSON of current p4c versions does not
+// have.) A clone's mirror session ID is stored with a "valid" bit, so that session 0
+// can be used too.
 class clone_ingress_pkt_to_egress : public ActionPrimitive<const Data&, const Data&>
 {
-    void operator()(const Data& clone_spec, const Data& field_list_id)
+    void operator()(const Data& mirror_session_id, const Data& field_list_id)
     {
-        Field& f_clone_spec = get_field("standard_metadata.clone_spec");
-        f_clone_spec.shift_left(field_list_id, 16);
-        f_clone_spec.add(f_clone_spec, clone_spec);
+        auto& packet = get_packet();
+        RegisterAccess::set_clone_mirror_session_id(
+            &packet,
+            static_cast<uint16_t>(mirror_session_id.get<uint16_t>() |
+                                  RegisterAccess::MIRROR_SESSION_ID_VALID_MASK));
+        RegisterAccess::set_clone_field_list(&packet, field_list_id.get<uint16_t>());
     }
 };
 
@@ -286,19 +309,19 @@ REGISTER_PRIMITIVE(clone_ingress_pkt_to_egress);
 
 class clone_egress_pkt_to_egress : public ActionPrimitive<const Data&, const Data&>
 {
-    void operator()(const Data& clone_spec, const Data& field_list_id)
+    void operator()(const Data& mirror_session_id, const Data& field_list_id)
     {
-        Field& f_clone_spec = get_field("standard_metadata.clone_spec");
-        f_clone_spec.shift_left(field_list_id, 16);
-        f_clone_spec.add(f_clone_spec, clone_spec);
+        auto& packet = get_packet();
+        RegisterAccess::set_clone_mirror_session_id(
+            &packet,
+            static_cast<uint16_t>(mirror_session_id.get<uint16_t>() |
+                                  RegisterAccess::MIRROR_SESSION_ID_VALID_MASK));
+        RegisterAccess::set_clone_field_list(&packet, field_list_id.get<uint16_t>());
     }
 };
 
 REGISTER_PRIMITIVE(clone_egress_pkt_to_egress);
 
-// resubmit and recirculate set the flag in a packet register, which the core
-// reads at the end of the ingress and the egress, as in BMv2's simple_switch.
-// The JSON of current p4c versions has no intrinsic_metadata.*_flag fields.
 class resubmit : public ActionPrimitive<const Data&>
 {
     void operator()(const Data& field_list_id)
@@ -324,7 +347,14 @@ class modify_field_with_hash_based_offset
 {
     void operator()(Data& dst, const Data& base, const NamedCalculation& hash, const Data& size)
     {
-        uint64_t v = (hash.output(get_packet()) % size.get<uint64_t>()) + base.get<uint64_t>();
+        auto sz = size.get<uint64_t>();
+        if (sz == 0)
+        {
+            // As in BMv2, instead of dividing by zero
+            sz = 1;
+            bm::Logger::get()->warn("hash max given as 0, but treating it as 1");
+        }
+        uint64_t v = (hash.output(get_packet()) % sz) + base.get<uint64_t>();
         dst.set(v);
     }
 };
