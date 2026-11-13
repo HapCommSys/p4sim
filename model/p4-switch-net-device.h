@@ -136,9 +136,10 @@ class P4SwitchNetDevice : public NetDevice
      * The device must support SendFrom() and EUI-48 addresses, and this
      * switch device must already be added to the node. The frames the device
      * receives go to the P4 pipeline, and its PhyTxEnd and PhyTxDrop traces
-     * tell the P4 core that the port is free again. A device without these
-     * traces (e.g. SimpleNetDevice) frees the port as soon as it has taken a
-     * frame: its own transmit queue then holds the frames that wait.
+     * tell the P4 core that the port is free again. For a device without these
+     * traces (e.g. SimpleNetDevice), the port is free again one transmission
+     * time after the device has taken a frame, computed from the device's
+     * "DataRate" (see GetPortDataRate()); without a data rate, at once.
      */
     void AddBridgePort(Ptr<NetDevice> bridgePort);
 

@@ -598,14 +598,14 @@ P4SwitchNetDevice::AddBridgePort(Ptr<NetDevice> bridgePort)
             trace,
             MakeCallback(&P4SwitchNetDevice::BridgePortTxEnd, this).Bind(port));
     }
-    // Without these traces the port is free again as soon as the device has
-    // taken a frame (see SendOnBridgePort()).
+    // Without these traces the port is free again one transmission time after
+    // the device has taken a frame (see SendOnBridgePort()).
     m_bridgePortTxEnd.push_back(connected);
     if (!connected)
     {
         NS_LOG_INFO("AddBridgePort: " << bridgePort->GetInstanceTypeId().GetName()
-                                      << " reports no end of transmission; its queue holds "
-                                         "the frames that wait");
+                                      << " reports no end of transmission; the port is free "
+                                         "again after the frame's transmission time");
     }
 
     if (!m_bridgeChannel)
@@ -736,11 +736,16 @@ P4SwitchNetDevice::SendOnBridgePort(uint32_t port, Ptr<Packet> frame, Time* txTi
     if (!m_bridgePortTxEnd[port])
     {
         // The device will not report the end of the transmission: the port is
-        // free again now, and the device's queue holds the frames that wait.
-        Simulator::ScheduleNow(&P4SwitchNetDevice::BridgePortTxEnd,
-                               this,
-                               port,
-                               Ptr<const Packet>());
+        // free again after the time the device needs for the frame at its data
+        // rate (SimpleNetDevice: the size it was given), or at once without one.
+        DataRate rate = GetPortDataRate(port);
+        Time wait = (rate.GetBitRate() > 0) ? rate.CalculateBytesTxTime(payload->GetSize())
+                                            : Time(0);
+        Simulator::Schedule(wait,
+                            &P4SwitchNetDevice::BridgePortTxEnd,
+                            this,
+                            port,
+                            Ptr<const Packet>());
     }
     return true;
 }
