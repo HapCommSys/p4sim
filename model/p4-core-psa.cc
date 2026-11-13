@@ -147,6 +147,11 @@ P4CorePsa::~P4CorePsa()
     // ns-3 there are no such threads, and a push into a full queue would wait
     // or retry forever; only a pending ServeIngress() is left to cancel.
     Simulator::Cancel(m_ingressEvent);
+    // Cancel the pending per-port dequeue events, which also point to this core.
+    for (auto& kv : m_portTxState)
+    {
+        Simulator::Cancel(kv.second.pendingEvent);
+    }
 }
 
 void
