@@ -749,6 +749,50 @@ public:
    */
   void GetConfigMd5(uint32_t index);
 
+  // ======== Mirroring Session Functions ========
+
+  /**
+   * @brief Adds a mirroring session whose clones leave on one port, like
+   * mirroring_add of simple_switch_CLI. An existing session with this ID is
+   * replaced.
+   * @param index The switch index.
+   * @param sessionId The mirroring session ID, 0 to 32767.
+   * @param egressPort The port that the clones of this session are sent to.
+   * @return true if the session was added.
+   */
+  bool MirroringAdd(uint32_t index, uint32_t sessionId, uint32_t egressPort);
+
+  /**
+   * @brief Adds a mirroring session whose clones go to a multicast group, like
+   * mirroring_add_mc of simple_switch_CLI. An existing session with this ID is
+   * replaced.
+   * @param index The switch index.
+   * @param sessionId The mirroring session ID, 0 to 32767.
+   * @param mgid The multicast group that the clones of this session are sent to.
+   * @return true if the session was added.
+   */
+  bool MirroringAddMc(uint32_t index, uint32_t sessionId, uint32_t mgid);
+
+  /**
+   * @brief Deletes a mirroring session, like mirroring_delete of
+   * simple_switch_CLI.
+   * @param index The switch index.
+   * @param sessionId The mirroring session ID.
+   * @return true if the session existed and was deleted.
+   */
+  bool MirroringDelete(uint32_t index, uint32_t sessionId);
+
+  /**
+   * @brief Retrieves the configuration of a mirroring session and logs it,
+   * like mirroring_get of simple_switch_CLI.
+   * @param index The switch index.
+   * @param sessionId The mirroring session ID.
+   * @param config If not null, receives the configuration of the session.
+   * @return true if the session exists.
+   */
+  bool MirroringGet(uint32_t index, uint32_t sessionId,
+                    P4SwitchCore::MirroringSessionConfig *config = nullptr);
+
 private:
   /**
    * @brief Collection of P4 switch interfaces managed by the controller.
