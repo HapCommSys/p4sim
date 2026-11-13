@@ -93,6 +93,7 @@ build_lib(
         test/p4-switch-queue-item-test-suite.cc
         test/p4-traffic-manager-test-suite.cc
         test/channel-state-test-suite.cc
+        test/p4-egress-test-suite.cc
         test/switched-ethernet-host-test-suite.cc
         # test/p4-controller-test-suite.cc
         #  test/p4sim-test-suite.cc

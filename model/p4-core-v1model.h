@@ -179,7 +179,7 @@ class P4CoreV1model : public P4SwitchCore
      * @brief Per-port transmission state.
      *
      * busy is set when a packet has been handed to the NetDevice and cleared
-     * when the device signals PhyTxEnd via PortTxComplete().
+     * when the device reports the end of serialisation via PortTxComplete().
      * pendingEvent allows cancellation of a stale dequeue timer.
      */
     struct PortTxState
@@ -191,8 +191,8 @@ class P4CoreV1model : public P4SwitchCore
     std::unordered_map<uint32_t, Ptr<QueueDisc>> m_portQueueDiscs;
     std::unordered_map<uint32_t, PortTxState> m_portTxState;
 
-    /// Physical link rate read from port 0 at startup; used for logging/diagnostics only.
-    /// Actual serialisation delay is now modelled by the port NetDevice itself.
+    /// Link rate of port 0, read at startup: seeds the Traffic Manager's PortRate and
+    /// appears in log messages. Serialisation is timed by each port's channel.
     uint64_t m_linkRateBps{1000000000ULL};
 
     // ---- VOQ + fabric Traffic Manager (opt-in) ----

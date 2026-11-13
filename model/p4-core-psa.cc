@@ -186,8 +186,7 @@ P4CorePsa::ScheduleEgressIfNeeded(uint32_t port)
     // Port busy: PortTxComplete() will re-trigger when the link is free.
     if (pstate.busy)
     {
-        NS_LOG_DEBUG("PSA port " << port << " busy until " << pstate.busyUntil.GetNanoSeconds()
-                                 << " ns – deferring");
+        NS_LOG_DEBUG("PSA port " << port << " busy – deferring");
         return;
     }
 
@@ -199,11 +198,11 @@ P4CorePsa::ScheduleEgressIfNeeded(uint32_t port)
     }
 
     Time now = Simulator::Now();
-    Time nextEligible = egress_buffer.get_next_tp_all_ports();
+    Time nextEligible = egress_buffer.get_next_tp_for_port(port);
 
     if (nextEligible == Time::Max())
     {
-        NS_LOG_DEBUG("PSA port " << port << ": all queues empty, not scheduling dequeue");
+        NS_LOG_DEBUG("PSA port " << port << ": queue empty, not scheduling dequeue");
         return;
     }
 
@@ -230,21 +229,27 @@ P4CorePsa::EventDrivenEgressDequeue(uint32_t port)
         return;
     }
 
-    // Try to pop a rate-eligible packet.
+    // Another frame is still being serialised on this port. The device calls
+    // PortTxComplete() when it is done, which retries the dequeue.
+    Ptr<SwitchedEthernetChannel> ch = m_switchNetDevice->GetPortChannel(port);
+    if (ch && ch->IsBusy(m_switchNetDevice->GetPortDeviceId(port)))
+    {
+        NS_LOG_DEBUG("PSA port " << port << ": channel busy, waiting for PortTxComplete");
+        return;
+    }
+
+    // Pop a rate-eligible packet of this port.
     std::unique_ptr<bm::Packet> bm_packet;
-    size_t out_port = 0;
+    size_t out_port = static_cast<size_t>(port);
     size_t priority = 0;
 
-    egress_buffer.pop_back(0 /* workerId */, &out_port, &priority, &bm_packet);
+    egress_buffer.pop_back_for_port(port, &priority, &bm_packet);
 
     if (!bm_packet)
     {
         NS_LOG_DEBUG("PSA port " << port << ": no eligible packet right now");
         Time now = Simulator::Now();
-        Time nextEligible = egress_buffer.get_next_tp_all_ports();
-        // Only reschedule if there are actually queued packets for this port;
-        // get_next_tp_all_ports() returns now+5s as a sentinel when all queues
-        // are empty, which must not be treated as a real future deadline.
+        Time nextEligible = egress_buffer.get_next_tp_for_port(port);
         if (nextEligible != Time::Max() && nextEligible > now)
         {
             pstate.pendingEvent = Simulator::Schedule(nextEligible - now,
@@ -252,17 +257,6 @@ P4CorePsa::EventDrivenEgressDequeue(uint32_t port)
                                                       this,
                                                       port);
         }
-        return;
-    }
-
-    // Bug-fix: pop_back() is global – the dequeued packet may belong to any
-    // port, not necessarily 'port'.  All state from here on must be keyed on
-    // out_port.
-    auto& out_pstate = m_portTxState[static_cast<uint32_t>(out_port)];
-    if (out_pstate.busy)
-    {
-        NS_LOG_WARN("PSA port " << out_port << " busy when dequeued from port " << port
-                                << " scheduler – packet lost");
         return;
     }
 
@@ -348,28 +342,24 @@ P4CorePsa::EventDrivenEgressDequeue(uint32_t port)
         return;
     }
 
-    // ---- Model link serialisation delay ----
-    int pkt_bytes = static_cast<int>(bm_packet->get_data_size());
-    uint64_t tx_ns = (m_linkRateBps > 0)
-                         ? (static_cast<uint64_t>(pkt_bytes) * 8ULL * 1000000000ULL / m_linkRateBps)
-                         : 0ULL;
-    Time txDelay = NanoSeconds(tx_ns);
+    // ---- Transmit: the device calls PortTxComplete() once the channel has
+    // serialised the frame ----
+    pstate.busy = true;
 
-    out_pstate.busy = true;
-    out_pstate.busyUntil = Simulator::Now() + txDelay;
-
-    NS_LOG_DEBUG("PSA port " << out_port << ": transmitting " << pkt_bytes
-                             << " B, tx delay = " << tx_ns << " ns");
+    NS_LOG_DEBUG("PSA port " << out_port << ": transmitting " << bm_packet->get_data_size()
+                             << " B");
 
     uint16_t protocol = RegisterAccess::get_ns_protocol(bm_packet.get());
     int addr_index = RegisterAccess::get_ns_address(bm_packet.get());
     Ptr<Packet> ns_packet = this->ConvertToNs3Packet(std::move(bm_packet));
-    m_switchNetDevice->SendNs3Packet(ns_packet,
-                                     static_cast<int>(out_port),
-                                     protocol,
-                                     m_destinationList[addr_index]);
-
-    Simulator::Schedule(txDelay, &P4CorePsa::PortTxComplete, this, static_cast<uint32_t>(out_port));
+    if (!m_switchNetDevice->SendNs3Packet(ns_packet,
+                                          static_cast<int>(out_port),
+                                          protocol,
+                                          m_destinationList[addr_index]))
+    {
+        // Dropped by the device: nothing is on the wire, free the port.
+        Simulator::ScheduleNow(&P4CorePsa::PortTxComplete, this, port);
+    }
 }
 
 void

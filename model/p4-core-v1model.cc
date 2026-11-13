@@ -329,11 +329,12 @@ P4CoreV1model::EventDrivenEgressDequeue(uint32_t port)
         NS_LOG_DEBUG("Port " << port << " still busy – PortTxComplete will retry");
         return;
     }
-    Ptr<SwitchedEthernetChannel> ch=m_switchNetDevice->GetPortChannel(port);
-    uint32_t devId=m_switchNetDevice->GetPortDeviceId(port);
-    if (ch && ch->IsBusy(devId))
+    Ptr<SwitchedEthernetChannel> ch = m_switchNetDevice->GetPortChannel(port);
+    if (ch && ch->IsBusy(m_switchNetDevice->GetPortDeviceId(port)))
     {
-        NS_LOG_WARN("Port "<<port<<": channel still busy (devId= "<<devId<<"), deferring dequeue - PortTxComplete will retyr");
+        // Another frame is still being serialised on this port. The device
+        // calls PortTxComplete() when it is done, which retries the dequeue.
+        NS_LOG_DEBUG("Port " << port << ": channel busy, waiting for PortTxComplete");
         return;
     }
 
@@ -484,7 +485,6 @@ P4CoreV1model::EventDrivenEgressDequeue(uint32_t port)
     // before deciding which path (QueueDisc vs direct) to take.
     uint16_t protocol = RegisterAccess::get_ns_protocol(bm_packet.get());
     int addr_index = RegisterAccess::get_ns_address(bm_packet.get());
-    size_t pkt_bytes = bm_packet->get_data_size();
     Ptr<Packet> ns_packet = this->ConvertToNs3Packet(std::move(bm_packet));
 
     NS_LOG_DEBUG("Sending packet to NS-3 stack, Packet ID: " << ns_packet->GetUid()
@@ -519,26 +519,22 @@ P4CoreV1model::EventDrivenEgressDequeue(uint32_t port)
     {
         // --- Direct path (no QueueDisc) ---
         // Mark the port busy so that any re-entrant Enqueue() correctly
-        // sees it as occupied, then transmit and schedule PortTxComplete.
+        // sees it as occupied, then transmit. The device calls
+        // PortTxComplete() once the channel has serialised the frame.
         pstate.busy = true;
 
-        uint64_t tx_ns = (m_linkRateBps > 0)
-                             ? (pkt_bytes * 8ULL * 1000000000ULL / m_linkRateBps)
-                             : 0ULL;
-        Time txDelay = NanoSeconds(tx_ns);
+        NS_LOG_DEBUG("Port " << out_port << ": direct TX, " << ns_packet->GetSize() << " B");
 
-        NS_LOG_DEBUG("Port " << out_port << ": direct TX, " << pkt_bytes
-                             << " B, txDelay=" << tx_ns << " ns");
-
-        m_switchNetDevice->SendNs3Packet(ns_packet,
-                                         static_cast<int>(out_port),
-                                         protocol,
-                                         m_destinationList[addr_index]);
-
-        Simulator::Schedule(txDelay,
-                            &P4CoreV1model::PortTxComplete,
-                            this,
-                            static_cast<uint32_t>(out_port));
+        if (!m_switchNetDevice->SendNs3Packet(ns_packet,
+                                              static_cast<int>(out_port),
+                                              protocol,
+                                              m_destinationList[addr_index]))
+        {
+            // Dropped by the device: nothing is on the wire, free the port.
+            Simulator::ScheduleNow(&P4CoreV1model::PortTxComplete,
+                                   this,
+                                   static_cast<uint32_t>(out_port));
+        }
     }
 }
 
@@ -564,6 +560,15 @@ P4CoreV1model::TryTransmitFromQueueDisc(uint32_t port)
         return;
     }
 
+    // Another frame is still being serialised on this port: leave the packet
+    // in the QueueDisc. The device calls PortTxComplete() when it is done.
+    Ptr<SwitchedEthernetChannel> ch = m_switchNetDevice->GetPortChannel(port);
+    if (ch && ch->IsBusy(m_switchNetDevice->GetPortDeviceId(port)))
+    {
+        NS_LOG_DEBUG("Port " << port << ": channel busy, QueueDisc drain deferred");
+        return;
+    }
+
     Ptr<QueueDiscItem> item = it->second->Dequeue();
     if (!item)
     {
@@ -571,27 +576,20 @@ P4CoreV1model::TryTransmitFromQueueDisc(uint32_t port)
         return;
     }
 
-    // Mark the port busy and transmit.
+    // Mark the port busy and transmit. The device calls PortTxComplete() once
+    // the channel has serialised the frame.
     pstate.busy = true;
 
-    uint64_t pkt_bytes = item->GetPacket()->GetSize();
-    uint64_t tx_ns = (m_linkRateBps > 0)
-                         ? (pkt_bytes * 8ULL * 1000000000ULL / m_linkRateBps)
-                         : 0ULL;
-    Time txDelay = NanoSeconds(tx_ns);
+    NS_LOG_DEBUG("Port " << port << ": QueueDisc TX, " << item->GetPacket()->GetSize() << " B");
 
-    NS_LOG_DEBUG("Port " << port << ": QueueDisc TX, " << pkt_bytes
-                         << " B, txDelay=" << tx_ns << " ns");
-
-    m_switchNetDevice->SendNs3Packet(item->GetPacket(),
-                                     static_cast<int>(port),
-                                     item->GetProtocol(),
-                                     item->GetAddress());
-
-    Simulator::Schedule(txDelay,
-                        &P4CoreV1model::PortTxComplete,
-                        this,
-                        port);
+    if (!m_switchNetDevice->SendNs3Packet(item->GetPacket(),
+                                          static_cast<int>(port),
+                                          item->GetProtocol(),
+                                          item->GetAddress()))
+    {
+        // Dropped by the device: nothing is on the wire, free the port.
+        Simulator::ScheduleNow(&P4CoreV1model::PortTxComplete, this, port);
+    }
 }
 
 // ---------------------------------------------------------------------------

@@ -230,6 +230,7 @@ P4SwitchNetDevice::DoInitialize()
         m_v1modelSwitch->InitializeSwitchFromP4Json(m_jsonPath);
         m_v1modelSwitch->LoadFlowTableToSwitch(m_flowTablePath);
         m_v1modelSwitch->SetEnableVoqFabric(m_enableVoqFabric);
+        SetPortTxDoneCallback(MakeCallback(&P4CoreV1model::PortTxComplete, m_v1modelSwitch));
         m_v1modelSwitch->start_and_return_();
         break;
 
@@ -243,6 +244,7 @@ P4SwitchNetDevice::DoInitialize()
                                     m_queueBufferSize);
         m_psaSwitch->InitializeSwitchFromP4Json(m_jsonPath);
         m_psaSwitch->LoadFlowTableToSwitch(m_flowTablePath);
+        SetPortTxDoneCallback(MakeCallback(&P4CorePsa::PortTxComplete, m_psaSwitch));
         m_psaSwitch->start_and_return_();
         break;
 
@@ -265,6 +267,8 @@ P4SwitchNetDevice::DoDispose()
 {
     NS_LOG_FUNCTION_NOARGS();
 
+    // The callback points into the core deleted below.
+    m_portTxDone = MakeNullCallback<void, uint32_t>();
     delete m_v1modelSwitch;
     m_v1modelSwitch = nullptr;
     delete m_psaSwitch;
@@ -425,18 +429,14 @@ P4SwitchNetDevice::SendNs3Packet(Ptr<Packet> packetOut,
 
     // The P4 pipeline delivers a full Ethernet frame.
     // Transmit it directly onto the channel.
-    Ptr<SwitchedEthernetChannel> ch = m_portChannels[static_cast<size_t>(outPort)];
-    uint32_t devId = m_portDeviceIds[static_cast<size_t>(outPort)];
-    return TransmitOn(ch, devId, packetOut, txTime);
+    return TransmitOn(static_cast<uint32_t>(outPort), packetOut, txTime);
 }
 
 bool
-P4SwitchNetDevice::TransmitOn(Ptr<SwitchedEthernetChannel> channel,
-                              uint32_t devId,
-                              Ptr<Packet> packet,
-                              Time* txTime)
+P4SwitchNetDevice::TransmitOn(uint32_t port, Ptr<Packet> packet, Time* txTime)
 {
-    if (!channel->TransmitStart(packet, devId))
+    Ptr<SwitchedEthernetChannel> channel = m_portChannels[port];
+    if (!channel->TransmitStart(packet, m_portDeviceIds[port]))
     {
         NS_LOG_WARN("TransmitOn: channel busy or device inactive — packet dropped");
         m_macTxDropTrace(packet);
@@ -447,13 +447,33 @@ P4SwitchNetDevice::TransmitOn(Ptr<SwitchedEthernetChannel> channel,
     DataRate bps = channel->GetDataRate();
     Time serialisationTime = bps.CalculateBytesTxTime(packet->GetSize());
 
-    Simulator::Schedule(serialisationTime, &SwitchedEthernetChannel::TransmitEnd, channel, devId);
+    Simulator::Schedule(serialisationTime, &P4SwitchNetDevice::PortTransmitEnd, this, port);
 
     if (txTime)
     {
         *txTime = serialisationTime;
     }
     return true;
+}
+
+void
+P4SwitchNetDevice::PortTransmitEnd(uint32_t port)
+{
+    if (port >= m_portChannels.size())
+    {
+        return; // the device was disposed while the frame was on the wire
+    }
+    m_portChannels[port]->TransmitEnd(m_portDeviceIds[port]);
+    if (!m_portTxDone.IsNull())
+    {
+        m_portTxDone(port);
+    }
+}
+
+void
+P4SwitchNetDevice::SetPortTxDoneCallback(Callback<void, uint32_t> cb)
+{
+    m_portTxDone = cb;
 }
 
 // ---------------------------------------------------------------------------
@@ -690,7 +710,7 @@ P4SwitchNetDevice::SendFrom(Ptr<Packet> packet,
         frame->AddHeader(eth);
         m_promiscSnifferTrace(frame);
         m_snifferTrace(frame);
-        TransmitOn(m_portChannels[i], m_portDeviceIds[i], frame);
+        TransmitOn(static_cast<uint32_t>(i), frame);
     }
     return true;
 }
