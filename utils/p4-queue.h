@@ -34,8 +34,9 @@ namespace ns3
 // low priority queue. We assume that starvation is not going to be a problem.
 // Resubmit packets are dropped if the queue is full in order to make sure the
 // ingress thread cannot deadlock. We do the same for recirculate packets even
-// though the same argument does not apply for them. Enqueueing normal packets
-// is blocking (back pressure is applied to the interface).
+// though the same argument does not apply for them. In ns-3 there is no
+// ingress thread to wait for, so normal packets are dropped too when their
+// queue is full (see P4CoreV1model::AdmitToIngress()).
 class InputBuffer
 {
   public:
@@ -58,7 +59,7 @@ class InputBuffer
         switch (packet_type)
         {
         case PacketType::NORMAL:
-            return push_front(&queue_lo, capacity_lo, &cvar_can_push_lo, std::move(item), true);
+            return push_front(&queue_lo, capacity_lo, &cvar_can_push_lo, std::move(item), false);
         case PacketType::RESUBMIT:
         case PacketType::RECIRCULATE:
             return push_front(&queue_hi, capacity_hi, &cvar_can_push_hi, std::move(item), false);
@@ -96,6 +97,12 @@ class InputBuffer
     size_t get_size()
     {
         return capacity_hi + capacity_lo;
+    }
+
+    /// \return the number of packets in the buffer
+    size_t size() const
+    {
+        return queue_hi.size() + queue_lo.size();
     }
 
   private:
@@ -617,17 +624,15 @@ class NSQueueingLogicPriRL
 
   private:
     /**
-     * @brief calculate the intermediate time interval for processing
-     * one packet. 1 pps = 1 packet per second,  default is 1ms for
-     * one packet. pps should not set to 0.
+     * @brief The time between two packets of a queue limited to \p pps
+     * packets per second. 0 means no limit, as in BMv2.
      *
      * @param pps
-     * @return constexpr Time
+     * @return Time
      */
-    static constexpr Time rate_to_time(uint64_t pps)
+    static Time rate_to_time(uint64_t pps)
     {
-        return (pps == 0) ? Seconds(0.001)
-                          : Seconds(static_cast<double>(1. / static_cast<double>(pps)));
+        return (pps == 0) ? Time(0) : Seconds(1.0 / static_cast<double>(pps));
     }
 
     /**
@@ -674,7 +679,9 @@ class NSQueueingLogicPriRL
             : capacity(capacity),
               queue_rate_pps(queue_rate_pps),
               pkt_delay_time(rate_to_time(queue_rate_pps)),
-              last_sent(Simulator::Now())
+              // as if the last packet had left one interval ago: the first
+              // packet of a queue is not held back
+              last_sent(Simulator::Now() - pkt_delay_time)
         {
         }
 

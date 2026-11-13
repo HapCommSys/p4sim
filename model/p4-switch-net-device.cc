@@ -106,8 +106,12 @@ P4SwitchNetDevice::GetTypeId()
                           MakeUintegerChecker<size_t>())
 
             .AddAttribute("SwitchRate",
-                          "Packet processing rate inside the switch (pps).",
-                          UintegerValue(1000),
+                          "Packet rate of the whole P4 pipeline (packets per second). "
+                          "0 (the default) means no limit, as in a hardware switch. With a "
+                          "rate R, the pipeline takes one packet per 1/R (resubmitted and "
+                          "recirculated passes included); packets that arrive meanwhile wait "
+                          "in the input buffer, and are dropped (MacRxDrop) when it is full.",
+                          UintegerValue(0),
                           MakeUintegerAccessor(&P4SwitchNetDevice::m_switchRate),
                           MakeUintegerChecker<uint64_t>())
 
@@ -150,6 +154,12 @@ P4SwitchNetDevice::GetTypeId()
                             "non-promiscuous trace,",
                             MakeTraceSourceAccessor(&P4SwitchNetDevice::m_macRxTrace),
                             "ns3::Packet::TracedCallback")
+
+            .AddTraceSource("MacRxDrop",
+                            "A received packet was dropped because the input buffer of the "
+                            "P4 pipeline was full (see SwitchRate)",
+                            MakeTraceSourceAccessor(&P4SwitchNetDevice::m_macRxDropTrace),
+                            "ns3::Packet::TracedCallback")
             //
             // Trace sources designed to simulate a packet sniffer facility (tcpdump).
             //
@@ -181,7 +191,7 @@ P4SwitchNetDevice::P4SwitchNetDevice()
       m_InputBufferSizeLow(1024),
       m_InputBufferSizeHigh(1024),
       m_queueBufferSize(1024),
-      m_switchRate(1000),
+      m_switchRate(0),
       m_node(nullptr),
       m_ifIndex(0),
       m_mtu(1500)
@@ -538,6 +548,12 @@ void
 P4SwitchNetDevice::EmitSwitchEvent(uint32_t id, const std::string& msg)
 {
     m_switchEvent(id, msg);
+}
+
+void
+P4SwitchNetDevice::NotifyMacRxDrop(Ptr<const Packet> packet)
+{
+    m_macRxDropTrace(packet);
 }
 
 void

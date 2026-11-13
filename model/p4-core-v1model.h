@@ -163,13 +163,33 @@ class P4CoreV1model : public P4SwitchCore
 
     size_t m_nbQueuesPerPort;
     EventId m_egressTimeEvent; ///< Legacy polling event (unused in event-driven mode)
-    Time m_egressTimeRef;      ///< Inter-packet gap derived from m_switchRate
+    Time m_egressTimeRef;      ///< Legacy, equal to m_ingressServiceTime
     uint64_t m_startTimestamp; ///< Simulation start timestamp
 
     static constexpr size_t m_nbEgressThreads = 1u;
 
     std::unique_ptr<InputBuffer> input_buffer;
     NSQueueingLogicPriRL<std::unique_ptr<bm::Packet>, EgressThreadMapper> egress_buffer;
+
+    // ---- SwitchRate: the packet rate of the whole pipeline ----
+
+    /**
+     * @brief Put \p packet into the input buffer and let the ingress pipeline
+     * take it as SwitchRate allows: at once if SwitchRate is 0 or the pipeline
+     * is idle, otherwise when the pipeline is free again.
+     * @return false if the input buffer is full; the packet is then dropped
+     */
+    bool AdmitToIngress(InputBuffer::PacketType type, std::unique_ptr<bm::Packet>&& packet);
+
+    /**
+     * @brief Run the ingress pipeline on the next packet of the input buffer,
+     * and schedule the one after it one service time (1/SwitchRate) later.
+     */
+    void ServeIngress();
+
+    Time m_ingressServiceTime; ///< 1/SwitchRate, the pipeline's time per packet; 0 = no limit
+    Time m_ingressFreeAt;      ///< when the pipeline can take the next packet
+    EventId m_ingressEvent;    ///< the pending ServeIngress()
 
     bool m_firstPacket;
 

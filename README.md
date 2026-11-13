@@ -135,7 +135,7 @@ The forwarding behaviour is defined by the P4 program and its flow-table configu
 | `FlowTablePath` | Path to the flow-table configuration file |
 | `P4SwitchArch` | Architecture selector (0 = V1model, 1 = PSA, 2 = PNA) |
 | `ChannelType` | Channel type (0 = CSMA, 1 = point-to-point) |
-| `SwitchRate` | Processing rate in packets per second |
+| `SwitchRate` | Packet rate of the whole P4 pipeline in packets per second; 0 (default) = no limit |
 | `QueueBufferSize` | Total queue buffer size (packets) |
 | `InputBufferSizeLow` | Input buffer size for low-priority (external) packets |
 | `InputBufferSizeHigh` | Input buffer size for high-priority (internal) packets |
@@ -189,7 +189,7 @@ In the [paper](https://dl.acm.org/doi/10.1145/3747204.3747210), P4sim is evaluat
 
 ## Known Limitations
 
-The packet processing rate `SwitchRate` (packets per second) must currently be configured manually for each switch. An inappropriate value can cause the switch to enter an idle polling loop, leading to wasted CPU cycles. Automatic rate tuning is planned for a future release.
+`SwitchRate` (packets per second) limits how fast the P4 pipeline of a switch processes packets, resubmitted and recirculated passes included. The default, 0, means no limit, as in a hardware switch: then only the links limit the traffic. Set it to model a slower switch, such as a software switch: an idle pipeline takes a packet at once, and packets that arrive while it is busy wait in the input buffer (`InputBufferSizeLow`), or are dropped and reported through `MacRxDrop` when it is full.
 
 ---
 
