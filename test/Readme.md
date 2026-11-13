@@ -43,7 +43,9 @@ can change details such as generated names).
 `p4-packet` runs the `.stf` files in [`p4src/forward`](p4src/forward) on a switch
 with three ports, once per architecture: `forward_v1model.p4`, `forward_pna.p4` and
 `forward_psa.p4` behave the same. [`p4src/priority`](p4src/priority) checks the
-priority queues of v1model. The format is a subset of p4c's STF:
+priority queues of v1model, [`p4src/resubmit`](p4src/resubmit) and
+[`p4src/recirculate`](p4src/recirculate) its resubmit and recirculation. The format
+is a subset of p4c's STF:
 
 ```
 # comment

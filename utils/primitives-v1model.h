@@ -18,6 +18,8 @@
  *
  */
 
+#include "ns3/register-access-v1model.h"
+
 #include <bm/bm_sim/actions.h>
 #include <bm/bm_sim/calculations.h>
 #include <bm/bm_sim/core/primitives.h>
@@ -294,14 +296,14 @@ class clone_egress_pkt_to_egress : public ActionPrimitive<const Data&, const Dat
 
 REGISTER_PRIMITIVE(clone_egress_pkt_to_egress);
 
+// resubmit and recirculate set the flag in a packet register, which the core
+// reads at the end of the ingress and the egress, as in BMv2's simple_switch.
+// The JSON of current p4c versions has no intrinsic_metadata.*_flag fields.
 class resubmit : public ActionPrimitive<const Data&>
 {
     void operator()(const Data& field_list_id)
     {
-        if (get_phv().has_field("intrinsic_metadata.resubmit_flag"))
-        {
-            get_phv().get_field("intrinsic_metadata.resubmit_flag").set(field_list_id);
-        }
+        RegisterAccess::set_resubmit_flag(&get_packet(), field_list_id.get<uint16_t>());
     }
 };
 
@@ -311,10 +313,7 @@ class recirculate : public ActionPrimitive<const Data&>
 {
     void operator()(const Data& field_list_id)
     {
-        if (get_phv().has_field("intrinsic_metadata.recirculate_flag"))
-        {
-            get_phv().get_field("intrinsic_metadata.recirculate_flag").set(field_list_id);
-        }
+        RegisterAccess::set_recirculate_flag(&get_packet(), field_list_id.get<uint16_t>());
     }
 };
 

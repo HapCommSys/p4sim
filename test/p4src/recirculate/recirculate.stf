@@ -1,0 +1,17 @@
+# Recirculation, as in BMv2's simple_switch: a recirculated frame goes through
+# ingress and egress again, without waiting for another frame to arrive.
+# The low 4 bits of the EtherType say how often a frame is recirculated. The
+# egress counts the passes in a preserved metadata field and writes the count
+# into the low byte of the source MAC; the ingress writes the instance type of
+# the pass into bits 15:8 of the destination MAC (4 = recirculated). All frames
+# arrive at the same time; a recirculated frame queues up again behind the
+# frames that are still waiting for port 1.
+
+packet 0 000000000001 000000000000 9000  00000001   # A, not recirculated
+packet 0 000000000001 000000000000 9002  00000002   # B, recirculated twice
+packet 0 000000000001 000000000000 9000  00000003   # C, not recirculated
+
+#        dst          src          type
+expect 1 000000000001 000000000001 9000  00000001   # A: 1 pass
+expect 1 000000000001 000000000001 9000  00000003   # C: 1 pass
+expect 1 000000000401 000000000003 9000  00000002   # B: 3 passes, the last one recirculated

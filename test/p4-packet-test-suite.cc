@@ -267,7 +267,8 @@ StfTestCase::DoRun()
 }
 
 /// Every architecture runs the same program, p4src/forward, with the same .stf
-/// files; p4src/priority checks the priority queues of v1model
+/// files; p4src/priority checks the priority queues of v1model, p4src/resubmit
+/// and p4src/recirculate its resubmit and recirculation
 static class P4PacketTestSuite : public TestSuite
 {
   public:
@@ -288,5 +289,10 @@ static class P4PacketTestSuite : public TestSuite
         }
         AddTestCase(new StfTestCase("priority", "v1model", P4SWITCH_ARCH_V1MODEL, "priority.stf"),
                     TestCase::QUICK);
+        AddTestCase(new StfTestCase("resubmit", "v1model", P4SWITCH_ARCH_V1MODEL, "resubmit.stf"),
+                    TestCase::QUICK);
+        AddTestCase(
+            new StfTestCase("recirculate", "v1model", P4SWITCH_ARCH_V1MODEL, "recirculate.stf"),
+            TestCase::QUICK);
     }
 } g_p4PacketTestSuite;
