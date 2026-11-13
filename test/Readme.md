@@ -42,7 +42,8 @@ can change details such as generated names).
 
 `p4-packet` runs the `.stf` files in [`p4src/forward`](p4src/forward) on a switch
 with three ports, once per architecture: `forward_v1model.p4`, `forward_pna.p4` and
-`forward_psa.p4` behave the same. The format is a subset of p4c's STF:
+`forward_psa.p4` behave the same. [`p4src/priority`](p4src/priority) checks the
+priority queues of v1model. The format is a subset of p4c's STF:
 
 ```
 # comment
@@ -52,8 +53,9 @@ expect 1 000000000011 0000000000fe 0800 ...   # this frame leaves port 1
 
 Frames are Ethernet frames in hex; spaces are ignored and `*` in `expect` matches
 any nibble. A test passes if each port sends exactly the frames expected on it, in
-that order. To add a case, add an `.stf` file and its name in
-`p4-packet-test-suite.cc`.
+that order. All frames are sent at the same time, so frames to one port queue up.
+To add a case, add an `.stf` file and its name in `p4-packet-test-suite.cc`; a new
+program goes in its own directory as `<dir>/<dir>_<arch>.p4`.
 
 ## Writing a test
 
