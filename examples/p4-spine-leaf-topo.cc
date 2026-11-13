@@ -17,6 +17,20 @@
  * Authors: Mingyu Ma <mingyu.ma@tu-dresden.de>
  */
 
+/**
+ * Spine-leaf topology with ECMP load balancing (P4 program: load_balance).
+ *
+ * Host h0 (below leaf switch s0) sends numFlows UDP flows to host h3 (below leaf switch
+ * s1), one destination port per flow. s0 hashes the 5-tuple of every packet onto one of
+ * the spine switches s2 and s3. At the end the example prints the sent and received
+ * bytes, the packet loss rate, and the share of the traffic that each spine carried.
+ *
+ * Every packet runs through the BMv2 pipelines of three switches, so the simulation time
+ * grows with the number of packets. The defaults (100 flows of 1 Mbps for 10 s, about
+ * 80k packets) keep the run short. When scaling numFlows, appDataRate or duration up,
+ * keep switchRate above the peak packet rate.
+ */
+
 #include "ns3/applications-module.h"
 #include "ns3/bridge-helper.h"
 #include "ns3/core-module.h"
@@ -40,9 +54,13 @@ unsigned long start = getTickCount();
 double global_start_time = 1.0;
 double sink_start_time = global_start_time + 1.0;
 double client_start_time = sink_start_time + 1.0;
-double client_stop_time = client_start_time + 60;
+double client_stop_time = client_start_time + 10; // updated from --duration in main()
 double sink_stop_time = client_stop_time + 5;
 double global_stop_time = sink_stop_time + 5;
+
+// Packets and bytes handed to the network by all OnOff clients
+uint64_t clientTxPackets = 0;
+uint64_t clientTxBytes = 0;
 
 
 struct SwitchInfoTracing
@@ -195,6 +213,13 @@ TxCallback_switch_5(Ptr<const Packet> packet)
                                               << ", Total bytes: " << switch5.totalTxBytes);
 }
 
+void
+ClientTxCallback(Ptr<const Packet> packet)
+{
+    clientTxPackets++;
+    clientTxBytes += packet->GetSize();
+}
+
 // Calculate and print throughput statistics
 void
 CalculateThroughput()
@@ -244,7 +269,10 @@ main(int argc, char* argv[])
     LogComponentEnable("P4SpineLeafTopo", LOG_LEVEL_INFO);
 
     uint16_t pktSize = 1000;            // in Bytes. 1458 to prevent fragments, default 512
-    std::string appDataRate = "10Mbps"; // Default application data rate
+    std::string appDataRate = "1Mbps"; // Default application data rate (per flow)
+    uint32_t numFlows = 100;           // UDP flows h0 -> h3, one destination port each
+    double duration = 10.0;            // seconds of client traffic
+    uint32_t switchRate = 100000;      // egress rate (pps) of the switches on the path
     bool enableTracePcap = false;
 
     // Use P4SIM_DIR environment variable for portable paths
@@ -257,9 +285,24 @@ main(int argc, char* argv[])
     // ============================  command line ============================
     CommandLine cmd;
     cmd.AddValue("pktSize", "Packet size in bytes (default 1000)", pktSize);
-    cmd.AddValue("appDataRate", "Application data rate in bps (default 1Mbps)", appDataRate);
+    cmd.AddValue("appDataRate", "Data rate of each flow when on (default 1Mbps)", appDataRate);
+    cmd.AddValue("numFlows", "Number of UDP flows from h0 to h3 (default 100)", numFlows);
+    cmd.AddValue("duration", "Seconds of client traffic (default 10)", duration);
+    cmd.AddValue("switchRate",
+                 "Egress rate in packets/s of switches s0-s3 (default 100000). It must exceed "
+                 "the peak packet rate (numFlows * appDataRate / packet size), or packets queue "
+                 "up and are dropped. The switch polls its egress queues at this rate even when "
+                 "idle, so a needlessly high value only costs simulation time.",
+                 switchRate);
     cmd.AddValue("pcap", "Trace packet pcap [true] or not[false]", enableTracePcap);
     cmd.Parse(argc, argv);
+
+    NS_ABORT_MSG_IF(numFlows == 0 || numFlows > 50000, "numFlows must be in [1, 50000]");
+    NS_ABORT_MSG_IF(duration <= 0, "duration must be positive");
+    NS_ABORT_MSG_IF(switchRate == 0, "switchRate must be positive");
+    client_stop_time = client_start_time + duration;
+    sink_stop_time = client_stop_time + 5;
+    global_stop_time = sink_stop_time + 5;
 
     // ============================ topo -> network ============================
 
@@ -486,7 +529,7 @@ main(int argc, char* argv[])
         }
         else
         {
-            p4SwitchHelper.SetDeviceAttribute("SwitchRate", UintegerValue(1300000));
+            p4SwitchHelper.SetDeviceAttribute("SwitchRate", UintegerValue(switchRate));
         }
         std::string flowTablePath = flowTableDirPath + "flowtable_" + std::to_string(i) + ".txt";
         p4SwitchHelper.SetDeviceAttribute("FlowTablePath", StringValue(flowTablePath));
@@ -527,24 +570,27 @@ main(int argc, char* argv[])
     unsigned int serverI = 3;
     unsigned int clientI = 0;
     uint16_t servPortStart = 9000;
-    uint16_t servPortEnd = 10000;
-    // unsigned int numFlows = servPortEnd - servPortStart; // 5000 flows
 
     Ptr<Node> serverNode = terminals.Get(serverI);
     Ptr<Ipv4> ipv4_adder = serverNode->GetObject<Ipv4>();
     Ipv4Address serverAddr = ipv4_adder->GetAddress(1, 0).GetLocal();
 
-    // Create a PacketSink bound to the starting port
-    PacketSinkHelper sink("ns3::UdpSocketFactory",
-                          InetSocketAddress(Ipv4Address::GetAny(), servPortStart));
-    ApplicationContainer sinkApp = sink.Install(serverNode);
-    sinkApp.Start(Seconds(sink_start_time));
-    sinkApp.Stop(Seconds(sink_stop_time));
-
-    // Create multiple UDP flows
-    for (uint16_t port = servPortStart; port < servPortEnd; port++)
+    // Create multiple UDP flows. The flows differ only in their destination port, which
+    // the ECMP hash of the leaf switch uses to spread them over the two spine switches.
+    ApplicationContainer sinkApps;
+    for (uint32_t flow = 0; flow < numFlows; flow++)
     {
+        uint16_t port = servPortStart + flow;
         InetSocketAddress dst(serverAddr, port);
+
+        // One PacketSink per flow: a datagram sent to a port without a socket is dropped
+        // by h3, and every such datagram makes h3 send an ICMP port-unreachable back.
+        PacketSinkHelper sink("ns3::UdpSocketFactory",
+                              InetSocketAddress(Ipv4Address::GetAny(), port));
+        ApplicationContainer sinkApp = sink.Install(serverNode);
+        sinkApp.Start(Seconds(sink_start_time));
+        sinkApp.Stop(Seconds(sink_stop_time));
+        sinkApps.Add(sinkApp);
 
         // Configure the client (OnOffApplication)
         OnOffHelper onOff("ns3::UdpSocketFactory", dst);
@@ -558,11 +604,10 @@ main(int argc, char* argv[])
         onTime->SetAttribute("Mean", DoubleValue(2.0));
         offTime->SetAttribute("Mean", DoubleValue(1.0));
 
-        // Assign a unique stream (seed) to each flow
-        onTime->SetAttribute(
-            "Stream",
-            IntegerValue(servPortStart)); // flowId should be different for each flow
-        offTime->SetAttribute("Stream", IntegerValue(servPortStart + 1000)); // Avoid overlap
+        // Assign unique RNG streams to each flow, so that the flows switch on and off
+        // independently instead of all at the same time.
+        onTime->SetAttribute("Stream", IntegerValue(2 * flow));
+        offTime->SetAttribute("Stream", IntegerValue(2 * flow + 1));
 
         // Bind the random variables to the OnOffApplication
         onOff.SetAttribute("OnTime", PointerValue(onTime));
@@ -573,7 +618,12 @@ main(int argc, char* argv[])
         ApplicationContainer app = onOff.Install(terminals.Get(clientI));
         app.Start(Seconds(client_start_time));
         app.Stop(Seconds(client_stop_time));
+        app.Get(0)->TraceConnectWithoutContext("Tx", MakeCallback(&ClientTxCallback));
     }
+    NS_LOG_INFO("*** " << numFlows << " UDP flows of " << appDataRate
+                       << " (exponential on 2s / off 1s) from h0 to h3 ports " << servPortStart
+                       << "-" << servPortStart + numFlows - 1 << ", " << client_start_time
+                       << "s - " << client_stop_time << "s");
 
     // Add call back for netdevice we want to trace
     Ptr<NetDevice> netDevice0 = switchNodes[0].switchDevices.Get(0); // switch 0 port 0
@@ -622,6 +672,29 @@ main(int argc, char* argv[])
     unsigned long simulate_start = getTickCount();
     Simulator::Stop(Seconds(global_stop_time));
     Simulator::Run();
+
+    // ============================ results ============================
+    uint64_t sinkRxBytes = 0;
+    for (uint32_t i = 0; i < sinkApps.GetN(); i++)
+    {
+        sinkRxBytes += DynamicCast<PacketSink>(sinkApps.Get(i))->GetTotalRx();
+    }
+    double lossRate =
+        clientTxBytes > 0 ? 100.0 * (1.0 - static_cast<double>(sinkRxBytes) / clientTxBytes) : 0.0;
+    double viaSpines = static_cast<double>(switch2.totalRxBytes + switch3.totalRxBytes);
+    double shareS2 = viaSpines > 0 ? 100.0 * switch2.totalRxBytes / viaSpines : 0.0;
+    double shareS3 = viaSpines > 0 ? 100.0 * switch3.totalRxBytes / viaSpines : 0.0;
+    NS_LOG_INFO("=========== Results ===========");
+    NS_LOG_INFO("Sent by h0: " << clientTxPackets << " packets, " << clientTxBytes
+                               << " bytes, offered load "
+                               << clientTxBytes * 8.0 / duration / 1e6 << " Mbps");
+    NS_LOG_INFO("Received by h3: " << sinkRxBytes << " bytes, goodput "
+                                   << sinkRxBytes * 8.0 / duration / 1e6 << " Mbps");
+    NS_LOG_INFO("Packet loss rate: " << lossRate << " %");
+    NS_LOG_INFO("ECMP split at s0: via s2 " << switch2.totalRxBytes << " bytes (" << shareS2
+                                            << " %), via s3 " << switch3.totalRxBytes
+                                            << " bytes (" << shareS3 << " %)");
+
     Simulator::Destroy();
 
     unsigned long end = getTickCount();
