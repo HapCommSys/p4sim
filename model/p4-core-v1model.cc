@@ -164,8 +164,7 @@ P4CoreV1model::~P4CoreV1model()
 
     // BMv2 pushes a sentinel into each buffer to stop its worker threads. In
     // ns-3 there are no such threads, and a push into a full queue would wait
-    // or retry forever; only a pending ServeIngress() is left to cancel.
-    Simulator::Cancel(m_ingressEvent);
+    // or retry forever. ~P4SwitchCore() cancels a pending ServeIngress().
 
     NS_LOG_INFO("P4CoreV1model destroyed successfully.");
 }
@@ -656,43 +655,14 @@ P4CoreV1model::AdmitToIngress(InputBuffer::PacketType type, std::unique_ptr<bm::
     {
         return false;
     }
-    if (m_ingressServiceTime.IsZero())
-    {
-        // No SwitchRate limit: the pipeline takes the packet at once
-        HandleIngressPipeline();
-    }
-    else if (!m_ingressEvent.IsRunning())
-    {
-        // An idle pipeline takes the packet at once, a busy one when it is free
-        Time now = Simulator::Now();
-        if (now >= m_ingressFreeAt)
-        {
-            ServeIngress();
-        }
-        else
-        {
-            m_ingressEvent =
-                Simulator::Schedule(m_ingressFreeAt - now, &P4CoreV1model::ServeIngress, this);
-        }
-    }
+    StartIngress();
     return true;
 }
 
-void
-P4CoreV1model::ServeIngress()
+size_t
+P4CoreV1model::GetNInputPackets() const
 {
-    if (input_buffer->size() == 0)
-    {
-        return;
-    }
-    // The pipeline is busy with this packet for one service time
-    m_ingressFreeAt = Simulator::Now() + m_ingressServiceTime;
-    HandleIngressPipeline();
-    if (input_buffer->size() > 0 && !m_ingressEvent.IsRunning())
-    {
-        m_ingressEvent =
-            Simulator::Schedule(m_ingressServiceTime, &P4CoreV1model::ServeIngress, this);
-    }
+    return input_buffer->size();
 }
 
 void
@@ -948,11 +918,10 @@ P4CoreV1model::HandleEgressPipeline(size_t workerId)
 void
 P4CoreV1model::CalculateScheduleTime()
 {
-    // SwitchRate limits the whole pipeline (see AdmitToIngress()); 0 = no limit.
+    // SwitchRate limits the whole pipeline (see StartIngress()); 0 = no limit.
     // The egress queues have no rate limit unless SetEgressQueueRate() and the
     // like set one, as in BMv2.
-    m_ingressServiceTime =
-        (m_switchRate == 0) ? Time(0) : Seconds(1.0 / static_cast<double>(m_switchRate));
+    SetPipelineRate(m_switchRate);
 
     // Try to obtain the physical link rate from the first bridge port so that
     // the event-driven scheduler can model per-packet transmission delay
@@ -973,9 +942,8 @@ P4CoreV1model::CalculateScheduleTime()
         }
     }
 
-    NS_LOG_DEBUG("Switch ID: " << m_p4SwitchId << " pipeline time per packet = "
-                               << m_ingressServiceTime.GetNanoSeconds() << " ns (0 = no limit)"
-                               << ", link rate = " << m_linkRateBps << " bps");
+    NS_LOG_DEBUG("Switch ID: " << m_p4SwitchId << " SwitchRate = " << m_switchRate
+                               << " pps (0 = no limit), link rate = " << m_linkRateBps << " bps");
 }
 
 void
