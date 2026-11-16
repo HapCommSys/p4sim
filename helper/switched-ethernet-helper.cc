@@ -22,6 +22,7 @@
 #include "ns3/config.h"
 #include "ns3/log.h"
 #include "ns3/mac48-address.h"
+#include "ns3/net-device-queue-interface.h"
 #include "ns3/packet.h"
 #include "ns3/pcap-file-wrapper.h"
 #include "ns3/switched-ethernet-channel.h"
@@ -36,12 +37,19 @@ NS_LOG_COMPONENT_DEFINE("SwitchedEthernetHelper");
 SwitchedEthernetHelper::SwitchedEthernetHelper()
 {
     m_channelFactory.SetTypeId("ns3::SwitchedEthernetChannel");
+    m_queueFactory.SetTypeId("ns3::DropTailQueue<Packet>");
 }
 
 void
 SwitchedEthernetHelper::SetChannelAttribute(const std::string& name, const AttributeValue& value)
 {
     m_channelFactory.Set(name, value);
+}
+
+void
+SwitchedEthernetHelper::DisableFlowControl()
+{
+    m_enableFlowControl = false;
 }
 
 NetDeviceContainer
@@ -82,8 +90,18 @@ SwitchedEthernetHelper::InstallPortPriv(Ptr<P4SwitchNetDevice> switchDev,
     // Host side: plain Ethernet NIC.
     Ptr<SwitchedEthernetHostDevice> hostDev = CreateObject<SwitchedEthernetHostDevice>();
     hostDev->SetAddress(Mac48Address::Allocate());
+    Ptr<Queue<Packet>> queue = m_queueFactory.Create<Queue<Packet>>();
+    hostDev->SetQueue(queue);
     hostNode->AddDevice(hostDev);
     hostDev->Attach(ch);
+    if (m_enableFlowControl)
+    {
+        // As in PointToPointHelper and CsmaHelper: the device stops the traffic
+        // control layer while its queue is full, and wakes it up again
+        Ptr<NetDeviceQueueInterface> ndqi = CreateObject<NetDeviceQueueInterface>();
+        ndqi->GetTxQueue(0)->ConnectQueueTraces(queue);
+        hostDev->AggregateObject(ndqi);
+    }
 
     NS_LOG_DEBUG("Port " << (switchDev->GetNPorts() - 1)
                  << " connected to host node " << hostNode->GetId());
