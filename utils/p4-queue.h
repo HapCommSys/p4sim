@@ -21,7 +21,7 @@
 #include "ns3/simulator.h"
 
 #include <bm/bm_sim/packet.h>
-#include <condition_variable>
+#include <deque>
 #include <map>
 #include <mutex>
 #include <queue>
@@ -29,14 +29,16 @@
 namespace ns3
 {
 
-// Arbitrates which packets are processed by the ingress thread. Resubmit and
-// recirculate packets go to a high priority queue, while normal packets go to a
-// low priority queue. We assume that starvation is not going to be a problem.
-// Resubmit packets are dropped if the queue is full in order to make sure the
-// ingress thread cannot deadlock. We do the same for recirculate packets even
-// though the same argument does not apply for them. In ns-3 there is no
-// ingress thread to wait for, so normal packets are dropped too when their
-// queue is full (see P4CoreV1model::AdmitToIngress()).
+/**
+ * @brief The input buffer of the v1model pipeline.
+ *
+ * Resubmitted and recirculated packets go to a high-priority queue, which the
+ * pipeline serves first; normal packets go to a low-priority queue. A packet
+ * that finds its queue full is refused: BMv2 does this for resubmitted and
+ * recirculated packets, and in ns-3, where no ingress thread drains the buffer
+ * while a sender waits, for normal packets too (see
+ * P4CoreV1model::AdmitToIngress()).
+ */
 class InputBuffer
 {
   public:
@@ -44,8 +46,7 @@ class InputBuffer
     {
         NORMAL,
         RESUBMIT,
-        RECIRCULATE,
-        SENTINEL // signal for the ingress thread to terminate
+        RECIRCULATE
     };
 
     InputBuffer(size_t capacity_hi, size_t capacity_lo)
@@ -54,49 +55,34 @@ class InputBuffer
     {
     }
 
-    int push_front(PacketType packet_type, std::unique_ptr<bm::Packet>&& item)
+    /**
+     * @brief Add \p item to the queue for its packet type
+     * @return false if that queue is full; \p item is then left unchanged
+     */
+    bool push_front(PacketType packet_type, std::unique_ptr<bm::Packet>&& item)
     {
-        switch (packet_type)
+        bool normal = (packet_type == PacketType::NORMAL);
+        QueueImpl& queue = normal ? queue_lo : queue_hi;
+        if (queue.size() >= (normal ? capacity_lo : capacity_hi))
         {
-        case PacketType::NORMAL:
-            return push_front(&queue_lo, capacity_lo, &cvar_can_push_lo, std::move(item), false);
-        case PacketType::RESUBMIT:
-        case PacketType::RECIRCULATE:
-            return push_front(&queue_hi, capacity_hi, &cvar_can_push_hi, std::move(item), false);
-        case PacketType::SENTINEL:
-            return push_front(&queue_hi, capacity_hi, &cvar_can_push_hi, std::move(item), true);
+            return false;
         }
-        NS_FATAL_ERROR("Unreachable statement");
-        return 0;
+        queue.push_front(std::move(item));
+        return true;
     }
 
+    /**
+     * @brief Take the oldest packet, resubmitted and recirculated ones first
+     * @param pItem receives the packet; left unchanged if the buffer is empty
+     */
     void pop_back(std::unique_ptr<bm::Packet>* pItem)
     {
-        if (queue_hi.size() > 0 || queue_lo.size() > 0)
+        QueueImpl& queue = queue_hi.empty() ? queue_lo : queue_hi;
+        if (!queue.empty())
         {
-            Lock lock(mutex);
-            cvar_can_pop.wait(lock, [this] { return (queue_hi.size() + queue_lo.size()) > 0; });
-            // give higher priority to resubmit/recirculate queue
-            if (queue_hi.size() > 0)
-            {
-                *pItem = std::move(queue_hi.back());
-                queue_hi.pop_back();
-                lock.unlock();
-                cvar_can_push_hi.notify_one();
-            }
-            else
-            {
-                *pItem = std::move(queue_lo.back());
-                queue_lo.pop_back();
-                lock.unlock();
-                cvar_can_push_lo.notify_one();
-            }
+            *pItem = std::move(queue.back());
+            queue.pop_back();
         }
-    }
-
-    size_t get_size()
-    {
-        return capacity_hi + capacity_lo;
     }
 
     /// \return the number of packets in the buffer
@@ -106,33 +92,8 @@ class InputBuffer
     }
 
   private:
-    using Mutex = std::mutex;
-    using Lock = std::unique_lock<Mutex>;
     using QueueImpl = std::deque<std::unique_ptr<bm::Packet>>;
 
-    int push_front(QueueImpl* queue,
-                   size_t capacity,
-                   std::condition_variable* cvar,
-                   std::unique_ptr<bm::Packet>&& item,
-                   bool blocking)
-    {
-        Lock lock(mutex);
-        while (queue->size() == capacity)
-        {
-            if (!blocking)
-                return 0;
-            cvar->wait(lock);
-        }
-        queue->push_front(std::move(item));
-        lock.unlock();
-        cvar_can_pop.notify_one();
-        return 1;
-    }
-
-    mutable std::mutex mutex;
-    mutable std::condition_variable cvar_can_push_hi;
-    mutable std::condition_variable cvar_can_push_lo;
-    mutable std::condition_variable cvar_can_pop;
     size_t capacity_hi;
     size_t capacity_lo;
     QueueImpl queue_hi;
