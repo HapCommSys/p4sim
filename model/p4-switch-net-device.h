@@ -173,6 +173,17 @@ public:
    */
   bool AddMirroringSession(uint32_t sessionId, uint32_t egressPort);
 
+  /**
+   * \brief Add a mirroring session whose clones go to a multicast group, like
+   * mirroring_add_mc of simple_switch_CLI: the packet replication engine sends
+   * one copy to each port of the group. Call it after the device is initialized.
+   * \param sessionId the mirroring session ID, 0 to 32767
+   * \param mgid the multicast group that the clones of this session are sent to
+   * \return true if the session was added; false if the ID is out of range or
+   * the P4 core is not created yet
+   */
+  bool AddMulticastMirroringSession(uint32_t sessionId, uint32_t mgid);
+
   // inherited from NetDevice base class.
   void SetIfIndex(const uint32_t index) override;
   uint32_t GetIfIndex() const override;
@@ -239,6 +250,12 @@ private:
    * \param core the P4 core created by DoInitialize()
    */
   void ConfigureCore(P4SwitchCore &core) const;
+
+  /**
+   * \brief The P4 core of this device
+   * \return the core, or nullptr if it is not created yet (or already released)
+   */
+  P4SwitchCore *GetCore() const;
 
   // === Basic configuration ===
   bool m_enableTracing;  //!< Enable tracing

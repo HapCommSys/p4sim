@@ -150,7 +150,7 @@
       "id" : 0,
       "source_info" : {
         "filename" : "clone_v1model.p4",
-        "line" : 79,
+        "line" : 80,
         "column" : 8,
         "source_fragment" : "MyDeparser"
       },
@@ -314,7 +314,7 @@
       ]
     },
     {
-      "name" : "clone_v1model70",
+      "name" : "clone_v1model71",
       "id" : 5,
       "runtime_data" : [],
       "primitives" : [
@@ -332,7 +332,7 @@
           ],
           "source_info" : {
             "filename" : "clone_v1model.p4",
-            "line" : 70,
+            "line" : 71,
             "column" : 12,
             "source_fragment" : "clone(CloneType.E2E, 5)"
           }
@@ -506,6 +506,108 @@
             "line" : 68,
             "column" : 8,
             "source_fragment" : "hdr.ethernet.srcAddr[7:0] = meta.tag"
+          }
+        },
+        {
+          "op" : "assign",
+          "parameters" : [
+            {
+              "type" : "field",
+              "value" : ["ethernet", "srcAddr"]
+            },
+            {
+              "type" : "expression",
+              "value" : {
+                "type" : "expression",
+                "value" : {
+                  "op" : "|",
+                  "left" : {
+                    "type" : "expression",
+                    "value" : {
+                      "op" : "&",
+                      "left" : {
+                        "type" : "field",
+                        "value" : ["ethernet", "srcAddr"]
+                      },
+                      "right" : {
+                        "type" : "hexstr",
+                        "value" : "0xffffffff00ff"
+                      }
+                    }
+                  },
+                  "right" : {
+                    "type" : "expression",
+                    "value" : {
+                      "op" : "&",
+                      "left" : {
+                        "type" : "expression",
+                        "value" : {
+                          "op" : "&",
+                          "left" : {
+                            "type" : "expression",
+                            "value" : {
+                              "op" : "<<",
+                              "left" : {
+                                "type" : "expression",
+                                "value" : {
+                                  "op" : "&",
+                                  "left" : {
+                                    "type" : "expression",
+                                    "value" : {
+                                      "op" : "&",
+                                      "left" : {
+                                        "type" : "expression",
+                                        "value" : {
+                                          "op" : "&",
+                                          "left" : {
+                                            "type" : "field",
+                                            "value" : ["standard_metadata", "egress_rid"]
+                                          },
+                                          "right" : {
+                                            "type" : "hexstr",
+                                            "value" : "0x00ff"
+                                          }
+                                        }
+                                      },
+                                      "right" : {
+                                        "type" : "hexstr",
+                                        "value" : "0xff"
+                                      }
+                                    }
+                                  },
+                                  "right" : {
+                                    "type" : "hexstr",
+                                    "value" : "0xffffffffffff"
+                                  }
+                                }
+                              },
+                              "right" : {
+                                "type" : "hexstr",
+                                "value" : "0x8"
+                              }
+                            }
+                          },
+                          "right" : {
+                            "type" : "hexstr",
+                            "value" : "0xffffffffffff"
+                          }
+                        }
+                      },
+                      "right" : {
+                        "type" : "hexstr",
+                        "value" : "0x00000000ff00"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "source_info" : {
+            "filename" : "clone_v1model.p4",
+            "line" : 69,
+            "column" : 8,
+            "source_fragment" : "hdr.ethernet.srcAddr[15:8] = (bit<8>) smeta.egress_rid"
           }
         }
       ]
@@ -858,11 +960,11 @@
           }
         },
         {
-          "name" : "tbl_clone_v1model70",
+          "name" : "tbl_clone_v1model71",
           "id" : 6,
           "source_info" : {
             "filename" : "clone_v1model.p4",
-            "line" : 70,
+            "line" : 71,
             "column" : 12,
             "source_fragment" : "clone(CloneType.E2E, 5)"
           },
@@ -874,10 +976,10 @@
           "support_timeout" : false,
           "direct_meters" : null,
           "action_ids" : [5],
-          "actions" : ["clone_v1model70"],
+          "actions" : ["clone_v1model71"],
           "base_default_next" : null,
           "next_tables" : {
-            "clone_v1model70" : null
+            "clone_v1model71" : null
           },
           "default_entry" : {
             "action_id" : 5,
@@ -894,7 +996,7 @@
           "id" : 4,
           "source_info" : {
             "filename" : "clone_v1model.p4",
-            "line" : 69,
+            "line" : 70,
             "column" : 12,
             "source_fragment" : "smeta.instance_type == 0 && hdr.ethernet.etherType[3:0] == 2"
           },
@@ -943,7 +1045,7 @@
             }
           },
           "false_next" : null,
-          "true_next" : "tbl_clone_v1model70"
+          "true_next" : "tbl_clone_v1model71"
         }
       ]
     }
