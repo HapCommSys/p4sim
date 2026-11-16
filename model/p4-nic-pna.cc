@@ -39,10 +39,14 @@ P4PnaNic::P4PnaNic(P4SwitchNetDevice* net_device, bool enable_swap)
     m_thriftCommand = "";             // default thrift command for pna
     m_enableQueueingMetadata = false; // enable queueing metadata for pna
 
-    add_required_field("pna_main_parser_input_metadata", "recirculated");
+    // used by reset_target_state_()
+    add_component<bm::McSimplePreLAG>(m_pre);
+
+    // The loopback flag is named "loopedback" in current p4c pna.p4 and
+    // "recirculated" in older versions, so it is not a required field here;
+    // the name actually present in the JSON is resolved in start_and_return_().
     add_required_field("pna_main_parser_input_metadata", "input_port");
 
-    add_required_field("pna_main_input_metadata", "recirculated");
     add_required_field("pna_main_input_metadata", "timestamp");
     add_required_field("pna_main_input_metadata", "parser_error");
     add_required_field("pna_main_input_metadata", "class_of_service");
@@ -85,12 +89,15 @@ P4PnaNic::main_processing_pipeline()
     parser->parse(bm_packet.get());
 
     // pass relevant values from main parser
-    phv->get_field("pna_main_input_metadata.recirculated")
-        .set(phv->get_field("pna_main_parser_input_metadata.recirculated"));
+    phv->get_field("pna_main_input_metadata." + m_loopedbackField)
+        .set(phv->get_field("pna_main_parser_input_metadata." + m_loopedbackField));
     phv->get_field("pna_main_input_metadata.parser_error").set(bm_packet->get_error_code().get());
     phv->get_field("pna_main_input_metadata.class_of_service").set(0);
     phv->get_field("pna_main_input_metadata.input_port")
         .set(phv->get_field("pna_main_parser_input_metadata.input_port"));
+
+    // A packet is dropped unless the main control calls send_to_port().
+    bm_packet->set_egress_port(m_dropPort);
 
     bm::Pipeline* main_mau = this->get_pipeline("main_control");
     main_mau->apply(bm_packet.get());
@@ -159,7 +166,7 @@ P4PnaNic::ReceivePacket(Ptr<Packet> packetIn,
     int addr_index = GetAddressIndex(destination);
     RegisterAccess::set_ns_address(bm_packet.get(), addr_index);
 
-    phv->get_field("pna_main_parser_input_metadata.recirculated").set(0);
+    phv->get_field("pna_main_parser_input_metadata." + m_loopedbackField).set(0);
     phv->get_field("pna_main_parser_input_metadata.input_port").set(inPort);
 
     // using packet register 0 to store length, this register will be updated for
@@ -185,6 +192,23 @@ void
 P4PnaNic::start_and_return_()
 {
     NS_LOG_FUNCTION(this);
+
+    bool found = false;
+    for (const char* name : {"loopedback", "recirculated"})
+    {
+        if (field_exists("pna_main_parser_input_metadata", name) &&
+            field_exists("pna_main_input_metadata", name))
+        {
+            m_loopedbackField = name;
+            found = true;
+            break;
+        }
+    }
+    if (!found)
+    {
+        NS_FATAL_ERROR("PNA JSON defines neither 'loopedback' nor 'recirculated' in "
+                       "pna_main_parser_input_metadata / pna_main_input_metadata");
+    }
     NS_LOG_DEBUG("PNA NIC ID " << m_p4SwitchId << ": event-driven scheduler active"
                                << " (link rate = " << m_linkRateBps << " bps)");
 }
