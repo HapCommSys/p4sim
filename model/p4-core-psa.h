@@ -65,12 +65,6 @@ class P4CorePsa : public P4SwitchCore
     // ---- Event-driven scheduler ----
 
     /**
-     * @brief [Legacy / polling] Periodic egress drain callback.
-     * @deprecated Replaced by the event-driven scheduler.
-     */
-    void SetEgressTimerEvent();
-
-    /**
      * @brief Attempt to dequeue and process one packet from the egress buffer.
      *
      * Invoked when a packet is enqueued into a previously-empty queue
@@ -113,6 +107,7 @@ class P4CorePsa : public P4SwitchCore
     void reset_target_state_() override;
 
     void HandleIngressPipeline() override;
+    size_t GetNInputPackets() const override;
     void Enqueue(uint32_t egress_port, std::unique_ptr<bm::Packet>&& packet) override;
     bool HandleEgressPipeline(size_t workerId) override;
 
@@ -149,13 +144,17 @@ class P4CorePsa : public P4SwitchCore
     static constexpr uint32_t PSA_PORT_RECIRCULATE = 0xfffffffa;
     static constexpr size_t nb_egress_threads = 1u; // 4u default
     uint64_t m_packetId;
-    bool m_firstPacket;
     bool m_enableTracing;
-    uint64_t m_switchRate; //!< Switch processing rate (packets per second)
+    uint64_t m_switchRate; //!< Packet rate of the whole pipeline (pps), 0 = no limit
     size_t m_nbQueuesPerPort;
+    size_t m_inputBufferSize; //!< Capacity of input_buffer (packets)
 
-    EventId m_egressTimeEvent; //!< Legacy polling event (unused in event-driven mode)
-    Time m_egressTimeRef;      //!< Inter-packet gap derived from m_switchRate
+    /**
+     * @brief Put \p packet into the input buffer and let the ingress pipeline
+     * take it as SwitchRate allows (see P4SwitchCore::StartIngress()).
+     * @return false if the input buffer is full; the packet is then dropped
+     */
+    bool AdmitToIngress(std::unique_ptr<bm::Packet>&& packet);
 
     // Buffers
     bm::Queue<std::unique_ptr<bm::Packet>> input_buffer;

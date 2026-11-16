@@ -1,0 +1,323 @@
+{
+  "header_types" : [
+    {
+      "name" : "ethernet_t",
+      "id" : 0,
+      "fields" : [
+        ["dstAddr", 48, false],
+        ["srcAddr", 48, false],
+        ["etherType", 16, false]
+      ]
+    },
+    {
+      "name" : "pna_main_parser_input_metadata_t",
+      "id" : 1,
+      "fields" : [
+        ["direction", 32, false],
+        ["pass", 3, false],
+        ["loopedback", 1, false],
+        ["input_port", 32, false],
+        ["_padding", 4, false]
+      ]
+    },
+    {
+      "name" : "pna_main_input_metadata_t",
+      "id" : 2,
+      "fields" : [
+        ["direction", 32, false],
+        ["pass", 3, false],
+        ["loopedback", 1, false],
+        ["timestamp", 64, false],
+        ["parser_error", 32, false],
+        ["class_of_service", 8, false],
+        ["input_port", 32, false],
+        ["_padding_0", 4, false]
+      ]
+    },
+    {
+      "name" : "pna_main_output_metadata_t",
+      "id" : 3,
+      "fields" : [
+        ["class_of_service", 8, false]
+      ]
+    },
+    {
+      "name" : "scalars_t",
+      "id" : 4,
+      "fields" : [
+        ["pna_pre_input_metadata_t.input_port", 32, false],
+        ["pna_pre_input_metadata_t.parser_error", 32, false],
+        ["pna_pre_input_metadata_t.direction", 32, false],
+        ["pna_pre_input_metadata_t.pass", 3, false],
+        ["pna_pre_input_metadata_t.loopedback", 1, false],
+        ["pna_pre_output_metadata_t.decrypt", 1, false],
+        ["pna_pre_output_metadata_t.said", 32, false],
+        ["pna_pre_output_metadata_t.decrypt_start_offset", 16, false],
+        ["pna_main_parser_input_metadata_t.direction", 32, false],
+        ["pna_main_parser_input_metadata_t.pass", 3, false],
+        ["pna_main_parser_input_metadata_t.loopedback", 1, false],
+        ["pna_main_parser_input_metadata_t.input_port", 32, false],
+        ["pna_main_input_metadata_t.direction", 32, false],
+        ["pna_main_input_metadata_t.pass", 3, false],
+        ["pna_main_input_metadata_t.loopedback", 1, false],
+        ["pna_main_input_metadata_t.timestamp", 64, false],
+        ["pna_main_input_metadata_t.parser_error", 32, false],
+        ["pna_main_input_metadata_t.class_of_service", 8, false],
+        ["pna_main_input_metadata_t.input_port", 32, false],
+        ["pna_main_output_metadata_t.class_of_service", 8, false],
+        ["_padding_1", 3, false]
+      ]
+    }
+  ],
+  "headers" : [
+    {
+      "name" : "ethernet",
+      "id" : 0,
+      "header_type" : "ethernet_t",
+      "metadata" : false,
+      "pi_omit" : true
+    },
+    {
+      "name" : "pna_main_parser_input_metadata",
+      "id" : 1,
+      "header_type" : "pna_main_parser_input_metadata_t",
+      "metadata" : true,
+      "pi_omit" : true
+    },
+    {
+      "name" : "pna_main_input_metadata",
+      "id" : 2,
+      "header_type" : "pna_main_input_metadata_t",
+      "metadata" : true,
+      "pi_omit" : true
+    },
+    {
+      "name" : "pna_main_output_metadata",
+      "id" : 3,
+      "header_type" : "pna_main_output_metadata_t",
+      "metadata" : true,
+      "pi_omit" : true
+    },
+    {
+      "name" : "scalars",
+      "id" : 4,
+      "header_type" : "scalars_t",
+      "metadata" : true,
+      "pi_omit" : true
+    }
+  ],
+  "header_stacks" : [],
+  "header_union_types" : [],
+  "header_unions" : [],
+  "header_union_stacks" : [],
+  "field_lists" : [],
+  "errors" : [],
+  "enums" : [
+    {
+      "name" : "PNA_MeterColor_t",
+      "entries" : [
+        ["RED", 0],
+        ["GREEN", 1],
+        ["YELLOW", 2]
+      ]
+    },
+    {
+      "name" : "PNA_Direction_t",
+      "entries" : [
+        ["NET_TO_HOST", 0],
+        ["HOST_TO_NET", 1]
+      ]
+    }
+  ],
+  "parsers" : [
+    {
+      "name" : "main_parser",
+      "id" : 0,
+      "init_state" : "start",
+      "parse_states" : [
+        {
+          "name" : "start",
+          "id" : 0,
+          "parser_ops" : [
+            {
+              "parameters" : [
+                {
+                  "type" : "regular",
+                  "value" : "ethernet"
+                }
+              ],
+              "op" : "extract"
+            }
+          ],
+          "transitions" : [
+            {
+              "type" : "default",
+              "value" : null,
+              "mask" : null,
+              "next_state" : null
+            }
+          ],
+          "transition_key" : []
+        }
+      ]
+    }
+  ],
+  "parse_vsets" : [],
+  "deparsers" : [
+    {
+      "name" : "main_deparser",
+      "id" : 0,
+      "source_info" : {
+        "filename" : "egress_ports_pna.p4",
+        "line" : 59,
+        "column" : 8,
+        "source_fragment" : "MainDeparserImpl"
+      },
+      "order" : ["ethernet"],
+      "primitives" : []
+    }
+  ],
+  "meter_arrays" : [],
+  "counter_arrays" : [],
+  "register_arrays" : [],
+  "calculations" : [],
+  "learn_lists" : [],
+  "actions" : [
+    {
+      "name" : "NoAction",
+      "id" : 0,
+      "runtime_data" : [],
+      "primitives" : []
+    },
+    {
+      "name" : "MainControlImpl.to_port",
+      "id" : 1,
+      "runtime_data" : [
+        {
+          "name" : "port",
+          "bitwidth" : 32
+        }
+      ],
+      "primitives" : [
+        {
+          "op" : "send_to_port",
+          "source_info" : {
+            "filename" : "egress_ports_pna.p4",
+            "line" : 43,
+            "column" : 8,
+            "source_fragment" : "send_to_port(port)"
+          },
+          "parameters" : [
+            {
+              "type" : "runtime_data",
+              "value" : 0
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "pipelines" : [
+    {
+      "name" : "main_control",
+      "id" : 0,
+      "source_info" : {
+        "filename" : "egress_ports_pna.p4",
+        "line" : 39,
+        "column" : 8,
+        "source_fragment" : "MainControlImpl"
+      },
+      "init_table" : "MainControlImpl.mac_port",
+      "tables" : [
+        {
+          "name" : "MainControlImpl.mac_port",
+          "id" : 0,
+          "source_info" : {
+            "filename" : "egress_ports_pna.p4",
+            "line" : 45,
+            "column" : 10,
+            "source_fragment" : "mac_port"
+          },
+          "key" : [
+            {
+              "match_type" : "exact",
+              "name" : "hdr.ethernet.dstAddr",
+              "target" : ["ethernet", "dstAddr"],
+              "mask" : null
+            }
+          ],
+          "match_type" : "exact",
+          "type" : "simple",
+          "max_size" : 2,
+          "with_counters" : false,
+          "support_timeout" : false,
+          "direct_meters" : null,
+          "action_ids" : [1, 0],
+          "actions" : ["MainControlImpl.to_port", "NoAction"],
+          "base_default_next" : null,
+          "next_tables" : {
+            "MainControlImpl.to_port" : null,
+            "NoAction" : null
+          },
+          "default_entry" : {
+            "action_id" : 0,
+            "action_const" : false,
+            "action_data" : [],
+            "action_entry_const" : false
+          },
+          "entries" : [
+            {
+              "source_info" : {
+                "filename" : "egress_ports_pna.p4",
+                "line" : 49,
+                "column" : 12,
+                "source_fragment" : "0x000000000001: to_port((PortId_t) 1)"
+              },
+              "match_key" : [
+                {
+                  "match_type" : "exact",
+                  "key" : "0x000000000001"
+                }
+              ],
+              "action_entry" : {
+                "action_id" : 1,
+                "action_data" : ["0x1"]
+              },
+              "priority" : 1
+            },
+            {
+              "source_info" : {
+                "filename" : "egress_ports_pna.p4",
+                "line" : 50,
+                "column" : 12,
+                "source_fragment" : "0x000000000002: to_port((PortId_t) 2)"
+              },
+              "match_key" : [
+                {
+                  "match_type" : "exact",
+                  "key" : "0x000000000002"
+                }
+              ],
+              "action_entry" : {
+                "action_id" : 1,
+                "action_data" : ["0x2"]
+              },
+              "priority" : 2
+            }
+          ]
+        }
+      ],
+      "action_profiles" : [],
+      "conditionals" : []
+    }
+  ],
+  "checksums" : [],
+  "force_arith" : [],
+  "extern_instances" : [],
+  "field_aliases" : [],
+  "program" : "egress_ports_pna.p4",
+  "__meta__" : {
+    "version" : [2, 23],
+    "compiler" : "https://github.com/p4lang/p4c"
+  }
+}

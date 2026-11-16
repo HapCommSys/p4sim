@@ -27,6 +27,12 @@
 
 #include <unordered_map>
 
+#undef LOG_INFO
+#undef LOG_ERROR
+#undef LOG_DEBUG
+#undef LOG_WARN
+#undef LOG_LOGIC
+
 namespace ns3
 {
 
@@ -130,6 +136,9 @@ class P4PnaNic : public P4SwitchCore
      * Read from the first bridge port's DataRate attribute; falls back to 1 Gbps.
      */
     uint64_t m_linkRateBps{1000000000ULL}; // default 1 Gbps
+
+    // "loopedback" (current pna.p4) or "recirculated" (older pna.p4)
+    std::string m_loopedbackField{"loopedback"};
 };
 
 } // namespace ns3

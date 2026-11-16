@@ -12,6 +12,7 @@
 #include "ns3/core-module.h"
 #include "ns3/eth-net-device.h"
 #include "ns3/network-module.h"
+#include "ns3/p4-core-v1model.h"
 #include "ns3/p4-switch-net-device.h"
 #include "ns3/switched-ethernet-channel.h"
 #include "ns3/test.h"
@@ -126,6 +127,47 @@ EgressRateTestCase::DoRun()
     }
 }
 
+/**
+ * BMv2 stops the worker threads of a switch by pushing a sentinel into each
+ * queue. ns-3 has no such threads, but the v1model destructor still pushed one
+ * into an egress queue, and retried for as long as that queue was full: then
+ * destroying the switch never returned.
+ */
+class EgressTeardownTestCase : public TestCase
+{
+  public:
+    EgressTeardownTestCase()
+        : TestCase("v1model: a switch with a full egress queue can be destroyed")
+    {
+    }
+
+  private:
+    void DoRun() override
+    {
+        SetDataDir(NS_TEST_SOURCEDIR);
+        Ptr<Node> switchNode = CreateObject<Node>();
+        Ptr<P4SwitchNetDevice> sw = CreateObject<P4SwitchNetDevice>();
+        sw->SetAttribute("P4SwitchArch", UintegerValue(P4SWITCH_ARCH_V1MODEL));
+        sw->SetAttribute(
+            "JsonPath",
+            StringValue(CreateDataDirFilename("p4src/egress_ports/egress_ports_v1model.json")));
+        sw->SetAttribute("FlowTablePath", StringValue(""));
+        switchNode->AddDevice(sw);
+        sw->Attach(CreateObject<SwitchedEthernetChannel>());
+        sw->Initialize();
+
+        // The queues of port 0 can hold no packet, so they are always full
+        sw->GetV1ModelCore()->SetEgressQueueDepth(0, 0);
+
+        Simulator::Run();
+        // Disposes the switch, which deletes its P4 core
+        Simulator::Destroy();
+        NS_TEST_EXPECT_MSG_EQ((sw->GetV1ModelCore() == nullptr),
+                              true,
+                              "The switch was not disposed, so its destructor did not run");
+    }
+};
+
 static class P4EgressTestSuite : public TestSuite
 {
   public:
@@ -139,5 +181,6 @@ static class P4EgressTestSuite : public TestSuite
             AddTestCase(new EgressRateTestCase("psa", P4SWITCH_ARCH_PSA, nPorts),
                         TestCase::QUICK);
         }
+        AddTestCase(new EgressTeardownTestCase(), TestCase::QUICK);
     }
 } g_p4EgressTestSuite;

@@ -39,10 +39,14 @@ P4PnaNic::P4PnaNic(P4SwitchNetDevice* net_device, bool enable_swap)
     m_thriftCommand = "";             // default thrift command for pna
     m_enableQueueingMetadata = false; // enable queueing metadata for pna
 
-    add_required_field("pna_main_parser_input_metadata", "recirculated");
+    // used by reset_target_state_()
+    add_component<bm::McSimplePreLAG>(m_pre);
+
+    // The loopback flag is named "loopedback" in current p4c pna.p4 and
+    // "recirculated" in older versions, so it is not a required field here;
+    // the name actually present in the JSON is resolved in start_and_return_().
     add_required_field("pna_main_parser_input_metadata", "input_port");
 
-    add_required_field("pna_main_input_metadata", "recirculated");
     add_required_field("pna_main_input_metadata", "timestamp");
     add_required_field("pna_main_input_metadata", "parser_error");
     add_required_field("pna_main_input_metadata", "class_of_service");
@@ -60,7 +64,13 @@ P4PnaNic::P4PnaNic(P4SwitchNetDevice* net_device, bool enable_swap)
 
 P4PnaNic::~P4PnaNic()
 {
-    input_buffer.push_front(nullptr);
+    // BMv2 pushes a sentinel to stop the ingress thread. ns-3 has no such
+    // thread, and the push would wait forever on a full buffer.
+    // Cancel the pending transmit-complete events, which point to this NIC.
+    for (auto& kv : m_portTxState)
+    {
+        Simulator::Cancel(kv.second.pendingEvent);
+    }
 }
 
 bool
@@ -84,12 +94,15 @@ P4PnaNic::main_processing_pipeline()
     parser->parse(bm_packet.get());
 
     // pass relevant values from main parser
-    phv->get_field("pna_main_input_metadata.recirculated")
-        .set(phv->get_field("pna_main_parser_input_metadata.recirculated"));
+    phv->get_field("pna_main_input_metadata." + m_loopedbackField)
+        .set(phv->get_field("pna_main_parser_input_metadata." + m_loopedbackField));
     phv->get_field("pna_main_input_metadata.parser_error").set(bm_packet->get_error_code().get());
     phv->get_field("pna_main_input_metadata.class_of_service").set(0);
     phv->get_field("pna_main_input_metadata.input_port")
         .set(phv->get_field("pna_main_parser_input_metadata.input_port"));
+
+    // A packet is dropped unless the main control calls send_to_port().
+    bm_packet->set_egress_port(m_dropPort);
 
     bm::Pipeline* main_mau = this->get_pipeline("main_control");
     main_mau->apply(bm_packet.get());
@@ -158,7 +171,7 @@ P4PnaNic::ReceivePacket(Ptr<Packet> packetIn,
     int addr_index = GetAddressIndex(destination);
     RegisterAccess::set_ns_address(bm_packet.get(), addr_index);
 
-    phv->get_field("pna_main_parser_input_metadata.recirculated").set(0);
+    phv->get_field("pna_main_parser_input_metadata." + m_loopedbackField).set(0);
     phv->get_field("pna_main_parser_input_metadata.input_port").set(inPort);
 
     // using packet register 0 to store length, this register will be updated for
@@ -184,6 +197,23 @@ void
 P4PnaNic::start_and_return_()
 {
     NS_LOG_FUNCTION(this);
+
+    bool found = false;
+    for (const char* name : {"loopedback", "recirculated"})
+    {
+        if (field_exists("pna_main_parser_input_metadata", name) &&
+            field_exists("pna_main_input_metadata", name))
+        {
+            m_loopedbackField = name;
+            found = true;
+            break;
+        }
+    }
+    if (!found)
+    {
+        NS_FATAL_ERROR("PNA JSON defines neither 'loopedback' nor 'recirculated' in "
+                       "pna_main_parser_input_metadata / pna_main_input_metadata");
+    }
     NS_LOG_DEBUG("PNA NIC ID " << m_p4SwitchId << ": event-driven scheduler active"
                                << " (link rate = " << m_linkRateBps << " bps)");
 }
@@ -225,21 +255,20 @@ P4PnaNic::Enqueue(uint32_t egress_port, std::unique_ptr<bm::Packet>&& packet)
 void
 P4PnaNic::CalculateScheduleTime()
 {
-    // Try to read the physical link rate from the first bridge port so that
+    // Try to read the physical link rate from port 0 so that
     // serialisation delay is modelled accurately.  Falls back to 1 Gbps.
     if (m_switchNetDevice && m_switchNetDevice->GetNPorts() > 0)
     {
-        Ptr<SwitchedEthernetChannel> ch = m_switchNetDevice->GetPortChannel(0);
-        if (ch)
+        uint64_t rate = m_switchNetDevice->GetPortDataRate(0).GetBitRate();
+        if (rate > 0)
         {
-            m_linkRateBps = ch->GetDataRate().GetBitRate();
+            m_linkRateBps = rate;
             NS_LOG_INFO("PNA NIC ID " << m_p4SwitchId
                                       << ": link rate from port 0 = " << m_linkRateBps << " bps");
         }
         else
         {
-            NS_LOG_DEBUG("PNA NIC ID " << m_p4SwitchId
-                                       << ": no channel on port 0; using 1 Gbps");
+            NS_LOG_DEBUG("PNA NIC ID " << m_p4SwitchId << ": no data rate on port 0; using 1 Gbps");
         }
     }
 }

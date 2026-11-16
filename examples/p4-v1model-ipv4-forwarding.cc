@@ -234,7 +234,7 @@ main(int argc, char* argv[])
     uint32_t clientIndex = 0;
     uint32_t serverIndex = 1;
     uint16_t serverPort = 9093;
-    uint32_t switchRate = 10000;
+    uint32_t switchRate = 0;
     double flowDuration = 3.0;
     double simDuration = 20.0;
     int model = 0; // 0 = P4 V1Model, 1 = NS-3 bridge baseline
@@ -252,7 +252,7 @@ main(int argc, char* argv[])
     cmd.AddValue("clientIndex", "Sender host index", clientIndex);
     cmd.AddValue("serverIndex", "Receiver host index", serverIndex);
     cmd.AddValue("serverPort", "UDP destination port on the server", serverPort);
-    cmd.AddValue("switchRate", "P4 switch processing rate (pps)", switchRate);
+    cmd.AddValue("switchRate", "P4 switch processing rate (pps), 0 = no limit", switchRate);
     cmd.AddValue("flowDuration", "Duration of the traffic flow (s)", flowDuration);
     cmd.AddValue("simDuration", "Total simulation duration (s)", simDuration);
     cmd.AddValue("model", "Switch model: 0=P4 V1Model, 1=bridge", model);

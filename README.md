@@ -23,6 +23,14 @@ P4sim is open-source software licensed under the Apache License 2.0.
 
 ---
 
+### Architectural Overview
+
+This repository provides two P4 switch architectures in ns-3. Arch 1 (`main branch`) follows a `bridge-based` design, where each port corresponds to an external NetDevice (e.g., `CSMA` or `P2P`), offering flexibility but limited control over port-level behavior. Arch 2 (`switch_channel branch`) introduces a `switch-centric` design, in which ports are internal components of the `P4SwitchNetDevice` and interconnected via a switched Ethernet channel, enabling fine-grained control, improved modularity, and closer alignment with real-world programmable switch architectures.
+
+![Two architectures](./doc/figures/p4sim_arch.drawio.png)
+
+The branch `switch_channel` now is ongoing development and may contain breaking changes. The `main` branch is stable and recommended for users who want to get started with P4sim immediately.
+
 ### Publications
 
 - Mingyu Ma, Giang T. Nguyen. **"P4sim: Programming Protocol-independent Packet Processors in ns-3."** 2025. [[ACM DL]](https://dl.acm.org/doi/10.1145/3747204.3747210) [[arXiv]](https://arxiv.org/abs/2503.17554)
@@ -122,6 +130,7 @@ See the full step-by-step guide (including VM setup) in [doc/vm-env.md](doc/vm-e
 | 0 | V1model | `simple_switch` |
 | 1 | PSA | `psa_switch` |
 | 2 | PNA | `pna_nic` |
+| 3 | Pipeline (`P4CorePipeline`) | – |
 
 ---
 
@@ -133,9 +142,9 @@ The forwarding behaviour is defined by the P4 program and its flow-table configu
 |---|---|
 | `JsonPath` | Path to the compiled P4 JSON file |
 | `FlowTablePath` | Path to the flow-table configuration file |
-| `P4SwitchArch` | Architecture selector (0 = V1model, 1 = PSA, 2 = PNA) |
-| `ChannelType` | Channel type (0 = CSMA, 1 = point-to-point) |
-| `SwitchRate` | Processing rate in packets per second |
+| `P4SwitchArch` | Architecture selector (0 = V1model, 1 = PSA, 2 = PNA, 3 = Pipeline) |
+| `ChannelType` | Kept for main's examples, no effect: the ports are set as described below |
+| `SwitchRate` | Packet rate of the whole P4 pipeline in packets per second; 0 (default) = no limit |
 | `QueueBufferSize` | Total queue buffer size (packets) |
 | `InputBufferSizeLow` | Input buffer size for low-priority (external) packets |
 | `InputBufferSizeHigh` | Input buffer size for high-priority (internal) packets |
@@ -146,6 +155,14 @@ The forwarding behaviour is defined by the P4 program and its flow-table configu
 > 1. When using a CSMA channel, the P4 program must handle ARP explicitly.
 > 2. Buffer attributes only take effect if the selected architecture models that buffer.
 > 3. `EnableTracing` currently supports basic throughput measurement only.
+> 4. `SwitchRate` limits how fast the P4 pipeline of a switch processes packets, resubmitted and recirculated passes included. The default, 0, means no limit, as in a hardware switch: then only the links limit the traffic. Set it to model a slower switch, such as a software switch: an idle pipeline takes a packet at once, and packets that arrive while it is busy wait in the input buffer (`InputBufferSizeLow`), or are dropped and reported through `MacRxDrop` when it is full.
+
+### Switch ports
+
+A switch has two kinds of port, which can be mixed. The port number is the order in which the ports are added.
+
+- **Switched-Ethernet ports**: `P4SwitchNetDevice::Attach()` with a `SwitchedEthernetChannel`, usually through `SwitchedEthernetHelper::Install()`, which also creates the hosts' devices (see [doc/switch.md](doc/switch.md)).
+- **Bridge ports**: an ordinary ns-3 device of the switch's node, such as a CSMA or a P4 point-to-point device, added with `P4SwitchNetDevice::AddBridgePort()` or `P4Helper::Install(node, devices)`. Switches are connected to each other this way, and the topology reader (`p4-net-builder.h`) builds its networks with them.
 
 ---
 
@@ -170,6 +187,8 @@ Selected examples:
 | Script | Description |
 |---|---|
 | `p4-v1model-ipv4-forwarding` | 2-host, 1-switch IPv4 forwarding (V1model) |
+| `p4-v1model-ipv4-forwarding-bridge` | The same over point-to-point or CSMA links (bridge ports) |
+| `p4-voq-fabric-throughput` | Throughput of the VOQ + fabric Traffic Manager (`EnableVoqFabric`) |
 | `p4-psa-ipv4-forwarding` | Same topology, PSA architecture |
 | `p4-pna-ipv4-forwarding` | Same topology, PNA architecture |
 | `p4-basic-example` | 4-host, 4-switch mesh (V1model) |
@@ -189,7 +208,7 @@ In the [paper](https://dl.acm.org/doi/10.1145/3747204.3747210), P4sim is evaluat
 
 ## Known Limitations
 
-The packet processing rate `SwitchRate` (packets per second) must currently be configured manually for each switch. An inappropriate value can cause the switch to enter an idle polling loop, leading to wasted CPU cycles. Automatic rate tuning is planned for a future release.
+`SwitchRate` models only the throughput of the P4 pipeline, not its per-packet latency: a packet that finds the pipeline idle passes it without delay.
 
 ---
 

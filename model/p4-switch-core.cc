@@ -130,6 +130,57 @@ P4SwitchCore::P4SwitchCore(P4SwitchNetDevice* netDevice,
 
 P4SwitchCore::~P4SwitchCore()
 {
+    // A pending ServeIngress() must not run on a destroyed core
+    Simulator::Cancel(m_ingressEvent);
+}
+
+void
+P4SwitchCore::SetPipelineRate(uint64_t pps)
+{
+    m_ingressServiceTime = (pps == 0) ? Time(0) : Seconds(1.0 / static_cast<double>(pps));
+}
+
+void
+P4SwitchCore::StartIngress()
+{
+    if (m_ingressServiceTime.IsZero())
+    {
+        // No rate limit: the pipeline takes the packet at once
+        HandleIngressPipeline();
+        return;
+    }
+    if (m_ingressEvent.IsRunning())
+    {
+        return; // the pending ServeIngress() takes it
+    }
+    // An idle pipeline takes the packet at once, a busy one when it is free
+    Time now = Simulator::Now();
+    if (now >= m_ingressFreeAt)
+    {
+        ServeIngress();
+    }
+    else
+    {
+        m_ingressEvent =
+            Simulator::Schedule(m_ingressFreeAt - now, &P4SwitchCore::ServeIngress, this);
+    }
+}
+
+void
+P4SwitchCore::ServeIngress()
+{
+    if (GetNInputPackets() == 0)
+    {
+        return;
+    }
+    // The pipeline is busy with this packet for one service time
+    m_ingressFreeAt = Simulator::Now() + m_ingressServiceTime;
+    HandleIngressPipeline();
+    if (GetNInputPackets() > 0 && !m_ingressEvent.IsRunning())
+    {
+        m_ingressEvent =
+            Simulator::Schedule(m_ingressServiceTime, &P4SwitchCore::ServeIngress, this);
+    }
 }
 
 void
@@ -161,8 +212,12 @@ P4SwitchCore::InitializeSwitchFromP4Json(const std::string& jsonPath)
     status = init_from_options_parser(opt_parser);
     if (status != 0)
     {
-        NS_LOG_ERROR("Failed to apply p4 json for switch core.");
-        return;
+        // BMv2 prints the reason to std::cout without flushing it; flush it so
+        // the message is not lost, and stop here instead of crashing later on
+        // the first packet (the PHV factory is not initialized).
+        std::cout.flush();
+        NS_FATAL_ERROR("Switch ID " << m_p4SwitchId << ": failed to load P4 JSON " << jsonPath
+                                    << " (BMv2 init status " << status << ")");
     }
 
     NS_LOG_INFO("P4 json applied successfully.");
