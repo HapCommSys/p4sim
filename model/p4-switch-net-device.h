@@ -163,6 +163,16 @@ public:
    */
   int GetThriftPort() const;
 
+  /**
+   * \brief Add a mirroring session whose clones leave on one port, like
+   * mirroring_add of simple_switch_CLI. Call it after the device is initialized.
+   * \param sessionId the mirroring session ID, 0 to 32767
+   * \param egressPort the port that the clones of this session are sent to
+   * \return true if the session was added; false if the ID is out of range or
+   * the P4 core is not created yet
+   */
+  bool AddMirroringSession(uint32_t sessionId, uint32_t egressPort);
+
   // inherited from NetDevice base class.
   void SetIfIndex(const uint32_t index) override;
   uint32_t GetIfIndex() const override;

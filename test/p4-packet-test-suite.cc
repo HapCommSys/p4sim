@@ -8,6 +8,7 @@
  * An .stf file has one command per line; '#' starts a comment:
  *   packet <port> <hex>   send this Ethernet frame into the switch on <port>
  *   expect <port> <hex>   this frame leaves the switch on <port>; '*' matches any nibble
+ *   mirroring_add <session> <port>   the clones of this mirroring session leave on <port>
  * Spaces in <hex> are ignored. All frames are sent at the same time, in file order.
  * A test passes if every port sends exactly the frames expected on it, in that
  * order. The switch has three ports, 0 to 2.
@@ -126,6 +127,7 @@ class StfTestCase : public TestCase
     std::vector<StfMcCommand> m_mcCommands; ///< in file order
     std::vector<StfFrame> m_packets;
     std::vector<StfFrame> m_expects;
+    std::vector<std::pair<uint32_t, uint32_t>> m_mirroringSessions; ///< (session, port)
     std::vector<Ptr<SimpleNetDevice>> m_hosts;        ///< one per switch port
     std::vector<std::string> m_received[N_PORTS]; ///< frames sent by each port, in hex
 };
@@ -148,6 +150,17 @@ StfTestCase::ReadStf(const std::string& path)
         uint32_t port = 0;
         if (!(words >> cmd))
         {
+            continue;
+        }
+        if (cmd == "mirroring_add")
+        {
+            uint32_t session = 0;
+            if (!(words >> session >> port) || port >= N_PORTS || (words >> word))
+            {
+                return m_stf + " line " + std::to_string(n) +
+                       ": expected 'mirroring_add <session> <port 0-2>'";
+            }
+            m_mirroringSessions.emplace_back(session, port);
             continue;
         }
         if (cmd == "mc_mgrp_create" || cmd == "mc_node_create" || cmd == "mc_node_associate" ||
@@ -365,6 +378,12 @@ StfTestCase::DoRun()
         m_hosts.push_back(host);
     }
     sw->Initialize();
+    for (const auto& [session, port] : m_mirroringSessions)
+    {
+        NS_TEST_ASSERT_MSG_EQ(sw->AddMirroringSession(session, port),
+                              true,
+                              "Cannot add mirroring session " << session);
+    }
     error = ApplyMcCommands(sw);
     NS_TEST_ASSERT_MSG_EQ(error, "", "Cannot configure multicast");
 
@@ -407,8 +426,10 @@ StfTestCase::DoRun()
 }
 
 /// Every architecture runs the same program, p4src/forward, with the same .stf
-/// files; p4src/priority checks the priority queues of v1model, p4src/lag the
-/// LAG member that its multicast picks
+/// files; p4src/priority checks the priority queues of v1model, p4src/resubmit
+/// and p4src/recirculate its resubmit and recirculation, p4src/clone its clones,
+/// p4src/primitives digest(), hash() with max 0 and random() with lo > hi, and
+/// p4src/lag the LAG member that its multicast picks
 static class P4PacketTestSuite : public TestSuite
 {
   public:
@@ -429,6 +450,16 @@ static class P4PacketTestSuite : public TestSuite
         }
         AddTestCase(new StfTestCase("priority", "v1model", P4SWITCH_ARCH_V1MODEL, "priority.stf"),
                     TestCase::QUICK);
+        AddTestCase(new StfTestCase("resubmit", "v1model", P4SWITCH_ARCH_V1MODEL, "resubmit.stf"),
+                    TestCase::QUICK);
+        AddTestCase(
+            new StfTestCase("recirculate", "v1model", P4SWITCH_ARCH_V1MODEL, "recirculate.stf"),
+            TestCase::QUICK);
+        AddTestCase(new StfTestCase("clone", "v1model", P4SWITCH_ARCH_V1MODEL, "clone.stf"),
+                    TestCase::QUICK);
+        AddTestCase(
+            new StfTestCase("primitives", "v1model", P4SWITCH_ARCH_V1MODEL, "primitives.stf"),
+            TestCase::QUICK);
         AddTestCase(new StfTestCase("lag", "v1model", P4SWITCH_ARCH_V1MODEL, "lag.stf"),
                     TestCase::QUICK);
     }

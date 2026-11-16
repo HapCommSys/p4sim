@@ -43,11 +43,15 @@ can change details such as generated names).
 `p4-packet` runs the `.stf` files in [`p4src/forward`](p4src/forward) on a switch
 with three ports, once per architecture: `forward_v1model.p4`, `forward_pna.p4` and
 `forward_psa.p4` behave the same. [`p4src/priority`](p4src/priority) checks the
-priority queues of v1model, [`p4src/lag`](p4src/lag) the LAG member that its
-multicast picks. The format is a subset of p4c's STF:
+priority queues of v1model, [`p4src/resubmit`](p4src/resubmit) and
+[`p4src/recirculate`](p4src/recirculate) its resubmit and recirculation,
+[`p4src/clone`](p4src/clone) its clones, [`p4src/primitives`](p4src/primitives)
+`digest()`, `hash()` with max 0 and `random()` with lo > hi, and [`p4src/lag`](p4src/lag)
+the LAG member that its multicast picks. The format is a subset of p4c's STF:
 
 ```
 # comment
+mirroring_add 5 2                             # clones of mirroring session 5 leave port 2
 mc_set_lag_membership 3 1 2                   # v1model: LAG 3 has the ports 1 and 2
 mc_mgrp_create 1                              # multicast group 1
 mc_node_create 0 2 | 3                        # node 0 (rid 0): port 2 and LAG 3
