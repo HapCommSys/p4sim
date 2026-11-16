@@ -22,6 +22,8 @@
  * This example is same with "basic exerciese" in p4lang/tutorials
  * URL: https://github.com/p4lang/tutorials/tree/master/exercises/basic
  * The P4 program implements basic ipv4 forwarding, also with ARP.
+ * It also contains a table with an action profile (action_profile_0). At t = 1s the
+ * controller adds a member to that profile on every switch and lists the members.
  *                        Controller
  *          ┌──────────┐              ┌──────────┐
  *          │ Switch 2 \\            /│ Switch 3 │
@@ -174,7 +176,7 @@ PrintFinalThroughput()
 int
 main(int argc, char* argv[])
 {
-    LogComponentEnable("P4BasicExample", LOG_LEVEL_INFO);
+    LogComponentEnable("P4ControllerActionProfile", LOG_LEVEL_INFO);
     LogComponentEnable("P4Controller", LOG_LEVEL_INFO);
 
     // ============================ parameters ============================
@@ -298,9 +300,11 @@ main(int argc, char* argv[])
             if (p4sw)
             {
                 controller.RegisterSwitch(p4sw);
+                // Index of this switch in the controller (not the device index j inside
+                // this switch's container, which is always 0).
+                uint32_t index = controller.GetN() - 1;
 
-                Simulator::Schedule(Seconds(1), [j, &controller]() {
-                    uint32_t index = j;
+                Simulator::Schedule(Seconds(1), [index, &controller]() {
                     std::string profile = "action_profile_0";
                     std::string action = "cIngress.foo1";
 
@@ -308,14 +312,14 @@ main(int argc, char* argv[])
                     bm::Data dstAddr(4);     // 4 bytes = 32 bits
                     dstAddr.set(0x0a0a0a0a); // Example IP: 10.10.10.10
                     actionData.push_back_action_data(dstAddr);
-                    controller.GetActionProfileMembers(j, profile);
+                    controller.GetActionProfileMembers(index, profile);
                     bm::ActionProfile::mbr_hdl_t member = 0;
                     controller.AddActionProfileMember(index,
                                                       profile,
                                                       action,
                                                       std::move(actionData),
                                                       member);
-                    controller.GetActionProfileMembers(j, profile);
+                    controller.GetActionProfileMembers(index, profile);
                 });
             }
             else

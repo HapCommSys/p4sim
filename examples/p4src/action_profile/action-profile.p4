@@ -14,9 +14,26 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
+// Program of the p4-controller-action-profile example.
+//
+// Tables t0, t1 (action profile) and t2 (action selector) come from the p4c
+// action-profile test program; the example's controller adds members to the action
+// profile of t1 at runtime. The tables only match TCP ports and have no entries by
+// default, so they leave the example's UDP traffic unchanged. The IPv4 and ARP
+// forwarding (tables ipv4_nhop and arp_simple, filled from flowtable_<i>.txt) is the
+// same as in p4_basic.
+
 #include <core.p4>
 #include <v1model.p4>
 
+// check https://github.com/p4lang/p4c/issues/1828 for the reason of this
+// we define "mark_to_drop2" for this
+#define BMV2_V1MODEL_SPECIAL_DROP_PORT  511
+
+const bit<16> TYPE_ARP = 0x806;
+const bit<16> TYPE_IPV4 = 0x800;
+
+typedef bit<9>   egressSpec_t;
 typedef bit<48>  EthernetAddress;
 typedef bit<32>  IPv4Address;
 
@@ -26,7 +43,18 @@ header ethernet_t {
     bit<16> etherType;
 }
 
-// IPv4 header _with_ options
+header arp_t {
+    bit<16>         hw_type;
+    bit<16>         protocol_type;
+    bit<8>          hw_size;
+    bit<8>          protocol_size;
+    bit<16>         opcode;
+    EthernetAddress srcMac;
+    IPv4Address     srcIp;
+    EthernetAddress dstMac;
+    IPv4Address     dstIp;
+}
+
 header ipv4_t {
     bit<4>       version;
     bit<4>       ihl;
@@ -40,7 +68,6 @@ header ipv4_t {
     bit<16>      hdrChecksum;
     IPv4Address  srcAddr;
     IPv4Address  dstAddr;
-    varbit<320>  options;
 }
 
 header tcp_t {
@@ -57,13 +84,9 @@ header tcp_t {
     bit<16> urgentPtr;
 }
 
-header IPv4_up_to_ihl_only_h {
-    bit<4>       version;
-    bit<4>       ihl;
-}
-
 struct headers {
     ethernet_t    ethernet;
+    arp_t         arp;
     ipv4_t        ipv4;
     tcp_t         tcp;
 }
@@ -78,13 +101,6 @@ struct metadata {
     bit<16> hash1;
 }
 
-// Declare user-defined errors that may be signaled during parsing
-error {
-    IPv4HeaderTooShort,
-    IPv4IncorrectVersion,
-    IPv4ChecksumError
-}
-
 parser parserI(packet_in pkt,
                out headers hdr,
                inout metadata meta,
@@ -93,24 +109,17 @@ parser parserI(packet_in pkt,
     state start {
         pkt.extract(hdr.ethernet);
         transition select(hdr.ethernet.etherType) {
-            0x0800: parse_ipv4;
+            TYPE_ARP: parse_arp;
+            TYPE_IPV4: parse_ipv4;
             default: accept;
         }
     }
+    state parse_arp {
+        pkt.extract(hdr.arp);
+        transition accept;
+    }
     state parse_ipv4 {
-        // The 4-bit IHL field of the IPv4 base header is the number
-        // of 32-bit words in the entire IPv4 header.  It is an error
-        // for it to be less than 5.  There are only IPv4 options
-        // present if the value is at least 6.  The length of the IPv4
-        // options alone, without the 20-byte base header, is thus ((4
-        // * ihl) - 20) bytes, or 8 times that many bits.
-        pkt.extract(hdr.ipv4,
-                    (bit<32>)
-                    (8 *
-                     (4 * (bit<9>) (pkt.lookahead<IPv4_up_to_ihl_only_h >().ihl)
-                      - 20)));
-        verify(hdr.ipv4.version == 4w4, error.IPv4IncorrectVersion);
-        verify(hdr.ipv4.ihl >= 4w5, error.IPv4HeaderTooShort);
+        pkt.extract(hdr.ipv4);
         transition select (hdr.ipv4.protocol) {
             6: parse_tcp;
             default: accept;
@@ -173,24 +182,71 @@ control cIngress(inout headers hdr,
         @mode("fair") implementation =
             action_selector(HashAlgorithm.identity, 16, 4);
     }
+
+    // IPv4 and ARP forwarding, as in p4_basic
+    action mark_to_drop2(inout standard_metadata_t stdmata) {
+        stdmata.egress_spec = BMV2_V1MODEL_SPECIAL_DROP_PORT;
+        stdmata.mcast_grp = 0;
+    }
+    action drop() {
+        mark_to_drop2(stdmeta);
+    }
+    action ipv4_forward(EthernetAddress dstAddr, egressSpec_t port) {
+        stdmeta.egress_spec = port;
+        stdmeta.egress_port = port;
+        hdr.ethernet.srcAddr = hdr.ethernet.dstAddr;
+        hdr.ethernet.dstAddr = dstAddr;
+        hdr.ipv4.ttl = hdr.ipv4.ttl - 1;
+    }
+    action set_arp_nhop(egressSpec_t port) {
+        stdmeta.egress_spec = port;
+        stdmeta.egress_port = port;
+    }
+    table ipv4_nhop {
+        key = {
+            hdr.ipv4.dstAddr: exact;
+        }
+        actions = {
+            ipv4_forward;
+            drop;
+            NoAction;
+        }
+        size = 1024;
+        default_action = drop();
+    }
+    table arp_simple {
+        actions = {
+            set_arp_nhop;
+            drop;
+        }
+        key = {
+            hdr.arp.dstIp: exact;
+        }
+        size = 1024;
+    }
+
     apply {
-        t0.apply();
-        t1.apply();
+        if (hdr.ipv4.isValid()) {
+            t0.apply();
+            t1.apply();
 
-        //hash(meta.hash1, HashAlgorithm.crc16, (bit<16>) 0,
-        //    { hdr.ipv4.srcAddr,
-        //        hdr.ipv4.dstAddr,
-        //        hdr.ipv4.protocol,
-        //        hdr.tcp.srcPort,
-        //        hdr.tcp.dstPort },
-        //    (bit<32>) 65536);
+            // The following assignment isn't really a good hash function
+            // for calculating meta.hash1.  I wrote it this way simply to
+            // make it easy to control and predict what its value will be
+            // when sending in test packets.
+            meta.hash1 = hdr.ipv4.dstAddr[15:0];
+            t2.apply();
 
-        // The following assignment isn't really a good hash function
-        // for calculating meta.hash1.  I wrote it this way simply to
-        // make it easy to control and predict what its value will be
-        // when sending in test packets.
-        meta.hash1 = hdr.ipv4.dstAddr[15:0];
-        t2.apply();
+            if (hdr.ipv4.ttl > 8w0) {
+                ipv4_nhop.apply();
+            } else {
+                drop();
+            }
+        } else if (hdr.arp.isValid()) {
+            arp_simple.apply();
+        } else {
+            drop();
+        }
     }
 }
 
@@ -210,7 +266,23 @@ control vc(inout headers hdr,
 control uc(inout headers hdr,
            inout metadata meta)
 {
-    apply { }
+    apply {
+        update_checksum(
+            hdr.ipv4.isValid(),
+            { hdr.ipv4.version,
+              hdr.ipv4.ihl,
+              hdr.ipv4.diffserv,
+              hdr.ipv4.totalLen,
+              hdr.ipv4.identification,
+              hdr.ipv4.flags,
+              hdr.ipv4.fragOffset,
+              hdr.ipv4.ttl,
+              hdr.ipv4.protocol,
+              hdr.ipv4.srcAddr,
+              hdr.ipv4.dstAddr },
+            hdr.ipv4.hdrChecksum,
+            HashAlgorithm.csum16);
+    }
 }
 
 control DeparserI(packet_out packet,
@@ -218,6 +290,7 @@ control DeparserI(packet_out packet,
 {
     apply {
         packet.emit(hdr.ethernet);
+        packet.emit(hdr.arp);
         packet.emit(hdr.ipv4);
         packet.emit(hdr.tcp);
     }

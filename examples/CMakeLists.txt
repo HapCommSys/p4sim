@@ -154,3 +154,10 @@ build_lib_example(
 #   SOURCE_FILES p4-pna-ipv4-forwarding.cc
 #   LIBRARIES_TO_LINK ${P4SIM_CSMA_LIBS}
 # )
+
+# Fat-tree topology with plain ns-3 routers (no P4) — the counterpart of p4-topo-fattree
+build_lib_example(
+  NAME topo-fattree
+  SOURCE_FILES topo-fattree.cc
+  LIBRARIES_TO_LINK ${P4SIM_CSMA_LIBS} ${libnix-vector-routing}
+)
