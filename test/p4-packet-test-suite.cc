@@ -448,8 +448,8 @@ StfTestCase::DoRun()
 /// Every architecture runs the same program, p4src/forward, with the same .stf
 /// files; p4src/priority checks the priority queues of v1model, p4src/resubmit
 /// and p4src/recirculate its resubmit and recirculation, p4src/clone its clones
-/// (also to a multicast group),
-/// and p4src/primitives digest(), hash() with max 0 and random() with lo > hi
+/// (also to a multicast group), p4src/primitives digest(), hash() with max 0 and
+/// random() with lo > hi, and p4src/lag the LAG member that its multicast picks
 static class P4PacketTestSuite : public TestSuite
 {
   public:
@@ -482,5 +482,7 @@ static class P4PacketTestSuite : public TestSuite
         AddTestCase(
             new StfTestCase("primitives", "v1model", P4SWITCH_ARCH_V1MODEL, "primitives.stf"),
             TestCase::QUICK);
+        AddTestCase(new StfTestCase("lag", "v1model", P4SWITCH_ARCH_V1MODEL, "lag.stf"),
+                    TestCase::QUICK);
     }
 } g_p4PacketTestSuite;
