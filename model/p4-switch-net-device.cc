@@ -99,13 +99,17 @@ TypeId P4SwitchNetDevice::GetTypeId() {
 
           .AddAttribute(
               "InputBufferSizeLow",
-              "Low input buffer size for the switch queue.", UintegerValue(128),
+              "Capacity of the input buffer for the packets received on the "
+              "ports, in packets (PSA: for all packets that enter the ingress).",
+              UintegerValue(128),
               MakeUintegerAccessor(&P4SwitchNetDevice::m_InputBufferSizeLow),
               MakeUintegerChecker<size_t>())
 
           .AddAttribute(
               "InputBufferSizeHigh",
-              "High input buffer size for the switch queue.",
+              "v1model: capacity of the input buffer for resubmitted and "
+              "recirculated packets, in packets. The ingress takes these "
+              "before the packets received on the ports.",
               UintegerValue(128),
               MakeUintegerAccessor(&P4SwitchNetDevice::m_InputBufferSizeHigh),
               MakeUintegerChecker<size_t>())
@@ -598,6 +602,31 @@ int P4SwitchNetDevice::GetThriftPort() const {
   }
   return 0;
 }
+
+bool P4SwitchNetDevice::AddMirroringSession(uint32_t sessionId,
+                                            uint32_t egressPort) {
+  P4SwitchCore *core = nullptr;
+  if (m_v1modelSwitch) {
+    core = m_v1modelSwitch.get();
+  } else if (m_psaSwitch) {
+    core = m_psaSwitch.get();
+  } else if (m_pnaNic) {
+    core = m_pnaNic.get();
+  } else if (m_p4Pipeline) {
+    core = m_p4Pipeline.get();
+  }
+  if (!core) {
+    NS_LOG_WARN("Cannot add mirroring session "
+                << sessionId << ": the P4 core is not created yet");
+    return false;
+  }
+  P4SwitchCore::MirroringSessionConfig config{};
+  config.egress_port = egressPort;
+  config.egress_port_valid = true;
+  config.mgid_valid = false;
+  return core->AddMirroringSession(static_cast<int>(sessionId), config);
+}
+
 void P4SwitchNetDevice::EmitSwitchEvent(uint32_t id, const std::string &msg) {
   m_switchEvent(id, msg);
 }

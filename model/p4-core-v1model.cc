@@ -72,8 +72,10 @@ P4CoreV1model::P4CoreV1model(P4SwitchNetDevice *net_device, bool enable_swap,
                              size_t nb_queues_per_port)
     : P4SwitchCore(net_device, enable_swap, enableTracing), m_packetId(0),
       m_switchRate(packet_rate), m_nbQueuesPerPort(nb_queues_per_port),
-      input_buffer(std::make_unique<InputBuffer>(input_buffer_size_low,
-                                                 input_buffer_size_high)),
+      // InputBuffer takes the capacity of the resubmit/recirculate queue
+      // first, then that of the queue for normal packets
+      input_buffer(std::make_unique<InputBuffer>(input_buffer_size_high,
+                                                 input_buffer_size_low)),
       egress_buffer(m_nbEgressThreads, queue_buffer_size,
                     EgressThreadMapper(m_nbEgressThreads), nb_queues_per_port),
       output_buffer(64), m_firstPacket(false) {
@@ -695,6 +697,9 @@ bool P4CoreV1model::HandleEgressPipeline(size_t workerId) {
     packet_copy->set_ingress_length(packet_size);
     input_buffer->push_front(InputBuffer::PacketType::RECIRCULATE,
                              std::move(packet_copy));
+    // As for resubmit, the packet goes through the ingress at once; nothing
+    // else would take it out of the input buffer.
+    HandleIngressPipeline();
     return true;
   }
 
