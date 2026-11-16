@@ -2,8 +2,9 @@
 // Copyright (c) 2025 TU Dresden. Author: Mingyu Ma <mingyu.ma@tu-dresden.de>
 
 /*
- * P4Controller on a v1model switch: flow entries and action profiles. Every
- * change is read back from the switch through the BMv2 runtime API.
+ * P4Controller on a v1model switch: flow entries, action profiles and mirroring
+ * sessions. Every change is read back from the switch through the BMv2 runtime
+ * API or, for mirroring sessions, the API of the P4 core.
  */
 
 #include "ns3/core-module.h"
@@ -179,6 +180,62 @@ class P4ControllerActionProfileTestCase : public P4TestCase
 
 /**
  * \ingroup p4sim-tests
+ * Mirroring sessions: added to a port and to a multicast group, read, and
+ * deleted, like mirroring_add, mirroring_add_mc, mirroring_get and
+ * mirroring_delete of simple_switch_CLI.
+ */
+class P4ControllerMirroringTestCase : public P4TestCase
+{
+  public:
+    P4ControllerMirroringTestCase()
+        : P4TestCase("Mirroring sessions: add, get, delete")
+    {
+    }
+
+  private:
+    void DoRun() override
+    {
+        SetDataDir(NS_TEST_SOURCEDIR);
+        Ptr<P4SwitchNetDevice> sw =
+            CreateV1modelSwitch(CreateDataDirFilename("p4src/clone/clone_v1model.json"), "");
+        P4Controller controller;
+        controller.RegisterSwitch(sw);
+        P4CoreV1model* core = sw->GetV1ModelCore();
+
+        // Session 5 to port 2, read back from the core
+        NS_TEST_ASSERT_MSG_EQ(controller.MirroringAdd(0, 5, 2), true, "Session 5 not added");
+        P4SwitchCore::MirroringSessionConfig config{};
+        NS_TEST_ASSERT_MSG_EQ(core->GetMirroringSession(5, &config), true, "No session 5");
+        NS_TEST_EXPECT_MSG_EQ(config.egress_port_valid && config.egress_port == 2,
+                              true,
+                              "Session 5 should send its clones to port 2");
+        NS_TEST_EXPECT_MSG_EQ(config.mgid_valid, false, "Session 5 has no multicast group");
+
+        // Session 6 to multicast group 3, read back with MirroringGet()
+        NS_TEST_ASSERT_MSG_EQ(controller.MirroringAddMc(0, 6, 3), true, "Session 6 not added");
+        config = {};
+        NS_TEST_ASSERT_MSG_EQ(controller.MirroringGet(0, 6, &config), true, "No session 6");
+        NS_TEST_EXPECT_MSG_EQ(config.mgid_valid && config.mgid == 3,
+                              true,
+                              "Session 6 should send its clones to multicast group 3");
+        NS_TEST_EXPECT_MSG_EQ(config.egress_port_valid, false, "Session 6 has no port");
+
+        // Session IDs are 0 to 32767, as in simple_switch
+        NS_TEST_EXPECT_MSG_EQ(controller.MirroringAdd(0, 32768, 1), false, "Session ID too big");
+        NS_TEST_EXPECT_MSG_EQ(controller.MirroringGet(0, 32768), false, "Session 32768 added");
+        NS_TEST_EXPECT_MSG_EQ(controller.MirroringAdd(1, 5, 2), false, "There is no switch 1");
+
+        // Delete session 5: session 6 stays
+        NS_TEST_EXPECT_MSG_EQ(controller.MirroringDelete(0, 5), true, "Session 5 not deleted");
+        NS_TEST_EXPECT_MSG_EQ(core->GetMirroringSession(5, &config), false, "Session 5 left");
+        NS_TEST_EXPECT_MSG_EQ(controller.MirroringGet(0, 5), false, "Session 5 left");
+        NS_TEST_EXPECT_MSG_EQ(controller.MirroringDelete(0, 5), false, "Session 5 deleted twice");
+        NS_TEST_EXPECT_MSG_EQ(controller.MirroringGet(0, 6), true, "Session 6 deleted too");
+    }
+};
+
+/**
+ * \ingroup p4sim-tests
  * P4Controller tests.
  */
 class P4ControllerTestSuite : public TestSuite
@@ -189,6 +246,7 @@ class P4ControllerTestSuite : public TestSuite
     {
         AddTestCase(new P4ControllerFlowEntryTestCase, TestCase::QUICK);
         AddTestCase(new P4ControllerActionProfileTestCase, TestCase::QUICK);
+        AddTestCase(new P4ControllerMirroringTestCase, TestCase::QUICK);
     }
 };
 
