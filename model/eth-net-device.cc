@@ -22,6 +22,7 @@
 
 #include "switched-ethernet-channel.h"
 
+#include "ns3/drop-tail-queue.h"
 #include "ns3/ethernet-header.h"
 #include "ns3/log.h"
 #include "ns3/mac48-address.h"
@@ -62,6 +63,11 @@ SwitchedEthernetHostDevice::GetTypeId()
                             "A packet was dropped before transmission.",
                             MakeTraceSourceAccessor(&SwitchedEthernetHostDevice::m_macTxDropTrace),
                             "ns3::Packet::TracedCallback")
+            .AddTraceSource("PhyTxDrop",
+                            "A frame was lost while it was being sent, because the "
+                            "link was detached.",
+                            MakeTraceSourceAccessor(&SwitchedEthernetHostDevice::m_phyTxDropTrace),
+                            "ns3::Packet::TracedCallback")
             //
             // Trace sources designed to simulate a packet sniffer facility (tcpdump).
             //
@@ -80,6 +86,7 @@ SwitchedEthernetHostDevice::GetTypeId()
 }
 
 SwitchedEthernetHostDevice::SwitchedEthernetHostDevice()
+    : m_queue(CreateObject<DropTailQueue<Packet>>())
 {
     NS_LOG_FUNCTION_NOARGS();
 }
@@ -87,6 +94,31 @@ SwitchedEthernetHostDevice::SwitchedEthernetHostDevice()
 SwitchedEthernetHostDevice::~SwitchedEthernetHostDevice()
 {
     NS_LOG_FUNCTION_NOARGS();
+}
+
+void
+SwitchedEthernetHostDevice::DoDispose()
+{
+    NS_LOG_FUNCTION_NOARGS();
+    Simulator::Cancel(m_txCompleteEvent);
+    Simulator::Cancel(m_txRetryEvent);
+    m_queue = nullptr;
+    m_currentPkt = nullptr;
+    m_channel = nullptr;
+    m_node = nullptr;
+    NetDevice::DoDispose();
+}
+
+void
+SwitchedEthernetHostDevice::SetQueue(Ptr<Queue<Packet>> queue)
+{
+    m_queue = queue;
+}
+
+Ptr<Queue<Packet>>
+SwitchedEthernetHostDevice::GetQueue() const
+{
+    return m_queue;
 }
 
 // ---------------------------------------------------------------------------
@@ -181,20 +213,61 @@ SwitchedEthernetHostDevice::SendFrom(Ptr<Packet> packet,
     packet->AddHeader(eth);
 
     m_macTxTrace(packet);
-    m_snifferTrace(packet);
-    m_promiscSnifferTrace(packet);
 
-    if (!m_channel->TransmitStart(packet, m_devId))
+    if (!m_queue->Enqueue(packet))
     {
-        NS_LOG_WARN("SendFrom: channel busy — drop");
+        NS_LOG_WARN("SendFrom: transmit queue full — drop");
         m_macTxDropTrace(packet);
         return false;
     }
-
-    DataRate rate = m_channel->GetDataRate();
-    Time txTime = rate.CalculateBytesTxTime(packet->GetSize());
-    Simulator::Schedule(txTime, &SwitchedEthernetChannel::TransmitEnd, m_channel, m_devId);
+    TransmitStart();
     return true;
+}
+
+void
+SwitchedEthernetHostDevice::TransmitStart()
+{
+    if (m_txBusy || m_queue->IsEmpty())
+    {
+        return;
+    }
+    Ptr<Packet> packet = m_queue->Dequeue();
+    m_snifferTrace(packet);
+    m_promiscSnifferTrace(packet);
+
+    // Only this device sends on its slot, which is free here; the channel
+    // still refuses a frame when the device has been detached.
+    if (!m_channel->TransmitStart(packet, m_devId))
+    {
+        NS_LOG_WARN("TransmitStart: channel refused the frame — drop");
+        m_macTxDropTrace(packet);
+        // One retry at a time: it drops the refused frames one by one
+        if (!m_txRetryEvent.IsRunning())
+        {
+            m_txRetryEvent =
+                Simulator::ScheduleNow(&SwitchedEthernetHostDevice::TransmitStart, this);
+        }
+        return;
+    }
+    m_txBusy = true;
+    m_currentPkt = packet;
+    Time txTime = m_channel->GetDataRate().CalculateBytesTxTime(packet->GetSize());
+    m_txCompleteEvent =
+        Simulator::Schedule(txTime, &SwitchedEthernetHostDevice::TransmitComplete, this);
+}
+
+void
+SwitchedEthernetHostDevice::TransmitComplete()
+{
+    if (!m_channel->TransmitEnd(m_devId))
+    {
+        // The link was detached while the frame was being sent: it is lost
+        NS_LOG_WARN("TransmitComplete: link detached during the frame — lost");
+        m_phyTxDropTrace(m_currentPkt);
+    }
+    m_currentPkt = nullptr;
+    m_txBusy = false;
+    TransmitStart();
 }
 
 // ---------------------------------------------------------------------------
