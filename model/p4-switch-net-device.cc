@@ -99,13 +99,17 @@ TypeId P4SwitchNetDevice::GetTypeId() {
 
           .AddAttribute(
               "InputBufferSizeLow",
-              "Low input buffer size for the switch queue.", UintegerValue(128),
+              "Capacity of the input buffer for the packets received on the "
+              "ports, in packets (PSA: for all packets that enter the ingress).",
+              UintegerValue(128),
               MakeUintegerAccessor(&P4SwitchNetDevice::m_InputBufferSizeLow),
               MakeUintegerChecker<size_t>())
 
           .AddAttribute(
               "InputBufferSizeHigh",
-              "High input buffer size for the switch queue.",
+              "v1model: capacity of the input buffer for resubmitted and "
+              "recirculated packets, in packets. The ingress takes these "
+              "before the packets received on the ports.",
               UintegerValue(128),
               MakeUintegerAccessor(&P4SwitchNetDevice::m_InputBufferSizeHigh),
               MakeUintegerChecker<size_t>())
