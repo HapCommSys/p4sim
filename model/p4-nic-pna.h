@@ -27,6 +27,12 @@
 
 #include <unordered_map>
 
+#undef LOG_INFO
+#undef LOG_ERROR
+#undef LOG_DEBUG
+#undef LOG_WARN
+#undef LOG_LOGIC
+
 namespace ns3
 {
 
