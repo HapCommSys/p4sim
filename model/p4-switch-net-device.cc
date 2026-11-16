@@ -230,37 +230,37 @@ P4SwitchNetDevice::DoInitialize()
     {
     case P4SWITCH_ARCH_V1MODEL:
         NS_LOG_DEBUG("Initialising V1model pipeline");
-        m_v1modelSwitch = new P4CoreV1model(this,
-                                            m_enableSwap,
-                                            m_enableTracing,
-                                            m_switchRate,
-                                            m_InputBufferSizeLow,
-                                            m_InputBufferSizeHigh,
-                                            m_queueBufferSize);
+        m_v1modelSwitch = std::make_unique<P4CoreV1model>(this,
+                                                          m_enableSwap,
+                                                          m_enableTracing,
+                                                          m_switchRate,
+                                                          m_InputBufferSizeLow,
+                                                          m_InputBufferSizeHigh,
+                                                          m_queueBufferSize);
         m_v1modelSwitch->InitializeSwitchFromP4Json(m_jsonPath);
         m_v1modelSwitch->LoadFlowTableToSwitch(m_flowTablePath);
         m_v1modelSwitch->SetEnableVoqFabric(m_enableVoqFabric);
-        SetPortTxDoneCallback(MakeCallback(&P4CoreV1model::PortTxComplete, m_v1modelSwitch));
+        SetPortTxDoneCallback(MakeCallback(&P4CoreV1model::PortTxComplete, m_v1modelSwitch.get()));
         m_v1modelSwitch->start_and_return_();
         break;
 
     case P4SWITCH_ARCH_PSA:
         NS_LOG_DEBUG("Initialising PSA pipeline");
-        m_psaSwitch = new P4CorePsa(this,
-                                    m_enableSwap,
-                                    m_enableTracing,
-                                    m_switchRate,
-                                    m_InputBufferSizeLow,
-                                    m_queueBufferSize);
+        m_psaSwitch = std::make_unique<P4CorePsa>(this,
+                                                  m_enableSwap,
+                                                  m_enableTracing,
+                                                  m_switchRate,
+                                                  m_InputBufferSizeLow,
+                                                  m_queueBufferSize);
         m_psaSwitch->InitializeSwitchFromP4Json(m_jsonPath);
         m_psaSwitch->LoadFlowTableToSwitch(m_flowTablePath);
-        SetPortTxDoneCallback(MakeCallback(&P4CorePsa::PortTxComplete, m_psaSwitch));
+        SetPortTxDoneCallback(MakeCallback(&P4CorePsa::PortTxComplete, m_psaSwitch.get()));
         m_psaSwitch->start_and_return_();
         break;
 
     case P4NIC_ARCH_PNA:
         NS_LOG_DEBUG("Initialising PNA NIC");
-        m_pnaNic = new P4PnaNic(this, m_enableSwap);
+        m_pnaNic = std::make_unique<P4PnaNic>(this, m_enableSwap);
         m_pnaNic->InitializeSwitchFromP4Json(m_jsonPath);
         m_pnaNic->start_and_return_();
         break;
@@ -279,12 +279,9 @@ P4SwitchNetDevice::DoDispose()
 
     // The callback points into the core deleted below.
     m_portTxDone = MakeNullCallback<void, uint32_t>();
-    delete m_v1modelSwitch;
-    m_v1modelSwitch = nullptr;
-    delete m_psaSwitch;
-    m_psaSwitch = nullptr;
-    delete m_pnaNic;
-    m_pnaNic = nullptr;
+    m_v1modelSwitch.reset();
+    m_psaSwitch.reset();
+    m_pnaNic.reset();
 
     m_portChannels.clear();
     m_portDeviceIds.clear();
@@ -541,7 +538,7 @@ P4SwitchNetDevice::GetPortDeviceId(uint32_t n) const
 P4CoreV1model*
 P4SwitchNetDevice::GetV1ModelCore() const
 {
-    return m_v1modelSwitch;
+    return m_v1modelSwitch.get();
 }
 
 void

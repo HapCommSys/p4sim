@@ -27,6 +27,7 @@
 #include "ns3/traced-callback.h"
 
 #include <cstdint>
+#include <memory>
 #include <stdint.h>
 #include <string>
 #include <vector>
@@ -299,9 +300,11 @@ class P4SwitchNetDevice : public NetDevice
     std::string m_jsonPath;
     std::string m_flowTablePath;
 
-    P4CoreV1model* m_v1modelSwitch;
-    P4CorePsa* m_psaSwitch;
-    P4PnaNic* m_pnaNic;
+    // The device owns its P4 core: DoInitialize() creates the one selected by
+    // m_switchArch (the others stay null) and DoDispose() releases it.
+    std::unique_ptr<P4CoreV1model> m_v1modelSwitch; //!< V1model switch core
+    std::unique_ptr<P4CorePsa> m_psaSwitch;         //!< PSA switch core
+    std::unique_ptr<P4PnaNic> m_pnaNic;             //!< PNA NIC core
 
     // -----------------------------------------------------------------------
     // Queue / rate configuration
