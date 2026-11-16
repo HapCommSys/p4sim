@@ -1,18 +1,21 @@
-# Event-Driven Traffic Manager Scheduler
+# Event-Driven Egress Scheduler
 
 ## Background
 
 The ns-3 P4 switch follows the standard programmable-switch pipeline:
 
 ```
-Ingress Pipeline → Traffic Manager (TM) → Egress Pipeline → Output Port
+Ingress Pipeline → egress queues → Egress Pipeline → Output Port
 ```
 
-The TM (`NSQueueingLogicPriRL`) maintains per-port, per-priority queues with per-queue rate
-limits (pps).  A packet may only be dequeued once the elapsed time since the previous dequeue
-satisfies the queue's rate constraint.  As in BMv2, the queues have no rate limit unless one is
-set with `SetEgressQueueRate()` and the like; `SwitchRate` limits the ingress pipeline instead
-(see the README).
+This document describes the default egress path. With `EnableVoqFabric`, packets go to the
+Traffic Manager instead; see [traffic-manager.md](traffic-manager.md).
+
+The egress queues (`NSQueueingLogicPriRL`) are per port and per priority, and each queue can have
+a rate limit (pps): a packet may only be dequeued once the time since the previous dequeue
+satisfies the queue's rate. As in BMv2, the queues have no rate limit unless one is set with
+`SetEgressQueueRate()` and the like; `SwitchRate` limits the ingress pipeline instead (see the
+README).
 
 ---
 
@@ -29,129 +32,125 @@ At each tick it called `HandleEgressPipeline()` to scan queues.
 
 ---
 
-## Solution: Event-Driven Scheduler + PhyTxEnd Integration
+## Solution: Event-Driven Scheduler
 
-Scheduling events are triggered **only by relevant state changes**:
+Scheduling events are created **only by relevant state changes**:
 
-1. **A packet is enqueued** → `Enqueue()` calls `ScheduleEgressIfNeeded()`.
-2. **A port finishes transmitting** → the port NetDevice fires its `PhyTxEnd` trace, which
-   propagates to `PortTxComplete()`.
+1. **A packet is enqueued** → `Enqueue()` calls `ScheduleEgressIfNeeded(port)`.
+2. **A port finishes transmitting** → `P4SwitchNetDevice` calls `PortTxComplete(port)`.
 
-No periodic timer is started at simulation launch.
+No timer runs while the queues are empty.
 
-### Architecture: PhyTxEnd Callback Chain
+### Transmit-complete chain
 
-`AddBridgePort()` connects every port's `PhyTxEnd` trace to `OnPortTxEnd()`.
-`DoInitialize()` registers the TM's `PortTxComplete` as the port-TX-done callback:
+`P4SwitchNetDevice` puts each frame on the port's `SwitchedEthernetChannel` and schedules the end
+of the transmission one serialisation time later (the frame size at the channel's `DataRate`).
+Then it releases the channel and calls the port-TX-done callback that `DoInitialize()` registers:
 
 ```
-NetDevice::PhyTxEnd
-    → P4SwitchNetDevice::OnPortTxEnd(srcDevice, packet)   [device ptr → port index]
-    → P4CoreV1model::PortTxComplete(portIndex)
-    → ScheduleEgressIfNeeded(portIndex)
+P4SwitchNetDevice::SendNs3Packet(port) → TransmitOn(port)    [channel: TransmitStart]
+        ... one serialisation time ...
+P4SwitchNetDevice::PortTransmitEnd(port)                     [channel: TransmitEnd]
+    → port-TX-done callback
+    → P4CoreV1model::PortTxComplete(port)
+    → ScheduleEgressIfNeeded(port)
 ```
 
-This replaces the previous model where `EventDrivenEgressDequeue` computed
-`tx_delay = bytes×8 / m_linkRateBps` and self-scheduled `PortTxComplete` — which
-double-counted the serialisation delay already modelled by the NetDevice.
+When the device does not send a frame (the drop port, an invalid port, a busy channel), the core
+calls `PortTxComplete()` itself at once, so that the port is not left marked busy.
 
 ### Key Functions
 
-**`ScheduleEgressIfNeeded(port)`** — called from `Enqueue()`:
-- If port is **busy** → returns; `PortTxComplete` will retry.
-- Cancels any stale pending event, queries `egress_buffer.get_next_tp_all_ports()` for the
-  earliest rate-eligible time, then schedules `EventDrivenEgressDequeue(port)`.
+**`ScheduleEgressIfNeeded(port)`**, called from `Enqueue()` and `PortTxComplete()`:
+- If the port is **busy**, it returns; `PortTxComplete()` will retry.
+- It cancels a pending dequeue event of this port, asks `get_next_tp_for_port(port)` for the
+  earliest time a packet of this port may leave, and schedules `EventDrivenEgressDequeue(port)`
+  for then.
 
-**`EventDrivenEgressDequeue(port)`** — the core dequeue function:
-1. Calls `egress_buffer.pop_back()` for one rate-eligible packet.
-2. If nothing eligible: reschedules itself at the next eligible timestamp.
-3. If a packet is dequeued: runs the full egress pipeline (MAU, deparser, clone, recirc).
-4. Sets `pstate.busy = true`, calls `SendNs3Packet()`, then returns.  
-   `PortTxComplete` is triggered later by the port's `PhyTxEnd` trace.
+**`EventDrivenEgressDequeue(port)`**, the core dequeue function:
+1. Returns if the port or its channel is busy; `PortTxComplete()` will retry.
+2. Calls `pop_back_for_port(port)` for one rate-eligible packet. If there is none, it reschedules
+   itself at the next eligible time.
+3. Runs the egress pipeline (MAU, deparser, clone, recirculate).
+4. Marks the port busy and calls `SendNs3Packet()`. If the port has a QueueDisc, it enqueues the
+   packet there instead and calls `TryTransmitFromQueueDisc()`.
 
-**`PortTxComplete(port)`** — triggered by `PhyTxEnd`:
-- Sets `pstate.busy = false`.
-- Calls `ScheduleEgressIfNeeded(port)` if the queue is non-empty.
+**`PortTxComplete(port)`**, the port is free again:
+- Clears `busy`.
+- Sends the next packet of the port's QueueDisc, if the port has one with packets in it.
+- Otherwise calls `ScheduleEgressIfNeeded(port)` if the port's egress queues are not empty.
 
 ### Per-Port State
 
 ```cpp
 struct PortTxState {
-    bool    busy{false};      // true while a packet is in flight on the link
-    EventId pendingEvent{};   // handle to the next scheduled dequeue attempt
+    bool    busy{false};      // true while a frame is on the wire
+    EventId pendingEvent{};   // the next scheduled dequeue attempt
 };
 std::unordered_map<uint32_t, PortTxState> m_portTxState;
 ```
 
-`busy` is set before `SendNs3Packet` and cleared only in `PortTxComplete`.
-`m_linkRateBps` (read from port 0's `DataRate` at startup) is retained for
-**logging/diagnostics only**; it no longer drives scheduling.
+`m_linkRateBps` is read from port 0's channel when the switch starts. The VOQ path uses it as the
+Traffic Manager's `PortRate`; on the default path it is only logged.
 
 ---
 
 ## Comparison
 
-| Property | Polling | Event-driven v1 | Event-driven v2 (current) |
-|----------|---------|-----------------|---------------------------|
+| Property | Polling | Event-driven v1 | Event-driven (current) |
+|----------|---------|-----------------|------------------------|
 | Idle events | O(1/tick)/port | Zero | Zero |
-| Serialisation delay | None | Self-scheduled (`bits/rate`) — double-counted | Port `PhyTxEnd` — no double-counting |
-| `PortTxComplete` trigger | N/A | `Simulator::Schedule` | `NetDevice::PhyTxEnd` trace |
-| `PortTxState::busyUntil` | N/A | Stored | **Removed** |
+| Serialisation delay | None | Self-scheduled (`bits/rate`), double-counted | Scheduled once by `P4SwitchNetDevice` from the channel's rate |
+| `PortTxComplete` trigger | N/A | `Simulator::Schedule` in the core | Port-TX-done callback from `P4SwitchNetDevice::PortTransmitEnd()` |
 
 ---
 
-## Affected Files
+## Files
 
-| File | Change |
-|------|--------|
-| `model/p4-core-v1model.cc` / `.h` | Event-driven scheduler; `PortTxState` cleaned up (`busyUntil` removed) |
-| `model/p4-switch-net-device.cc` / `.h` | `AddBridgePort` hooks `PhyTxEnd`; `OnPortTxEnd` + `SetPortTxDoneCallback` added; `GetPortNumber` bug fixed |
-| `utils/p4-queue.h` | Fixed iterator invalidation bug in queue size queries |
+| File | Role |
+|------|------|
+| `model/p4-core-v1model.cc` / `.h` | Event-driven scheduler, per-port state |
+| `model/p4-core-psa.cc` / `.h` | The same scheduler for PSA |
+| `model/p4-switch-net-device.cc` / `.h` | `TransmitOn()`, `PortTransmitEnd()`, `SetPortTxDoneCallback()` |
+| `utils/p4-queue.h` | `NSQueueingLogicPriRL`: `get_next_tp_for_port()`, `pop_back_for_port()` |
 
-PSA (`p4-core-psa`) and PNA (`p4-nic-pna`) retain their own self-scheduled delay model
-and are not yet migrated to the `PhyTxEnd` path.
+v1model and PSA use this path. PNA (`p4-nic-pna`) still schedules its own transmit-complete event
+from the link rate and is not migrated yet.
 
 ---
 
 ## Design Notes
 
-**Scheduling scope (per-port vs global):**  
-Port busy/idle state is per-port (`m_portTxState[port]`), but `get_next_tp_all_ports()`
-returns the global earliest eligible time. A port may occasionally wake up and find no
-eligible packet for itself, then self-reschedule. This is correct but may generate one
-spurious event per dequeue cycle. A per-port `get_next_tp(port)` API is a known future
-improvement.
-
-**At-most-one-packet-in-flight guarantee:**  
+**At-most-one-frame-in-flight guarantee:**
 `pstate.busy` is set before `SendNs3Packet` and cleared only in `PortTxComplete`. Guards in
 both `ScheduleEgressIfNeeded` and `EventDrivenEgressDequeue` return immediately if the port
 is busy. Single-threaded ns-3 ensures no race conditions.
 
-**Pipeline processing delay:**  
-Ingress and egress pipeline processing is synchronous (zero simulated time), consistent with
-standard ns-3 modelling convention. The meaningful delays are queue rate-shaping (via
-`QueueInfoPri::pkt_delay_time`), link serialisation (via `PhyTxEnd`), and channel
-propagation.
+**Pipeline processing delay:**
+Ingress and egress pipeline processing take no simulated time, as usual in ns-3. The delays come
+from `SwitchRate` (how many packets per second the ingress pipeline takes), the queue rates (via
+`QueueInfoPri::pkt_delay_time`), the serialisation on the port's channel, and the channel's
+propagation delay.
 
-**Clone and recirculate:**  
+**Clone and recirculate:**
 Egress clones call `Enqueue()` → `ScheduleEgressIfNeeded()`, the same path as any normal
-packet. Recirculated packets go to the ingress `InputBuffer`; `PortTxComplete` is called
-immediately to release the port.
+packet. Recirculated packets go back to the ingress input buffer (`AdmitToIngress()`);
+`PortTxComplete()` is called at once to release the port.
 
-**Idle behaviour:**  
+**Idle behaviour:**
 `PortTxComplete` only calls `ScheduleEgressIfNeeded` if the queue is non-empty.
 `ScheduleEgressIfNeeded` is only called from `Enqueue` and `PortTxComplete`. When all
 queues are empty, there are **zero** pending egress scheduler events.
 
-**Queue rate enforcement:**  
+**Queue rate enforcement:**
 At enqueue time, `push_front()` stamps each packet with
-`send = max(now, prev_send + 1/rate)`. `pop_back()` gates on `send <= now`.
+`send = max(now, prev_send + 1/rate)`. `pop_back_for_port()` gates on `send <= now`.
 This is a strict leaky-bucket model; no burst beyond one packet at the configured rate
 is possible.
 
-**Priority scheduling:**  
-`pop_back()` iterates queues from index `N-1` down to `0`. Because `Enqueue()` maps
-P4 priority *p* to queue index `N-1-p`, queue 0 holds the highest-P4-priority traffic and
-is served last in the scan — i.e., first eligible packet wins, with highest priority always
-preferred. This is strict priority scheduling; low-priority queues can be starved if a
-high-priority queue is continuously non-empty (intentional, consistent with BMv2).
+**Priority scheduling:**
+`Enqueue()` puts a packet of P4 priority *p* into queue index `N-1-p`, and `pop_back_for_port()`
+scans the indices from `N-1` down to `0` and takes the first eligible packet. So P4 priority 0 is
+served first and priority 7 last. BMv2's `simple_switch` does the opposite: priority 7 first. Main
+fixed this in #37; syncing #37 into this branch will fix it here. Scheduling is strict priority: a
+queue that is never empty starves the queues served after it.

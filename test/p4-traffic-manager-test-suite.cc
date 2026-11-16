@@ -81,7 +81,7 @@ class TmBasicEnqueueDequeueTest : public TestCase
 {
   public:
     TmBasicEnqueueDequeueTest()
-        : TestCase("TM: basic enqueue/dequeue and accounting")
+        : TestCase("TM: basic enqueue, dequeue and accounting")
     {
     }
 
@@ -200,7 +200,7 @@ class TmFabricMatchingTest : public TestCase
 {
   public:
     TmFabricMatchingTest()
-        : TestCase("TM: fabric one-in/one-out matching constraints")
+        : TestCase("TM: fabric one-in, one-out matching constraints")
     {
     }
 

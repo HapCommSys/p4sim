@@ -79,8 +79,6 @@ class P4CoreV1model : public P4SwitchCore
 
     // === Scheduling ===
     void CalculateScheduleTime();
-    /** @deprecated Legacy polling callback – superseded by event-driven scheduler. */
-    void SetEgressTimerEvent();
     void EventDrivenEgressDequeue(uint32_t port);
     void ScheduleEgressIfNeeded(uint32_t port);
     void PortTxComplete(uint32_t port);
@@ -163,8 +161,6 @@ class P4CoreV1model : public P4SwitchCore
     double m_virtualQueueRate; ///< Per-queue rate (pps)
 
     size_t m_nbQueuesPerPort;
-    EventId m_egressTimeEvent; ///< Legacy polling event (unused in event-driven mode)
-    Time m_egressTimeRef;      ///< Legacy polling interval (unused in event-driven mode)
     uint64_t m_startTimestamp; ///< Simulation start timestamp
 
     static constexpr size_t m_nbEgressThreads = 1u;
@@ -178,8 +174,6 @@ class P4CoreV1model : public P4SwitchCore
      * @return false if the input buffer is full; the packet is then dropped
      */
     bool AdmitToIngress(InputBuffer::PacketType type, std::unique_ptr<bm::Packet>&& packet);
-
-    bool m_firstPacket;
 
     // ---- Event-driven scheduler state ----
 

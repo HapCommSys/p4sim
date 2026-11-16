@@ -65,12 +65,6 @@ class P4CorePsa : public P4SwitchCore
     // ---- Event-driven scheduler ----
 
     /**
-     * @brief [Legacy / polling] Periodic egress drain callback.
-     * @deprecated Replaced by the event-driven scheduler.
-     */
-    void SetEgressTimerEvent();
-
-    /**
      * @brief Attempt to dequeue and process one packet from the egress buffer.
      *
      * Invoked when a packet is enqueued into a previously-empty queue
@@ -150,14 +144,10 @@ class P4CorePsa : public P4SwitchCore
     static constexpr uint32_t PSA_PORT_RECIRCULATE = 0xfffffffa;
     static constexpr size_t nb_egress_threads = 1u; // 4u default
     uint64_t m_packetId;
-    bool m_firstPacket;
     bool m_enableTracing;
     uint64_t m_switchRate; //!< Packet rate of the whole pipeline (pps), 0 = no limit
     size_t m_nbQueuesPerPort;
     size_t m_inputBufferSize; //!< Capacity of input_buffer (packets)
-
-    EventId m_egressTimeEvent; //!< Legacy polling event (unused in event-driven mode)
-    Time m_egressTimeRef;      //!< Legacy polling interval (unused in event-driven mode)
 
     /**
      * @brief Put \p packet into the input buffer and let the ingress pipeline
