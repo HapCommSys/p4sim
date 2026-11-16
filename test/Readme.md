@@ -44,11 +44,14 @@ can change details such as generated names).
 with three ports, once per architecture: `forward_v1model.p4`, `forward_pna.p4` and
 `forward_psa.p4` behave the same. [`p4src/priority`](p4src/priority) checks the
 priority queues of v1model, [`p4src/resubmit`](p4src/resubmit) and
-[`p4src/recirculate`](p4src/recirculate) its resubmit and recirculation. The format
-is a subset of p4c's STF:
+[`p4src/recirculate`](p4src/recirculate) its resubmit and recirculation,
+[`p4src/clone`](p4src/clone) its clones, and [`p4src/primitives`](p4src/primitives)
+`digest()`, `hash()` with max 0 and `random()` with lo > hi. The format is a subset
+of p4c's STF:
 
 ```
 # comment
+mirroring_add 5 2                             # clones of mirroring session 5 leave port 2
 packet 0 0000000000fe 000000000010 0800 ...   # send this frame into port 0
 expect 1 000000000011 0000000000fe 0800 ...   # this frame leaves port 1
 ```
