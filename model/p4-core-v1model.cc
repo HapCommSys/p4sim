@@ -112,7 +112,8 @@ P4CoreV1model::P4CoreV1model(P4SwitchNetDevice* net_device,
       m_packetId(0),
       m_switchRate(packet_rate),
       m_nbQueuesPerPort(nb_queues_per_port),
-      input_buffer(std::make_unique<InputBuffer>(input_buffer_size_low, input_buffer_size_high)),
+      // InputBuffer takes the high-priority capacity first
+      input_buffer(std::make_unique<InputBuffer>(input_buffer_size_high, input_buffer_size_low)),
       egress_buffer(m_nbEgressThreads,
                     queue_buffer_size,
                     EgressThreadMapper(m_nbEgressThreads),
@@ -162,10 +163,8 @@ P4CoreV1model::~P4CoreV1model()
         m_trafficManager = nullptr;
     }
 
-    if (input_buffer)
-    {
-        input_buffer->push_front(InputBuffer::PacketType::SENTINEL, nullptr);
-    }
+    // No sentinel for the input buffer: there is no ingress thread to stop in
+    // ns-3, and ~P4SwitchCore() cancels a pending ServeIngress().
 
     for (size_t i = 0; i < m_nbEgressThreads; i++)
     {
@@ -189,7 +188,7 @@ P4CoreV1model::start_and_return_()
     // (called from Enqueue()) and by PortTxComplete() after each transmission.
 
     NS_LOG_DEBUG("Switch ID: " << m_p4SwitchId << " using event-driven egress scheduler"
-                               << " (queue rate = " << m_switchRate << " pps"
+                               << " (SwitchRate = " << m_switchRate << " pps, 0 = no limit"
                                << ", link rate = " << m_linkRateBps << " bps)");
 
     // Construct the VOQ + fabric Traffic Manager now that the ports and link
@@ -475,7 +474,10 @@ P4CoreV1model::EventDrivenEgressDequeue(uint32_t port)
         packet_copy->set_register(RegisterAccess::PACKET_LENGTH_REG_IDX, packet_size);
         phv_copy->get_field("standard_metadata.packet_length").set(packet_size);
         packet_copy->set_ingress_length(packet_size);
-        input_buffer->push_front(InputBuffer::PacketType::RECIRCULATE, std::move(packet_copy));
+        if (!AdmitToIngress(InputBuffer::PacketType::RECIRCULATE, std::move(packet_copy)))
+        {
+            NS_LOG_WARN("Input buffer full, recirculated packet dropped");
+        }
         // Port is free; try to serve the next queued packet.
         PortTxComplete(static_cast<uint32_t>(out_port));
         return;
@@ -663,11 +665,34 @@ P4CoreV1model::ReceivePacket(Ptr<Packet> packetIn,
         phv->get_field("intrinsic_metadata.ingress_global_timestamp").set(GetTimeStamp());
     }
 
-    input_buffer->push_front(InputBuffer::PacketType::NORMAL, std::move(bm_packet));
-    HandleIngressPipeline();
+    if (!AdmitToIngress(InputBuffer::PacketType::NORMAL, std::move(bm_packet)))
+    {
+        // The pipeline is slower than the arriving traffic (see SwitchRate)
+        NS_LOG_WARN("Switch ID " << m_p4SwitchId << ": input buffer full, packet from port "
+                                 << inPort << " dropped");
+        m_switchNetDevice->NotifyMacRxDrop(packetIn);
+        return -1;
+    }
     NS_LOG_DEBUG("Packet received by P4CoreV1model, Port: "
                  << inPort << ", Packet ID: " << m_packetId << ", Size: " << len << " bytes");
     return 0;
+}
+
+bool
+P4CoreV1model::AdmitToIngress(InputBuffer::PacketType type, std::unique_ptr<bm::Packet>&& packet)
+{
+    if (!input_buffer->push_front(type, std::move(packet)))
+    {
+        return false;
+    }
+    StartIngress();
+    return true;
+}
+
+size_t
+P4CoreV1model::GetNInputPackets() const
+{
+    return input_buffer->size();
 }
 
 void
@@ -816,8 +841,10 @@ P4CoreV1model::HandleIngressPipeline()
         bm_packet_copy->set_register(RegisterAccess::PACKET_LENGTH_REG_IDX, ingress_packet_size);
         phv_copy->get_field("standard_metadata.packet_length").set(ingress_packet_size);
 
-        input_buffer->push_front(InputBuffer::PacketType::RESUBMIT, std::move(bm_packet_copy));
-        HandleIngressPipeline();
+        if (!AdmitToIngress(InputBuffer::PacketType::RESUBMIT, std::move(bm_packet_copy)))
+        {
+            NS_LOG_WARN("Input buffer full, resubmitted packet dropped");
+        }
         return;
     }
 
@@ -921,13 +948,10 @@ P4CoreV1model::HandleEgressPipeline(size_t workerId)
 void
 P4CoreV1model::CalculateScheduleTime()
 {
-    m_egressTimeEvent = EventId();
-
-    // Compute the inter-packet gap from the configured switch rate.
-    // This is still used as the per-queue rate in egress_buffer.
-    uint64_t bottleneck_ns = 1e9 / m_switchRate;
-    egress_buffer.set_rate_for_all(m_switchRate);
-    m_egressTimeRef = Time::FromDouble(bottleneck_ns, Time::NS);
+    // SwitchRate limits the whole pipeline (see StartIngress()); 0 = no limit.
+    // The egress queues have no rate limit unless SetEgressQueueRate() and the
+    // like set one, as in BMv2.
+    SetPipelineRate(m_switchRate);
 
     // Try to obtain the physical link rate from the first bridge port so that
     // the event-driven scheduler can model per-packet transmission delay
@@ -948,9 +972,8 @@ P4CoreV1model::CalculateScheduleTime()
         }
     }
 
-    NS_LOG_DEBUG("Switch ID: " << m_p4SwitchId << " Egress time reference set to " << bottleneck_ns
-                               << " ns (" << m_egressTimeRef.GetNanoSeconds() << " [ns])"
-                               << ", link rate = " << m_linkRateBps << " bps");
+    NS_LOG_DEBUG("Switch ID: " << m_p4SwitchId << " SwitchRate = " << m_switchRate
+                               << " pps (0 = no limit), link rate = " << m_linkRateBps << " bps");
 }
 
 void
@@ -1238,8 +1261,10 @@ P4CoreV1model::TmTransmit(uint32_t outPort, uint8_t priority, std::unique_ptr<Tm
         packet_copy->set_register(RegisterAccess::PACKET_LENGTH_REG_IDX, packet_size);
         phv_copy->get_field("standard_metadata.packet_length").set(packet_size);
         packet_copy->set_ingress_length(packet_size);
-        input_buffer->push_front(InputBuffer::PacketType::RECIRCULATE, std::move(packet_copy));
-        HandleIngressPipeline();
+        if (!AdmitToIngress(InputBuffer::PacketType::RECIRCULATE, std::move(packet_copy)))
+        {
+            NS_LOG_WARN("Input buffer full, recirculated packet dropped");
+        }
         // Recirculated, not transmitted: free the port immediately and account
         // for the frame as recirculated (it is sent for real on a later pass).
         ScheduleTmNotifyTxDone(outPort, Time(0), TmTxOutcome::RECIRCULATED);

@@ -199,6 +199,12 @@ class P4SwitchNetDevice : public NetDevice
     void EmitSwitchEvent(uint32_t id, const std::string& msg);
 
     /**
+     * \brief Fire MacRxDrop: the P4 core dropped \p packet on reception
+     *        because its input buffer was full (see SwitchRate).
+     */
+    void NotifyMacRxDrop(Ptr<const Packet> packet);
+
+    /**
      * \brief Connect the P4 core's internal event trace to this device's
      *        public SwitchEvent trace source.
      */
@@ -358,6 +364,12 @@ class P4SwitchNetDevice : public NetDevice
      * \see class CallBackTraceSource
      */
     TracedCallback<Ptr<const Packet>> m_macRxTrace;
+
+    /**
+     * The trace source fired for a received packet that the P4 pipeline could
+     * not take because its input buffer was full (see SwitchRate).
+     */
+    TracedCallback<Ptr<const Packet>> m_macRxDropTrace;
 
     /**
      * A trace source that emulates a non-promiscuous protocol sniffer connected

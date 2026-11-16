@@ -73,6 +73,7 @@ class P4CoreV1model : public P4SwitchCore
     void start_and_return_() override;
     void reset_target_state_() override;
     void HandleIngressPipeline() override;
+    size_t GetNInputPackets() const override;
     void Enqueue(uint32_t egress_port, std::unique_ptr<bm::Packet>&& packet) override;
     bool HandleEgressPipeline(size_t workerId) override;
 
@@ -163,13 +164,20 @@ class P4CoreV1model : public P4SwitchCore
 
     size_t m_nbQueuesPerPort;
     EventId m_egressTimeEvent; ///< Legacy polling event (unused in event-driven mode)
-    Time m_egressTimeRef;      ///< Inter-packet gap derived from m_switchRate
+    Time m_egressTimeRef;      ///< Legacy polling interval (unused in event-driven mode)
     uint64_t m_startTimestamp; ///< Simulation start timestamp
 
     static constexpr size_t m_nbEgressThreads = 1u;
 
     std::unique_ptr<InputBuffer> input_buffer;
     NSQueueingLogicPriRL<std::unique_ptr<bm::Packet>, EgressThreadMapper> egress_buffer;
+
+    /**
+     * @brief Put \p packet into the input buffer and let the ingress pipeline
+     * take it as SwitchRate allows (see P4SwitchCore::StartIngress()).
+     * @return false if the input buffer is full; the packet is then dropped
+     */
+    bool AdmitToIngress(InputBuffer::PacketType type, std::unique_ptr<bm::Packet>&& packet);
 
     bool m_firstPacket;
 

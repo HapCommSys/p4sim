@@ -78,6 +78,7 @@ P4CorePsa::P4CorePsa(P4SwitchNetDevice* net_device,
       m_firstPacket(false),
       m_switchRate(packet_rate),
       m_nbQueuesPerPort(nb_queues_per_port),
+      m_inputBufferSize(input_buffer_size),
       input_buffer(input_buffer_size),
       egress_buffer(nb_egress_threads,
                     queue_buffer_size,
@@ -137,7 +138,8 @@ P4CorePsa::P4CorePsa(P4SwitchNetDevice* net_device,
 P4CorePsa::~P4CorePsa()
 {
     NS_LOG_FUNCTION(this << " Switch ID: " << m_p4SwitchId);
-    input_buffer.push_front(nullptr);
+    // No sentinel for the input buffer: there is no ingress thread to stop in
+    // ns-3, and ~P4SwitchCore() cancels a pending ServeIngress().
     for (size_t i = 0; i < nb_egress_threads; i++)
     {
         egress_buffer.push_front(i, 0, nullptr);
@@ -336,8 +338,10 @@ P4CorePsa::EventDrivenEgressDequeue(uint32_t port)
         phv->get_field("psa_ingress_parser_input_metadata.ingress_port").set(PSA_PORT_RECIRCULATE);
         phv->get_field("psa_ingress_parser_input_metadata.packet_path")
             .set(PACKET_PATH_RECIRCULATE);
-        input_buffer.push_front(std::move(bm_packet));
-        HandleIngressPipeline();
+        if (!AdmitToIngress(std::move(bm_packet)))
+        {
+            NS_LOG_WARN("Input buffer full, recirculated packet dropped");
+        }
         PortTxComplete(static_cast<uint32_t>(out_port));
         return;
     }
@@ -426,9 +430,14 @@ P4CorePsa::ReceivePacket(Ptr<Packet> packetIn,
     // each add_header / remove_header primitive call
     bm_packet->set_register(RegisterAccess::PACKET_LENGTH_REG_IDX, len);
 
-    input_buffer.push_front(std::move(bm_packet));
-    // input_buffer.push_front (InputBuffer::PacketType::NORMAL, std::move (bm_packet));
-    HandleIngressPipeline();
+    if (!AdmitToIngress(std::move(bm_packet)))
+    {
+        // The pipeline is slower than the arriving traffic (see SwitchRate)
+        NS_LOG_WARN("PSA Switch ID " << m_p4SwitchId << ": input buffer full, packet from port "
+                                     << inPort << " dropped");
+        m_switchNetDevice->NotifyMacRxDrop(packetIn);
+        return -1;
+    }
     NS_LOG_DEBUG("Packet received by P4CorePsa, Port: " << inPort << ", Packet ID: " << m_packetId
                                                         << ", Size: " << len << " bytes");
     return 0;
@@ -455,6 +464,25 @@ P4CorePsa::Enqueue(uint32_t egress_port, std::unique_ptr<bm::Packet>&& packet)
 
     // Event-driven scheduler: trigger a dequeue attempt for this port.
     ScheduleEgressIfNeeded(egress_port);
+}
+
+bool
+P4CorePsa::AdmitToIngress(std::unique_ptr<bm::Packet>&& packet)
+{
+    // bm::Queue::push_front() would wait for room, which never comes in ns-3
+    if (input_buffer.size() >= m_inputBufferSize)
+    {
+        return false;
+    }
+    input_buffer.push_front(std::move(packet));
+    StartIngress();
+    return true;
+}
+
+size_t
+P4CorePsa::GetNInputPackets() const
+{
+    return input_buffer.size();
 }
 
 void
@@ -585,9 +613,10 @@ P4CorePsa::HandleIngressPipeline()
         phv->reset_metadata();
         phv->get_field("psa_ingress_parser_input_metadata.packet_path").set(PACKET_PATH_RESUBMIT);
 
-        // input_buffer.push_front (InputBuffer::PacketType::RESUBMIT, std::move (bm_packet));
-        input_buffer.push_front(std::move(bm_packet));
-        HandleIngressPipeline();
+        if (!AdmitToIngress(std::move(bm_packet)))
+        {
+            NS_LOG_WARN("Input buffer full, resubmitted packet dropped");
+        }
         return;
     }
 
@@ -674,13 +703,10 @@ P4CorePsa::MultiCastPacket(bm::Packet* packet,
 void
 P4CorePsa::CalculateScheduleTime()
 {
-    m_egressTimeEvent = EventId();
-
-    // Compute inter-packet gap from the configured switch rate.
-    // This is still used as the per-queue rate in egress_buffer.
-    uint64_t bottleneck_ns = 1e9 / m_switchRate;
-    egress_buffer.set_rate_for_all(m_switchRate);
-    m_egressTimeRef = Time::FromDouble(bottleneck_ns, Time::NS);
+    // SwitchRate limits the whole pipeline (see StartIngress()); 0 = no limit.
+    // The egress queues have no rate limit unless SetEgressQueueRate() and the
+    // like set one, as in BMv2.
+    SetPipelineRate(m_switchRate);
 
     // Try to obtain the physical link rate from the first bridge port so that
     // the event-driven scheduler can model per-packet transmission delay
@@ -701,9 +727,8 @@ P4CorePsa::CalculateScheduleTime()
         }
     }
 
-    NS_LOG_DEBUG("Switch ID: " << m_p4SwitchId << " Egress time reference set to " << bottleneck_ns
-                               << " ns (" << m_egressTimeRef.GetNanoSeconds() << " [ns])"
-                               << ", link rate = " << m_linkRateBps << " bps");
+    NS_LOG_DEBUG("Switch ID: " << m_p4SwitchId << " SwitchRate = " << m_switchRate
+                               << " pps (0 = no limit), link rate = " << m_linkRateBps << " bps");
 }
 
 int

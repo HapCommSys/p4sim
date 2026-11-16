@@ -10,7 +10,9 @@ Ingress Pipeline → Traffic Manager (TM) → Egress Pipeline → Output Port
 
 The TM (`NSQueueingLogicPriRL`) maintains per-port, per-priority queues with per-queue rate
 limits (pps).  A packet may only be dequeued once the elapsed time since the previous dequeue
-satisfies the queue's rate constraint.
+satisfies the queue's rate constraint.  As in BMv2, the queues have no rate limit unless one is
+set with `SetEgressQueueRate()` and the like; `SwitchRate` limits the ingress pipeline instead
+(see the README).
 
 ---
 
