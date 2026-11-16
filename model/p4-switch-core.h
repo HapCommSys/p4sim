@@ -20,6 +20,8 @@
 #ifndef P4_SWITCH_CORE_H
 #define P4_SWITCH_CORE_H
 
+#include "ns3/event-id.h"
+#include "ns3/nstime.h"
 #include "ns3/p4-switch-net-device.h"
 
 #include <bm/bm_sim/packet.h>
@@ -202,6 +204,29 @@ class P4SwitchCore : public bm::Switch
     virtual void HandleIngressPipeline() = 0;
 
     /**
+     * @brief Set the packet rate of the ingress pipeline (SwitchRate)
+     * @param pps packets per second; 0 = no limit
+     */
+    void SetPipelineRate(uint64_t pps);
+
+    /**
+     * @brief Let the ingress pipeline take the packets in the input buffer as
+     * the pipeline rate allows: at once if the rate is 0 or the pipeline is
+     * idle, otherwise when the pipeline is free again. Call it after each push
+     * into the input buffer.
+     */
+    void StartIngress();
+
+    /**
+     * @brief Get the number of packets in the input buffer
+     * @return the number of packets; a core that calls StartIngress() must override this
+     */
+    virtual size_t GetNInputPackets() const
+    {
+        return 0;
+    }
+
+    /**
      * @brief Enqueue a packet to the switch queue buffer
      * @param egress_port the egress port
      * @param packet the packet to enqueue
@@ -249,6 +274,16 @@ class P4SwitchCore : public bm::Switch
     uint64_t m_startTimestamp;          //!< Start time of the switch
     bm::TargetParserBasic* m_argParser; //!< Structure of parsers
     std::unique_ptr<MirroringSessions> m_mirroringSessions; //!< Mirroring sessions
+
+    /**
+     * @brief Run the ingress pipeline on the next packet of the input buffer,
+     * and schedule the one after it one service time (1/SwitchRate) later.
+     */
+    void ServeIngress();
+
+    Time m_ingressServiceTime; //!< 1/SwitchRate, the pipeline's time per packet; 0 = no limit
+    Time m_ingressFreeAt;      //!< when the pipeline can take the next packet
+    EventId m_ingressEvent;    //!< the pending ServeIngress()
 };
 
 } // namespace ns3
