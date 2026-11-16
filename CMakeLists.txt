@@ -112,6 +112,7 @@ build_lib(
         test/channel-state-test-suite.cc
         test/p4-egress-test-suite.cc
         test/p4-switch-rate-test-suite.cc
+        test/switched-ethernet-host-test-suite.cc
         # test/p4-controller-test-suite.cc
         #  test/p4sim-test-suite.cc
         #  test/format-utils-test-suite.cc
