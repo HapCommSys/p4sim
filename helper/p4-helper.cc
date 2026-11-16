@@ -71,6 +71,28 @@ P4Helper::Install(const std::string& switchNodeName) const
     return Install(node);
 }
 
+NetDeviceContainer
+P4Helper::Install(Ptr<Node> node, const NetDeviceContainer& ports) const
+{
+    NS_ASSERT_MSG(node, "P4Helper::Install: null node");
+    NS_LOG_FUNCTION(this << node->GetId() << ports.GetN());
+    Ptr<P4SwitchNetDevice> sw = m_deviceFactory.Create<P4SwitchNetDevice>();
+    node->AddDevice(sw);
+    for (auto it = ports.Begin(); it != ports.End(); ++it)
+    {
+        sw->AddBridgePort(*it);
+    }
+    return NetDeviceContainer(sw);
+}
+
+NetDeviceContainer
+P4Helper::Install(const std::string& nodeName, const NetDeviceContainer& ports) const
+{
+    Ptr<Node> node = Names::Find<Node>(nodeName);
+    NS_ASSERT_MSG(node, "P4Helper::Install: node \"" << nodeName << "\" not found");
+    return Install(node, ports);
+}
+
 // ---------------------------------------------------------------------------
 // Private helpers
 // ---------------------------------------------------------------------------

@@ -21,6 +21,7 @@
 #ifndef P4_SWITCH_NET_DEVICE_H
 #define P4_SWITCH_NET_DEVICE_H
 
+#include "ns3/data-rate.h"
 #include "ns3/mac48-address.h"
 #include "ns3/net-device.h"
 #include "ns3/nstime.h"
@@ -44,12 +45,19 @@ namespace ns3
 #define P4SWITCH_ARCH_V1MODEL 0
 #define P4SWITCH_ARCH_PSA 1
 #define P4NIC_ARCH_PNA 2
+#define P4SWITCH_ARCH_PIPELINE 3
+
+// Values of the "ChannelType" attribute, kept for main's examples (it has no effect)
+#define P4CHANNELCSMA 0
+#define P4CHANNELP2P 1
 
 class Node;
 class SwitchedEthernetChannel;
 class P4CoreV1model;
 class P4CorePsa;
 class P4PnaNic;
+class P4CorePipeline;
+class P4BridgeChannel;
 
 /**
  * \ingroup p4sim
@@ -60,8 +68,10 @@ class P4PnaNic;
  *
  * **Switch mode** (JsonPath + FlowTablePath configured):
  *   The device owns a P4 pipeline core (V1model / PSA / PNA / Pipeline).
- *   Each port is a SwitchedEthernetChannel attached via Attach().  When the
- *   channel delivers a frame the device feeds it into the P4 pipeline;
+ *   Each port is either a SwitchedEthernetChannel attached via Attach(), or
+ *   an ordinary ns-3 device of the switch's node (CSMA, point-to-point, ...)
+ *   added via AddBridgePort().  When a port receives a frame the device
+ *   feeds it into the P4 pipeline;
  *   the pipeline calls back via SendNs3Packet() to emit the processed frame
  *   on the chosen egress port.
  *
@@ -113,6 +123,21 @@ class P4SwitchNetDevice : public NetDevice
      * \param channel The full-duplex channel to attach to.
      */
     void Attach(Ptr<SwitchedEthernetChannel> channel);
+
+    /**
+     * \brief Add \p bridgePort, a device of this switch's node, as the next port.
+     *
+     * A bridge port connects the switch through an ordinary ns-3 device, such
+     * as a CSMA or point-to-point device, for example to another switch. The
+     * two kinds of port can be mixed: the port index is the order of the
+     * Attach() and AddBridgePort() calls.
+     *
+     * The device must support SendFrom() and EUI-48 addresses, and this
+     * switch device must already be added to the node. The frames the device
+     * receives go to the P4 pipeline, and its PhyTxEnd and PhyTxDrop traces
+     * tell the P4 core that the port is free again.
+     */
+    void AddBridgePort(Ptr<NetDevice> bridgePort);
 
     // -----------------------------------------------------------------------
     // Ingress from channel (called directly by SwitchedEthernetChannel)
@@ -176,6 +201,22 @@ class P4SwitchNetDevice : public NetDevice
 
     /** \return Port index of \p sender, or UINT32_MAX if not found. */
     uint32_t GetPortNumber(Ptr<P4SwitchNetDevice> sender) const;
+
+    /** \return Number of ports of both kinds, the same as GetNPorts() (main's name). */
+    uint32_t GetNBridgePorts() const;
+
+    /** \return The device of port \p n, or nullptr if \p n is not a bridge port. */
+    Ptr<NetDevice> GetBridgePort(uint32_t n) const;
+
+    /** \return Port index of bridge port \p device, or UINT32_MAX if it is not one. */
+    uint32_t GetBridgePortNumber(Ptr<NetDevice> device) const;
+
+    /**
+     * \return The data rate of port \p n: its channel's, or for a bridge port the
+     *         "DataRate" attribute of its device (point-to-point) or of its
+     *         channel (CSMA). 0 if unknown.
+     */
+    DataRate GetPortDataRate(uint32_t n) const;
     /** \return Device-slot ID for port \p n in its channel, or UNIT32_MAX if invalid. */
     uint32_t GetPortDeviceId(uint32_t n) const;
 
@@ -287,6 +328,29 @@ class P4SwitchNetDevice : public NetDevice
      */
     void PortTransmitEnd(uint32_t port);
 
+    /**
+     * \brief Feed \p frame, a full Ethernet frame received on \p inPort, into
+     *        the P4 core.
+     */
+    void DeliverToCore(Ptr<Packet> frame, uint32_t inPort, uint16_t protocol, Mac48Address dst);
+
+    /// Receives the frames of the bridge ports (a promiscuous protocol handler)
+    void ReceiveFromDevice(Ptr<NetDevice> incomingPort,
+                           Ptr<const Packet> packet,
+                           uint16_t protocol,
+                           const Address& src,
+                           const Address& dst,
+                           PacketType packetType);
+
+    /**
+     * \brief Send \p frame, a full Ethernet frame, on bridge port \p port.
+     * \return true if the device accepted it.
+     */
+    bool SendOnBridgePort(uint32_t port, Ptr<Packet> frame, Time* txTime);
+
+    /// Bridge port \p port has sent (PhyTxEnd) or given up (PhyTxDrop) a frame
+    void BridgePortTxEnd(uint32_t port, Ptr<const Packet> packet);
+
     /// Runs when a port has finished serialising a frame (see SetPortTxDoneCallback())
     Callback<void, uint32_t> m_portTxDone;
 
@@ -305,6 +369,9 @@ class P4SwitchNetDevice : public NetDevice
     std::unique_ptr<P4CoreV1model> m_v1modelSwitch; //!< V1model switch core
     std::unique_ptr<P4CorePsa> m_psaSwitch;         //!< PSA switch core
     std::unique_ptr<P4PnaNic> m_pnaNic;             //!< PNA NIC core
+    std::unique_ptr<P4CorePipeline> m_p4Pipeline;   //!< Pipeline core
+
+    uint32_t m_channelType{P4CHANNELCSMA}; //!< "ChannelType" attribute (no effect)
 
     // -----------------------------------------------------------------------
     // Queue / rate configuration
@@ -330,15 +397,23 @@ class P4SwitchNetDevice : public NetDevice
 
     /**
      * Channels attached via Attach() in order.
-     * m_portChannels[i] is the channel for P4 port i.
+     * m_portChannels[i] is the channel for P4 port i, or nullptr if port i
+     * is a bridge port.
      */
     std::vector<Ptr<SwitchedEthernetChannel>> m_portChannels;
 
     /**
      * Device-slot ID assigned by each channel when Attach() was called.
-     * m_portDeviceIds[i] is this device's slot in m_portChannels[i].
+     * m_portDeviceIds[i] is this device's slot in m_portChannels[i]
+     * (UINT32_MAX for a bridge port).
      */
     std::vector<uint32_t> m_portDeviceIds;
+
+    /// m_bridgePorts[i] is the device of port i if it is a bridge port, else nullptr
+    std::vector<Ptr<NetDevice>> m_bridgePorts;
+
+    /// The channels of the bridge ports (GetChannel() when port 0 is a bridge port)
+    Ptr<P4BridgeChannel> m_bridgeChannel;
 
     // -----------------------------------------------------------------------
     // Callbacks
