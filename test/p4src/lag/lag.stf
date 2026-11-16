@@ -1,0 +1,24 @@
+# Multicast into a LAG, as in BMv2's simple_switch: the packet replication engine
+# sends one copy to one member of the LAG, the member lag_hash % (number of
+# members) in port order. The ingress multicasts every frame to group 1 and takes
+# lag_hash from the low 16 bits of the source MAC (see lag_v1model.p4).
+
+mc_set_lag_membership 3 1 2   # LAG 3: ports 1 and 2
+mc_mgrp_create 1
+mc_node_create 0 0 | 3        # node 0: port 0 and LAG 3
+mc_node_associate 1 0
+
+packet 0 000000000001 000000000000 9000  00000001   # lag_hash 0: the first member, port 1
+packet 0 000000000001 000000000001 9000  00000002   # lag_hash 1: the second member, port 2
+packet 0 000000000001 000000000002 9000  00000003   # lag_hash 2: port 1
+packet 0 000000000001 000000000103 9000  00000004   # lag_hash 0x103: port 2
+
+#        dst          src          type
+expect 0 000000000001 000000000000 9000  00000001   # port 0 gets every frame
+expect 0 000000000001 000000000001 9000  00000002
+expect 0 000000000001 000000000002 9000  00000003
+expect 0 000000000001 000000000103 9000  00000004
+expect 1 000000000001 000000000000 9000  00000001
+expect 1 000000000001 000000000002 9000  00000003
+expect 2 000000000001 000000000001 9000  00000002
+expect 2 000000000001 000000000103 9000  00000004

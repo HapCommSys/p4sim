@@ -99,13 +99,17 @@ TypeId P4SwitchNetDevice::GetTypeId() {
 
           .AddAttribute(
               "InputBufferSizeLow",
-              "Low input buffer size for the switch queue.", UintegerValue(128),
+              "Capacity of the input buffer for the packets received on the "
+              "ports, in packets (PSA: for all packets that enter the ingress).",
+              UintegerValue(128),
               MakeUintegerAccessor(&P4SwitchNetDevice::m_InputBufferSizeLow),
               MakeUintegerChecker<size_t>())
 
           .AddAttribute(
               "InputBufferSizeHigh",
-              "High input buffer size for the switch queue.",
+              "v1model: capacity of the input buffer for resubmitted and "
+              "recirculated packets, in packets. The ingress takes these "
+              "before the packets received on the ports.",
               UintegerValue(128),
               MakeUintegerAccessor(&P4SwitchNetDevice::m_InputBufferSizeHigh),
               MakeUintegerChecker<size_t>())
@@ -522,7 +526,10 @@ void P4SwitchNetDevice::SendNs3Packet(Ptr<Packet> packetOut, int outPort,
                  << ", Destination MAC: " << Mac48Address::ConvertFrom(dst)
                  << ", Protocol: 0x" << std::hex << protocol << std::dec);
 
-    if (outPort != 511) {
+    // A frame for the drop port is dropped without a warning. The pipeline
+    // core, for example, passes the egress_spec of the ingress, which
+    // mark_to_drop() sets to the drop port.
+    if (outPort != SSWITCH_DROP_PORT) {
       NS_LOG_DEBUG("EgressPortNum: " << outPort);
       Ptr<NetDevice> outNetDevice = GetBridgePort(outPort);
       if (!outNetDevice) {
