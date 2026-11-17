@@ -108,7 +108,7 @@ class P4CorePsa : public P4SwitchCore
 
     void HandleIngressPipeline() override;
     size_t GetNInputPackets() const override;
-    void Enqueue(uint32_t egress_port, std::unique_ptr<bm::Packet>&& packet) override;
+    void EnqueueNow(uint32_t egress_port, std::unique_ptr<bm::Packet>&& packet) override;
     bool HandleEgressPipeline(size_t workerId) override;
 
     void MultiCastPacket(bm::Packet* packet,

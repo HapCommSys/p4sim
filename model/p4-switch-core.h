@@ -27,7 +27,9 @@
 #include <bm/bm_sim/packet.h>
 #include <bm/bm_sim/simple_pre_lag.h>
 #include <bm/bm_sim/switch.h>
+#include <deque>
 #include <map>
+#include <memory>
 #include <vector>
 
 #define SSWITCH_DROP_PORT 511
@@ -89,6 +91,25 @@ class P4SwitchCore : public bm::Switch
      * @return the port, or 0 before InitializeSwitchFromP4Json() is called
      */
     int GetThriftPort() const;
+
+    /**
+     * @brief Set the time a packet spends in the P4 pipeline (the PipelineDelay
+     *        attribute of P4SwitchNetDevice)
+     * @param delay the delay, not negative; 0 (the default) means none
+     *
+     * Every packet that the switch puts into its egress queues gets there this
+     * much later: packets that leave the ingress, ingress and egress clones, and
+     * multicast copies. The pipeline takes the next packet at once, so the delay
+     * adds latency but does not lower the throughput. A recirculated packet
+     * passes the pipeline again and is delayed again.
+     */
+    void SetPipelineDelay(Time delay);
+
+    /**
+     * @brief Get the time a packet spends in the P4 pipeline
+     * @return the delay set by SetPipelineDelay()
+     */
+    Time GetPipelineDelay() const;
 
     /**
      * @brief Load the flow table to the switch
@@ -255,11 +276,20 @@ class P4SwitchCore : public bm::Switch
     }
 
     /**
-     * @brief Enqueue a packet to the switch queue buffer
+     * @brief Put a packet into the egress queues once the pipeline delay is over
+     *        (see SetPipelineDelay()); without a delay, at once. Every packet that
+     *        goes to the egress queues passes here.
      * @param egress_port the egress port
      * @param packet the packet to enqueue
      */
-    virtual void Enqueue(uint32_t egress_port, std::unique_ptr<bm::Packet>&& packet) = 0;
+    void Enqueue(uint32_t egress_port, std::unique_ptr<bm::Packet>&& packet);
+
+    /**
+     * @brief Put a packet into the egress queues of the target, now
+     * @param egress_port the egress port
+     * @param packet the packet to enqueue
+     */
+    virtual void EnqueueNow(uint32_t egress_port, std::unique_ptr<bm::Packet>&& packet) = 0;
 
     /**
      * @brief Egress processing pipeline
@@ -314,6 +344,24 @@ class P4SwitchCore : public bm::Switch
     Time m_ingressServiceTime; //!< 1/SwitchRate, the pipeline's time per packet; 0 = no limit
     Time m_ingressFreeAt;      //!< when the pipeline can take the next packet
     EventId m_ingressEvent;    //!< the pending ServeIngress()
+
+    /**
+     * @brief Put the packets whose pipeline delay is over into the egress queues,
+     * and schedule this again for the next one.
+     */
+    void ReleaseFromPipeline();
+
+    /// A packet in the pipeline: it waits for the end of its pipeline delay
+    struct PipelinePacket
+    {
+        Time leaves;                        //!< when it reaches the egress queues
+        uint32_t egressPort;                //!< its egress port
+        std::unique_ptr<bm::Packet> packet; //!< the packet
+    };
+
+    Time m_pipelineDelay;                         //!< see SetPipelineDelay(); 0 = none
+    std::deque<PipelinePacket> m_pipelinePackets; //!< the packets in the pipeline, oldest first
+    EventId m_pipelineEvent;                      //!< the pending ReleaseFromPipeline()
 };
 
 } // namespace ns3
