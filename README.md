@@ -100,16 +100,11 @@ cd ../..
 ./ns3 build
 ```
 
-### Step 4: Set the `P4SIM_DIR` Environment Variable
+### Step 4: P4 Files Are Found Automatically
 
-P4sim resolves P4 artifact paths (JSON pipelines, flow tables, topology files) via the `P4SIM_DIR` environment variable. Add it to your shell profile:
+P4sim reads P4 artifacts (JSON pipelines, flow tables, topology files) from the p4sim folder of the build, so no setup is needed, and several ns-3 trees can live side by side.
 
-```bash
-echo 'export P4SIM_DIR="$HOME/workdir/ns3.39/contrib/p4sim"' >> ~/.bashrc
-source ~/.bashrc
-```
-
-> **Tip:** If `P4SIM_DIR` is not set, P4sim falls back to a path derived from the executable location, but setting it explicitly is recommended for reliability.
+> **Note:** Earlier versions asked you to set `P4SIM_DIR` in `~/.bashrc`. It is no longer needed; you can remove it. If it names another p4sim folder, it is ignored and a notice says so.
 
 ### Step 5: Run an Example
 
