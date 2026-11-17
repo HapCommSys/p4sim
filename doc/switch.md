@@ -23,7 +23,7 @@ Owns: P4SwitchNetDevice factory  Owns: SwitchedEthernetChannel factory
                                        SwitchedEthernetHostDevice creation
 
 SetDeviceAttribute(...)          SetChannelAttribute(...)
-  → JsonPath, FlowTablePath,       → DataRate, Delay
+  → JsonPath, FlowTablePath,       → DataRate, Delay, Framing
     P4SwitchArch, SwitchRate
 
 Install(switchNode)              Install(sw, hosts)
@@ -53,6 +53,35 @@ eth.SetChannelAttribute("Delay",    StringValue("0.01ms"));
 NetDeviceContainer hostDevs = eth.Install(sw, terminals);
 // hostDevs[0] = NIC on terminals[0], hostDevs[1] = NIC on terminals[1]
 ```
+
+## Timing on the wire
+
+A frame takes (its bytes × 8 / `DataRate`) on the wire, then `Delay` to reach
+the far end, which gets it whole (store and forward). The channel computes this
+for both ends and keeps the exact times, so that rounding to the simulator's
+1 ns resolution does not add up over back-to-back frames.
+
+By default a frame takes only its own bytes. Real Ethernet puts more on the
+wire; set `Framing` to `Ethernet` to model it (IEEE 802.3, the same for every
+data rate):
+
+| On the wire | Bytes |
+|---|---|
+| preamble and start-of-frame delimiter | 8 |
+| frame check sequence (FCS) | 4 |
+| padding of a frame shorter than 60 bytes (64 with the FCS) | up to 60 |
+| interframe gap before the next frame | 12 |
+
+```
+eth.SetChannelAttribute("Framing", StringValue("Ethernet"));
+```
+
+A 1500-byte IP packet (a 1514-byte frame) then takes 1526 bytes on the wire and
+a 12-byte gap, and a 100 Gbps link carries at most 148.8 million minimum frames
+per second. These bytes only take time: the far end receives the frame as it was
+sent. The line coding and FEC of the physical layer (8b/10b, 64b/66b, RS-FEC)
+are not added: Ethernet runs the line faster to absorb them, so the data rate is
+the nominal one, on copper and fibre alike.
 
 ## Queues and traffic control on hosts
 

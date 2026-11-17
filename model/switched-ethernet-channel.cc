@@ -22,6 +22,7 @@
 
 #include "eth-net-device.h"
 
+#include "ns3/enum.h"
 #include "ns3/log.h"
 #include "ns3/node.h"
 #include "ns3/p4-switch-net-device.h"
@@ -85,19 +86,32 @@ P4SwitchDeviceRec::GetNetDevice() const
 TypeId
 SwitchedEthernetChannel::GetTypeId()
 {
-    static TypeId tid = TypeId("ns3::SwitchedEthernetChannel")
-                            .SetParent<Channel>()
-                            .AddConstructor<SwitchedEthernetChannel>()
-                            .AddAttribute("DataRate",
-                                          "Transmission data rate of the channel.",
-                                          DataRateValue(DataRate(0xffffffff)),
-                                          MakeDataRateAccessor(&SwitchedEthernetChannel::m_bps),
-                                          MakeDataRateChecker())
-                            .AddAttribute("Delay",
-                                          "Propagation delay through the channel.",
-                                          TimeValue(Seconds(0)),
-                                          MakeTimeAccessor(&SwitchedEthernetChannel::m_delay),
-                                          MakeTimeChecker());
+    static TypeId tid =
+        TypeId("ns3::SwitchedEthernetChannel")
+            .SetParent<Channel>()
+            .AddConstructor<SwitchedEthernetChannel>()
+            .AddAttribute("DataRate",
+                          "Transmission data rate of the channel.",
+                          DataRateValue(DataRate(0xffffffff)),
+                          MakeDataRateAccessor(&SwitchedEthernetChannel::m_bps),
+                          MakeDataRateChecker())
+            .AddAttribute("Delay",
+                          "Propagation delay through the channel.",
+                          TimeValue(Seconds(0)),
+                          MakeTimeAccessor(&SwitchedEthernetChannel::m_delay),
+                          MakeTimeChecker())
+            .AddAttribute(
+                "Framing",
+                "What the link puts on the wire around each frame. None (the "
+                "default): the frame alone. Ethernet: IEEE 802.3, the same for "
+                "all data rates: 8 bytes of preamble and start-of-frame "
+                "delimiter, a 4-byte FCS, padding up to the 64-byte minimum "
+                "frame, and a 12-byte interframe gap before the next frame. "
+                "They only take time on the wire; the far end receives the "
+                "frame as it was sent.",
+                EnumValue(LinkFraming::NONE),
+                MakeEnumAccessor(&SwitchedEthernetChannel::m_framing),
+                MakeEnumChecker(LinkFraming::NONE, "None", LinkFraming::ETHERNET, "Ethernet"));
     return tid;
 }
 
@@ -113,6 +127,7 @@ SwitchedEthernetChannel::SwitchedEthernetChannel()
     m_propCount[1] = 0;
     m_txEnd[0] = 0;
     m_txEnd[1] = 0;
+    m_framing = LinkFraming::NONE;
     m_deviceList.clear();
 }
 
@@ -247,15 +262,20 @@ SwitchedEthernetChannel::TransmitStart(Ptr<Packet> p, uint32_t srcId, Time* txTi
     NS_LOG_LOGIC("Slot " << srcId << " -> TRANSMITTING_STATE");
 
     // Exact times in seconds. A frame that follows the previous one back to
-    // back (it starts no later than the rounded end of that frame) starts at
-    // that frame's exact end, which may lie up to half a time step before or
-    // after now. After an idle time, a frame starts now.
+    // back (it starts no later than the rounded end of that frame and its gap)
+    // starts at their exact end, which may lie up to half a time step before
+    // or after now. After an idle time, a frame starts now.
     bool backToBack = Time::From(m_txEnd[srcId], Time::S) >= Simulator::Now();
     int64x64_t start = backToBack ? m_txEnd[srcId] : Simulator::Now().To(Time::S);
-    m_txEnd[srcId] = start + int64x64_t(p->GetSize() * 8) / int64x64_t(m_bps.GetBitRate());
+    // The frame takes its bytes on the wire; the interframe gap after it only
+    // delays the next frame, not the delivery of this one
+    LinkFraming framing(m_framing);
+    int64x64_t bitRate(m_bps.GetBitRate());
+    int64x64_t frameEnd = start + int64x64_t(framing.GetWireBytes(p->GetSize()) * 8) / bitRate;
+    m_txEnd[srcId] = frameEnd + int64x64_t(framing.GetGapBytes() * 8) / bitRate;
     if (txTime)
     {
-        *txTime = Time::From(m_txEnd[srcId], Time::S) - Simulator::Now();
+        *txTime = Time::From(frameEnd, Time::S) - Simulator::Now();
     }
     return true;
 }
