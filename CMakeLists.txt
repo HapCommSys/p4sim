@@ -158,3 +158,10 @@ build_lib(
         test/p4-packet-test-suite.cc
         ${examples_as_tests_sources}
 )
+
+# GetP4SimDir() (utils/format-utils.cc) returns the p4sim folder of this build,
+# so that every ns-3 tree reads its own P4 files
+set_source_files_properties(
+    utils/format-utils.cc
+    PROPERTIES COMPILE_DEFINITIONS "P4SIM_SOURCE_DIR=\"${CMAKE_CURRENT_SOURCE_DIR}\""
+)

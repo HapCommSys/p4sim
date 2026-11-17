@@ -183,7 +183,7 @@ main(int argc, char* argv[])
     std::string ns3_link_rate = "1000Mbps";
     bool enableTracePcap = true;
 
-    // Use P4SIM_DIR environment variable for portable paths
+    // P4 files: examples/p4src in the p4sim folder of this build
     std::string p4SrcDir = GetP4ExamplePath() + "/p4_basic";
     std::string p4JsonPath = p4SrcDir + "/p4_basic.json";
     std::string flowTableDirPath = p4SrcDir + "/";

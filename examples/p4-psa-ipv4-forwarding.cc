@@ -233,7 +233,7 @@ main(int argc, char* argv[])
     bool enablePcap = true;            ///< Enable PCAP trace output.
     int seednum = 1;                   ///< Run index for batch experiments.
 
-    // Paths resolved via P4SIM_DIR environment variable (portable).
+    // P4 files: examples/p4src in the p4sim folder of this build
     std::string p4SrcDir = GetP4ExamplePath() + "/simple_psa";
     std::string p4JsonPath = p4SrcDir + "/simple_psa.json";
     std::string flowTablePath =
