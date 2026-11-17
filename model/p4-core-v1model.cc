@@ -766,7 +766,7 @@ P4CoreV1model::HandleIngressPipeline()
                           field_list_id);
             if (config.mgid_valid)
             {
-                NS_LOG_DEBUG("Cloning packet to MGID {}" << config.mgid);
+                NS_LOG_DEBUG("Cloning packet to MGID " << config.mgid);
                 MulticastPacket(bm_packet_copy.get(), config.mgid);
             }
             if (config.egress_port_valid)
