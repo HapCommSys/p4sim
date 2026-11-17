@@ -1,0 +1,1625 @@
+{
+  "header_types" : [
+    {
+      "name" : "ethernet_t",
+      "id" : 0,
+      "fields" : [
+        ["dstAddr", 48, false],
+        ["srcAddr", 48, false],
+        ["etherType", 16, false]
+      ]
+    },
+    {
+      "name" : "psa_ingress_output_metadata_t",
+      "id" : 1,
+      "fields" : [
+        ["class_of_service", 8, false],
+        ["clone", 1, false],
+        ["clone_session_id", 16, false],
+        ["drop", 1, false],
+        ["resubmit", 1, false],
+        ["multicast_group", 32, false],
+        ["egress_port", 32, false],
+        ["_padding", 5, false]
+      ]
+    },
+    {
+      "name" : "psa_egress_output_metadata_t",
+      "id" : 2,
+      "fields" : [
+        ["clone", 1, false],
+        ["clone_session_id", 16, false],
+        ["drop", 1, false],
+        ["_padding_0", 6, false]
+      ]
+    },
+    {
+      "name" : "psa_egress_deparser_input_metadata_t",
+      "id" : 3,
+      "fields" : [
+        ["egress_port", 32, false]
+      ]
+    },
+    {
+      "name" : "psa_ingress_parser_input_metadata_t",
+      "id" : 4,
+      "fields" : [
+        ["ingress_port", 32, false],
+        ["packet_path", 32, false]
+      ]
+    },
+    {
+      "name" : "psa_ingress_input_metadata_t",
+      "id" : 5,
+      "fields" : [
+        ["ingress_port", 32, false],
+        ["packet_path", 32, false],
+        ["ingress_timestamp", 64, false],
+        ["parser_error", 32, false]
+      ]
+    },
+    {
+      "name" : "psa_egress_parser_input_metadata_t",
+      "id" : 6,
+      "fields" : [
+        ["egress_port", 32, false],
+        ["packet_path", 32, false]
+      ]
+    },
+    {
+      "name" : "psa_egress_input_metadata_t",
+      "id" : 7,
+      "fields" : [
+        ["class_of_service", 8, false],
+        ["egress_port", 32, false],
+        ["packet_path", 32, false],
+        ["instance", 16, false],
+        ["egress_timestamp", 64, false],
+        ["parser_error", 32, false]
+      ]
+    },
+    {
+      "name" : "scalars_t",
+      "id" : 8,
+      "fields" : [
+        ["psa_ingress_output_metadata_t.class_of_service", 8, false],
+        ["psa_ingress_output_metadata_t.clone", 1, false],
+        ["psa_ingress_output_metadata_t.clone_session_id", 16, false],
+        ["psa_ingress_output_metadata_t.drop", 1, false],
+        ["psa_ingress_output_metadata_t.resubmit", 1, false],
+        ["psa_ingress_output_metadata_t.multicast_group", 32, false],
+        ["psa_ingress_output_metadata_t.egress_port", 32, false],
+        ["psa_egress_output_metadata_t.clone", 1, false],
+        ["psa_egress_output_metadata_t.clone_session_id", 16, false],
+        ["psa_egress_output_metadata_t.drop", 1, false],
+        ["psa_egress_deparser_input_metadata_t.egress_port", 32, false],
+        ["psa_ingress_parser_input_metadata_t.ingress_port", 32, false],
+        ["psa_ingress_parser_input_metadata_t.packet_path", 32, false],
+        ["psa_ingress_input_metadata_t.ingress_port", 32, false],
+        ["psa_ingress_input_metadata_t.packet_path", 32, false],
+        ["psa_ingress_input_metadata_t.ingress_timestamp", 64, false],
+        ["psa_ingress_input_metadata_t.parser_error", 32, false],
+        ["psa_egress_parser_input_metadata_t.egress_port", 32, false],
+        ["psa_egress_parser_input_metadata_t.packet_path", 32, false],
+        ["psa_egress_input_metadata_t.class_of_service", 8, false],
+        ["psa_egress_input_metadata_t.egress_port", 32, false],
+        ["psa_egress_input_metadata_t.packet_path", 32, false],
+        ["psa_egress_input_metadata_t.instance", 16, false],
+        ["psa_egress_input_metadata_t.egress_timestamp", 64, false],
+        ["psa_egress_input_metadata_t.parser_error", 32, false],
+        ["_padding_1", 3, false]
+      ]
+    }
+  ],
+  "headers" : [
+    {
+      "name" : "ethernet",
+      "id" : 0,
+      "header_type" : "ethernet_t",
+      "metadata" : false,
+      "pi_omit" : true
+    },
+    {
+      "name" : "psa_ingress_output_metadata",
+      "id" : 1,
+      "header_type" : "psa_ingress_output_metadata_t",
+      "metadata" : true,
+      "pi_omit" : true
+    },
+    {
+      "name" : "psa_egress_output_metadata",
+      "id" : 2,
+      "header_type" : "psa_egress_output_metadata_t",
+      "metadata" : true,
+      "pi_omit" : true
+    },
+    {
+      "name" : "psa_egress_deparser_input_metadata",
+      "id" : 3,
+      "header_type" : "psa_egress_deparser_input_metadata_t",
+      "metadata" : true,
+      "pi_omit" : true
+    },
+    {
+      "name" : "psa_ingress_parser_input_metadata",
+      "id" : 4,
+      "header_type" : "psa_ingress_parser_input_metadata_t",
+      "metadata" : true,
+      "pi_omit" : true
+    },
+    {
+      "name" : "psa_ingress_input_metadata",
+      "id" : 5,
+      "header_type" : "psa_ingress_input_metadata_t",
+      "metadata" : true,
+      "pi_omit" : true
+    },
+    {
+      "name" : "psa_egress_parser_input_metadata",
+      "id" : 6,
+      "header_type" : "psa_egress_parser_input_metadata_t",
+      "metadata" : true,
+      "pi_omit" : true
+    },
+    {
+      "name" : "psa_egress_input_metadata",
+      "id" : 7,
+      "header_type" : "psa_egress_input_metadata_t",
+      "metadata" : true,
+      "pi_omit" : true
+    },
+    {
+      "name" : "scalars",
+      "id" : 8,
+      "header_type" : "scalars_t",
+      "metadata" : true,
+      "pi_omit" : true
+    }
+  ],
+  "header_stacks" : [],
+  "header_union_types" : [],
+  "header_unions" : [],
+  "header_union_stacks" : [],
+  "field_lists" : [],
+  "errors" : [],
+  "enums" : [
+    {
+      "name" : "PSA_PacketPath_t",
+      "entries" : [
+        ["NORMAL", 0],
+        ["NORMAL_UNICAST", 1],
+        ["NORMAL_MULTICAST", 2],
+        ["CLONE_I2E", 3],
+        ["CLONE_E2E", 4],
+        ["RESUBMIT", 5],
+        ["RECIRCULATE", 6]
+      ]
+    },
+    {
+      "name" : "PSA_MeterColor_t",
+      "entries" : [
+        ["RED", 0],
+        ["GREEN", 1],
+        ["YELLOW", 2]
+      ]
+    }
+  ],
+  "parsers" : [
+    {
+      "name" : "ingress_parser",
+      "id" : 0,
+      "init_state" : "start",
+      "parse_states" : [
+        {
+          "name" : "start",
+          "id" : 0,
+          "parser_ops" : [
+            {
+              "parameters" : [
+                {
+                  "type" : "regular",
+                  "value" : "ethernet"
+                }
+              ],
+              "op" : "extract"
+            }
+          ],
+          "transitions" : [
+            {
+              "type" : "default",
+              "value" : null,
+              "mask" : null,
+              "next_state" : null
+            }
+          ],
+          "transition_key" : []
+        }
+      ]
+    },
+    {
+      "name" : "egress_parser",
+      "id" : 1,
+      "init_state" : "start",
+      "parse_states" : [
+        {
+          "name" : "start",
+          "id" : 1,
+          "parser_ops" : [
+            {
+              "parameters" : [
+                {
+                  "type" : "regular",
+                  "value" : "ethernet"
+                }
+              ],
+              "op" : "extract"
+            }
+          ],
+          "transitions" : [
+            {
+              "type" : "default",
+              "value" : null,
+              "mask" : null,
+              "next_state" : null
+            }
+          ],
+          "transition_key" : []
+        }
+      ]
+    }
+  ],
+  "parse_vsets" : [],
+  "deparsers" : [
+    {
+      "name" : "ingress_deparser",
+      "id" : 0,
+      "source_info" : {
+        "filename" : "clone_psa.p4",
+        "line" : 69,
+        "column" : 8,
+        "source_fragment" : "IngressDeparserImpl"
+      },
+      "order" : ["ethernet"],
+      "primitives" : []
+    },
+    {
+      "name" : "egress_deparser",
+      "id" : 1,
+      "source_info" : {
+        "filename" : "clone_psa.p4",
+        "line" : 111,
+        "column" : 8,
+        "source_fragment" : "EgressDeparserImpl"
+      },
+      "order" : ["ethernet"],
+      "primitives" : []
+    }
+  ],
+  "meter_arrays" : [],
+  "counter_arrays" : [],
+  "register_arrays" : [],
+  "calculations" : [],
+  "learn_lists" : [],
+  "actions" : [
+    {
+      "name" : "send_to_port",
+      "id" : 0,
+      "runtime_data" : [],
+      "primitives" : [
+        {
+          "op" : "assign",
+          "parameters" : [
+            {
+              "type" : "field",
+              "value" : ["psa_ingress_output_metadata", "drop"]
+            },
+            {
+              "type" : "expression",
+              "value" : {
+                "type" : "expression",
+                "value" : {
+                  "op" : "b2d",
+                  "left" : null,
+                  "right" : {
+                    "type" : "bool",
+                    "value" : false
+                  }
+                }
+              }
+            }
+          ],
+          "source_info" : {
+            "filename" : "/usr/local/share/p4c/p4include/bmv2/psa.p4",
+            "line" : 421,
+            "column" : 56,
+            "source_fragment" : "meta, ..."
+          }
+        },
+        {
+          "op" : "assign",
+          "parameters" : [
+            {
+              "type" : "field",
+              "value" : ["psa_ingress_output_metadata", "multicast_group"]
+            },
+            {
+              "type" : "hexstr",
+              "value" : "0x00000000"
+            }
+          ],
+          "source_info" : {
+            "filename" : "/usr/local/share/p4c/p4include/bmv2/psa.p4",
+            "line" : 421,
+            "column" : 56,
+            "source_fragment" : "meta, ..."
+          }
+        },
+        {
+          "op" : "assign",
+          "parameters" : [
+            {
+              "type" : "field",
+              "value" : ["psa_ingress_output_metadata", "egress_port"]
+            },
+            {
+              "type" : "hexstr",
+              "value" : "0x00000001"
+            }
+          ],
+          "source_info" : {
+            "filename" : "/usr/local/share/p4c/p4include/bmv2/psa.p4",
+            "line" : 421,
+            "column" : 56,
+            "source_fragment" : "meta, ..."
+          }
+        }
+      ]
+    },
+    {
+      "name" : "ingress_drop",
+      "id" : 1,
+      "runtime_data" : [],
+      "primitives" : [
+        {
+          "op" : "assign",
+          "parameters" : [
+            {
+              "type" : "field",
+              "value" : ["psa_ingress_output_metadata", "drop"]
+            },
+            {
+              "type" : "expression",
+              "value" : {
+                "type" : "expression",
+                "value" : {
+                  "op" : "b2d",
+                  "left" : null,
+                  "right" : {
+                    "type" : "bool",
+                    "value" : true
+                  }
+                }
+              }
+            }
+          ],
+          "source_info" : {
+            "filename" : "/usr/local/share/p4c/p4include/bmv2/psa.p4",
+            "line" : 454,
+            "column" : 56,
+            "source_fragment" : "meta) ..."
+          }
+        }
+      ]
+    },
+    {
+      "name" : "clone_psa54",
+      "id" : 2,
+      "runtime_data" : [],
+      "primitives" : [
+        {
+          "op" : "assign",
+          "parameters" : [
+            {
+              "type" : "field",
+              "value" : ["psa_ingress_output_metadata", "clone"]
+            },
+            {
+              "type" : "expression",
+              "value" : {
+                "type" : "expression",
+                "value" : {
+                  "op" : "b2d",
+                  "left" : null,
+                  "right" : {
+                    "type" : "bool",
+                    "value" : true
+                  }
+                }
+              }
+            }
+          ],
+          "source_info" : {
+            "filename" : "clone_psa.p4",
+            "line" : 54,
+            "column" : 12,
+            "source_fragment" : "ostd.clone = true"
+          }
+        },
+        {
+          "op" : "assign",
+          "parameters" : [
+            {
+              "type" : "field",
+              "value" : ["psa_ingress_output_metadata", "clone_session_id"]
+            },
+            {
+              "type" : "hexstr",
+              "value" : "0x0005"
+            }
+          ],
+          "source_info" : {
+            "filename" : "clone_psa.p4",
+            "line" : 55,
+            "column" : 12,
+            "source_fragment" : "ostd.clone_session_id = (CloneSessionId_t) 16w5"
+          }
+        }
+      ]
+    },
+    {
+      "name" : "clone_psa57",
+      "id" : 3,
+      "runtime_data" : [],
+      "primitives" : [
+        {
+          "op" : "assign",
+          "parameters" : [
+            {
+              "type" : "field",
+              "value" : ["psa_ingress_output_metadata", "clone"]
+            },
+            {
+              "type" : "expression",
+              "value" : {
+                "type" : "expression",
+                "value" : {
+                  "op" : "b2d",
+                  "left" : null,
+                  "right" : {
+                    "type" : "bool",
+                    "value" : true
+                  }
+                }
+              }
+            }
+          ],
+          "source_info" : {
+            "filename" : "clone_psa.p4",
+            "line" : 57,
+            "column" : 12,
+            "source_fragment" : "ostd.clone = true"
+          }
+        },
+        {
+          "op" : "assign",
+          "parameters" : [
+            {
+              "type" : "field",
+              "value" : ["psa_ingress_output_metadata", "clone_session_id"]
+            },
+            {
+              "type" : "hexstr",
+              "value" : "0x0006"
+            }
+          ],
+          "source_info" : {
+            "filename" : "clone_psa.p4",
+            "line" : 58,
+            "column" : 12,
+            "source_fragment" : "ostd.clone_session_id = (CloneSessionId_t) 16w6"
+          }
+        }
+      ]
+    },
+    {
+      "name" : "clone_psa60",
+      "id" : 4,
+      "runtime_data" : [],
+      "primitives" : [
+        {
+          "op" : "assign",
+          "parameters" : [
+            {
+              "type" : "field",
+              "value" : ["psa_ingress_output_metadata", "clone"]
+            },
+            {
+              "type" : "expression",
+              "value" : {
+                "type" : "expression",
+                "value" : {
+                  "op" : "b2d",
+                  "left" : null,
+                  "right" : {
+                    "type" : "bool",
+                    "value" : true
+                  }
+                }
+              }
+            }
+          ],
+          "source_info" : {
+            "filename" : "clone_psa.p4",
+            "line" : 60,
+            "column" : 12,
+            "source_fragment" : "ostd.clone = true"
+          }
+        },
+        {
+          "op" : "assign",
+          "parameters" : [
+            {
+              "type" : "field",
+              "value" : ["psa_ingress_output_metadata", "clone_session_id"]
+            },
+            {
+              "type" : "hexstr",
+              "value" : "0x0000"
+            }
+          ],
+          "source_info" : {
+            "filename" : "clone_psa.p4",
+            "line" : 61,
+            "column" : 12,
+            "source_fragment" : "ostd.clone_session_id = (CloneSessionId_t) 16w0"
+          }
+        }
+      ]
+    },
+    {
+      "name" : "clone_psa51",
+      "id" : 5,
+      "runtime_data" : [],
+      "primitives" : [
+        {
+          "op" : "assign",
+          "parameters" : [
+            {
+              "type" : "field",
+              "value" : ["ethernet", "srcAddr"]
+            },
+            {
+              "type" : "expression",
+              "value" : {
+                "type" : "expression",
+                "value" : {
+                  "op" : "|",
+                  "left" : {
+                    "type" : "expression",
+                    "value" : {
+                      "op" : "&",
+                      "left" : {
+                        "type" : "field",
+                        "value" : ["ethernet", "srcAddr"]
+                      },
+                      "right" : {
+                        "type" : "hexstr",
+                        "value" : "0xffffffffff00"
+                      }
+                    }
+                  },
+                  "right" : {
+                    "type" : "hexstr",
+                    "value" : "0x0000000000ab"
+                  }
+                }
+              }
+            }
+          ],
+          "source_info" : {
+            "filename" : "clone_psa.p4",
+            "line" : 51,
+            "column" : 8,
+            "source_fragment" : "hdr.ethernet.srcAddr[7:0] = 0xab"
+          }
+        }
+      ]
+    },
+    {
+      "name" : "egress_drop",
+      "id" : 6,
+      "runtime_data" : [],
+      "primitives" : [
+        {
+          "op" : "assign",
+          "parameters" : [
+            {
+              "type" : "field",
+              "value" : ["psa_egress_output_metadata", "drop"]
+            },
+            {
+              "type" : "expression",
+              "value" : {
+                "type" : "expression",
+                "value" : {
+                  "op" : "b2d",
+                  "left" : null,
+                  "right" : {
+                    "type" : "bool",
+                    "value" : true
+                  }
+                }
+              }
+            }
+          ],
+          "source_info" : {
+            "filename" : "/usr/local/share/p4c/p4include/bmv2/psa.p4",
+            "line" : 467,
+            "column" : 54,
+            "source_fragment" : "meta) ..."
+          }
+        }
+      ]
+    },
+    {
+      "name" : "clone_psa97",
+      "id" : 7,
+      "runtime_data" : [],
+      "primitives" : [
+        {
+          "op" : "assign",
+          "parameters" : [
+            {
+              "type" : "field",
+              "value" : ["psa_egress_output_metadata", "clone"]
+            },
+            {
+              "type" : "expression",
+              "value" : {
+                "type" : "expression",
+                "value" : {
+                  "op" : "b2d",
+                  "left" : null,
+                  "right" : {
+                    "type" : "bool",
+                    "value" : true
+                  }
+                }
+              }
+            }
+          ],
+          "source_info" : {
+            "filename" : "clone_psa.p4",
+            "line" : 97,
+            "column" : 16,
+            "source_fragment" : "ostd.clone = true"
+          }
+        },
+        {
+          "op" : "assign",
+          "parameters" : [
+            {
+              "type" : "field",
+              "value" : ["psa_egress_output_metadata", "clone_session_id"]
+            },
+            {
+              "type" : "hexstr",
+              "value" : "0x0005"
+            }
+          ],
+          "source_info" : {
+            "filename" : "clone_psa.p4",
+            "line" : 98,
+            "column" : 16,
+            "source_fragment" : "ostd.clone_session_id = (CloneSessionId_t) 16w5"
+          }
+        }
+      ]
+    },
+    {
+      "name" : "clone_psa93",
+      "id" : 8,
+      "runtime_data" : [],
+      "primitives" : [
+        {
+          "op" : "assign",
+          "parameters" : [
+            {
+              "type" : "field",
+              "value" : ["ethernet", "dstAddr"]
+            },
+            {
+              "type" : "expression",
+              "value" : {
+                "type" : "expression",
+                "value" : {
+                  "op" : "|",
+                  "left" : {
+                    "type" : "expression",
+                    "value" : {
+                      "op" : "&",
+                      "left" : {
+                        "type" : "field",
+                        "value" : ["ethernet", "dstAddr"]
+                      },
+                      "right" : {
+                        "type" : "hexstr",
+                        "value" : "0xffffffff00ff"
+                      }
+                    }
+                  },
+                  "right" : {
+                    "type" : "hexstr",
+                    "value" : "0x000000000100"
+                  }
+                }
+              }
+            }
+          ],
+          "source_info" : {
+            "filename" : "clone_psa.p4",
+            "line" : 93,
+            "column" : 12,
+            "source_fragment" : "hdr.ethernet.dstAddr[15:8] = 1"
+          }
+        },
+        {
+          "op" : "assign",
+          "parameters" : [
+            {
+              "type" : "field",
+              "value" : ["ethernet", "dstAddr"]
+            },
+            {
+              "type" : "expression",
+              "value" : {
+                "type" : "expression",
+                "value" : {
+                  "op" : "|",
+                  "left" : {
+                    "type" : "expression",
+                    "value" : {
+                      "op" : "&",
+                      "left" : {
+                        "type" : "field",
+                        "value" : ["ethernet", "dstAddr"]
+                      },
+                      "right" : {
+                        "type" : "hexstr",
+                        "value" : "0xffffff00ffff"
+                      }
+                    }
+                  },
+                  "right" : {
+                    "type" : "hexstr",
+                    "value" : "0x000000ee0000"
+                  }
+                }
+              }
+            }
+          ],
+          "source_info" : {
+            "filename" : "clone_psa.p4",
+            "line" : 94,
+            "column" : 12,
+            "source_fragment" : "hdr.ethernet.dstAddr[23:16] = 0xee"
+          }
+        }
+      ]
+    },
+    {
+      "name" : "clone_psa104",
+      "id" : 9,
+      "runtime_data" : [],
+      "primitives" : [
+        {
+          "op" : "assign",
+          "parameters" : [
+            {
+              "type" : "field",
+              "value" : ["ethernet", "dstAddr"]
+            },
+            {
+              "type" : "expression",
+              "value" : {
+                "type" : "expression",
+                "value" : {
+                  "op" : "|",
+                  "left" : {
+                    "type" : "expression",
+                    "value" : {
+                      "op" : "&",
+                      "left" : {
+                        "type" : "field",
+                        "value" : ["ethernet", "dstAddr"]
+                      },
+                      "right" : {
+                        "type" : "hexstr",
+                        "value" : "0xffffffff00ff"
+                      }
+                    }
+                  },
+                  "right" : {
+                    "type" : "hexstr",
+                    "value" : "0x000000000300"
+                  }
+                }
+              }
+            }
+          ],
+          "source_info" : {
+            "filename" : "clone_psa.p4",
+            "line" : 104,
+            "column" : 12,
+            "source_fragment" : "hdr.ethernet.dstAddr[15:8] = 3"
+          }
+        }
+      ]
+    },
+    {
+      "name" : "clone_psa106",
+      "id" : 10,
+      "runtime_data" : [],
+      "primitives" : [
+        {
+          "op" : "assign",
+          "parameters" : [
+            {
+              "type" : "field",
+              "value" : ["ethernet", "dstAddr"]
+            },
+            {
+              "type" : "expression",
+              "value" : {
+                "type" : "expression",
+                "value" : {
+                  "op" : "|",
+                  "left" : {
+                    "type" : "expression",
+                    "value" : {
+                      "op" : "&",
+                      "left" : {
+                        "type" : "field",
+                        "value" : ["ethernet", "dstAddr"]
+                      },
+                      "right" : {
+                        "type" : "hexstr",
+                        "value" : "0xffffffff00ff"
+                      }
+                    }
+                  },
+                  "right" : {
+                    "type" : "hexstr",
+                    "value" : "0x000000000400"
+                  }
+                }
+              }
+            }
+          ],
+          "source_info" : {
+            "filename" : "clone_psa.p4",
+            "line" : 106,
+            "column" : 12,
+            "source_fragment" : "hdr.ethernet.dstAddr[15:8] = 4"
+          }
+        }
+      ]
+    }
+  ],
+  "pipelines" : [
+    {
+      "name" : "ingress",
+      "id" : 0,
+      "source_info" : {
+        "filename" : "clone_psa.p4",
+        "line" : 46,
+        "column" : 8,
+        "source_fragment" : "IngressImpl"
+      },
+      "init_table" : "tbl_send_to_port",
+      "tables" : [
+        {
+          "name" : "tbl_send_to_port",
+          "id" : 0,
+          "source_info" : {
+            "filename" : "clone_psa.p4",
+            "line" : 50,
+            "column" : 8,
+            "source_fragment" : "send_to_port(ostd, (PortId_t) 32w1)"
+          },
+          "key" : [],
+          "match_type" : "exact",
+          "type" : "simple",
+          "max_size" : 1024,
+          "with_counters" : false,
+          "support_timeout" : false,
+          "direct_meters" : null,
+          "action_ids" : [0],
+          "actions" : ["send_to_port"],
+          "base_default_next" : "tbl_clone_psa51",
+          "next_tables" : {
+            "send_to_port" : "tbl_clone_psa51"
+          },
+          "default_entry" : {
+            "action_id" : 0,
+            "action_const" : true,
+            "action_data" : [],
+            "action_entry_const" : true
+          }
+        },
+        {
+          "name" : "tbl_clone_psa51",
+          "id" : 1,
+          "source_info" : {
+            "filename" : "clone_psa.p4",
+            "line" : 51,
+            "column" : 34,
+            "source_fragment" : "="
+          },
+          "key" : [],
+          "match_type" : "exact",
+          "type" : "simple",
+          "max_size" : 1024,
+          "with_counters" : false,
+          "support_timeout" : false,
+          "direct_meters" : null,
+          "action_ids" : [5],
+          "actions" : ["clone_psa51"],
+          "base_default_next" : "node_4",
+          "next_tables" : {
+            "clone_psa51" : "node_4"
+          },
+          "default_entry" : {
+            "action_id" : 5,
+            "action_const" : true,
+            "action_data" : [],
+            "action_entry_const" : true
+          }
+        },
+        {
+          "name" : "tbl_clone_psa54",
+          "id" : 2,
+          "source_info" : {
+            "filename" : "clone_psa.p4",
+            "line" : 54,
+            "column" : 23,
+            "source_fragment" : "= true; ..."
+          },
+          "key" : [],
+          "match_type" : "exact",
+          "type" : "simple",
+          "max_size" : 1024,
+          "with_counters" : false,
+          "support_timeout" : false,
+          "direct_meters" : null,
+          "action_ids" : [2],
+          "actions" : ["clone_psa54"],
+          "base_default_next" : "node_10",
+          "next_tables" : {
+            "clone_psa54" : "node_10"
+          },
+          "default_entry" : {
+            "action_id" : 2,
+            "action_const" : true,
+            "action_data" : [],
+            "action_entry_const" : true
+          }
+        },
+        {
+          "name" : "tbl_clone_psa57",
+          "id" : 3,
+          "source_info" : {
+            "filename" : "clone_psa.p4",
+            "line" : 57,
+            "column" : 23,
+            "source_fragment" : "= true; ..."
+          },
+          "key" : [],
+          "match_type" : "exact",
+          "type" : "simple",
+          "max_size" : 1024,
+          "with_counters" : false,
+          "support_timeout" : false,
+          "direct_meters" : null,
+          "action_ids" : [3],
+          "actions" : ["clone_psa57"],
+          "base_default_next" : "node_10",
+          "next_tables" : {
+            "clone_psa57" : "node_10"
+          },
+          "default_entry" : {
+            "action_id" : 3,
+            "action_const" : true,
+            "action_data" : [],
+            "action_entry_const" : true
+          }
+        },
+        {
+          "name" : "tbl_clone_psa60",
+          "id" : 4,
+          "source_info" : {
+            "filename" : "clone_psa.p4",
+            "line" : 60,
+            "column" : 23,
+            "source_fragment" : "= true; ..."
+          },
+          "key" : [],
+          "match_type" : "exact",
+          "type" : "simple",
+          "max_size" : 1024,
+          "with_counters" : false,
+          "support_timeout" : false,
+          "direct_meters" : null,
+          "action_ids" : [4],
+          "actions" : ["clone_psa60"],
+          "base_default_next" : "node_10",
+          "next_tables" : {
+            "clone_psa60" : "node_10"
+          },
+          "default_entry" : {
+            "action_id" : 4,
+            "action_const" : true,
+            "action_data" : [],
+            "action_entry_const" : true
+          }
+        },
+        {
+          "name" : "tbl_ingress_drop",
+          "id" : 5,
+          "source_info" : {
+            "filename" : "clone_psa.p4",
+            "line" : 64,
+            "column" : 12,
+            "source_fragment" : "ingress_drop(ostd)"
+          },
+          "key" : [],
+          "match_type" : "exact",
+          "type" : "simple",
+          "max_size" : 1024,
+          "with_counters" : false,
+          "support_timeout" : false,
+          "direct_meters" : null,
+          "action_ids" : [1],
+          "actions" : ["ingress_drop"],
+          "base_default_next" : null,
+          "next_tables" : {
+            "ingress_drop" : null
+          },
+          "default_entry" : {
+            "action_id" : 1,
+            "action_const" : true,
+            "action_data" : [],
+            "action_entry_const" : true
+          }
+        }
+      ],
+      "action_profiles" : [],
+      "conditionals" : [
+        {
+          "name" : "node_4",
+          "id" : 0,
+          "source_info" : {
+            "filename" : "clone_psa.p4",
+            "line" : 53,
+            "column" : 12,
+            "source_fragment" : "op == 1 || op == 6"
+          },
+          "expression" : {
+            "type" : "expression",
+            "value" : {
+              "op" : "or",
+              "left" : {
+                "type" : "expression",
+                "value" : {
+                  "op" : "==",
+                  "left" : {
+                    "type" : "expression",
+                    "value" : {
+                      "op" : "&",
+                      "left" : {
+                        "type" : "field",
+                        "value" : ["ethernet", "etherType"]
+                      },
+                      "right" : {
+                        "type" : "hexstr",
+                        "value" : "0x0f"
+                      }
+                    }
+                  },
+                  "right" : {
+                    "type" : "hexstr",
+                    "value" : "0x01"
+                  }
+                }
+              },
+              "right" : {
+                "type" : "expression",
+                "value" : {
+                  "op" : "==",
+                  "left" : {
+                    "type" : "expression",
+                    "value" : {
+                      "op" : "&",
+                      "left" : {
+                        "type" : "field",
+                        "value" : ["ethernet", "etherType"]
+                      },
+                      "right" : {
+                        "type" : "hexstr",
+                        "value" : "0x0f"
+                      }
+                    }
+                  },
+                  "right" : {
+                    "type" : "hexstr",
+                    "value" : "0x06"
+                  }
+                }
+              }
+            }
+          },
+          "true_next" : "tbl_clone_psa54",
+          "false_next" : "node_6"
+        },
+        {
+          "name" : "node_6",
+          "id" : 1,
+          "source_info" : {
+            "filename" : "clone_psa.p4",
+            "line" : 56,
+            "column" : 19,
+            "source_fragment" : "op == 3"
+          },
+          "expression" : {
+            "type" : "expression",
+            "value" : {
+              "op" : "==",
+              "left" : {
+                "type" : "expression",
+                "value" : {
+                  "op" : "&",
+                  "left" : {
+                    "type" : "field",
+                    "value" : ["ethernet", "etherType"]
+                  },
+                  "right" : {
+                    "type" : "hexstr",
+                    "value" : "0x0f"
+                  }
+                }
+              },
+              "right" : {
+                "type" : "hexstr",
+                "value" : "0x03"
+              }
+            }
+          },
+          "true_next" : "tbl_clone_psa57",
+          "false_next" : "node_8"
+        },
+        {
+          "name" : "node_8",
+          "id" : 2,
+          "source_info" : {
+            "filename" : "clone_psa.p4",
+            "line" : 59,
+            "column" : 19,
+            "source_fragment" : "op == 5"
+          },
+          "expression" : {
+            "type" : "expression",
+            "value" : {
+              "op" : "==",
+              "left" : {
+                "type" : "expression",
+                "value" : {
+                  "op" : "&",
+                  "left" : {
+                    "type" : "field",
+                    "value" : ["ethernet", "etherType"]
+                  },
+                  "right" : {
+                    "type" : "hexstr",
+                    "value" : "0x0f"
+                  }
+                }
+              },
+              "right" : {
+                "type" : "hexstr",
+                "value" : "0x05"
+              }
+            }
+          },
+          "true_next" : "tbl_clone_psa60",
+          "false_next" : "node_10"
+        },
+        {
+          "name" : "node_10",
+          "id" : 3,
+          "source_info" : {
+            "filename" : "clone_psa.p4",
+            "line" : 63,
+            "column" : 12,
+            "source_fragment" : "op == 6"
+          },
+          "expression" : {
+            "type" : "expression",
+            "value" : {
+              "op" : "==",
+              "left" : {
+                "type" : "expression",
+                "value" : {
+                  "op" : "&",
+                  "left" : {
+                    "type" : "field",
+                    "value" : ["ethernet", "etherType"]
+                  },
+                  "right" : {
+                    "type" : "hexstr",
+                    "value" : "0x0f"
+                  }
+                }
+              },
+              "right" : {
+                "type" : "hexstr",
+                "value" : "0x06"
+              }
+            }
+          },
+          "false_next" : null,
+          "true_next" : "tbl_ingress_drop"
+        }
+      ]
+    },
+    {
+      "name" : "egress",
+      "id" : 1,
+      "source_info" : {
+        "filename" : "clone_psa.p4",
+        "line" : 88,
+        "column" : 8,
+        "source_fragment" : "EgressImpl"
+      },
+      "init_table" : "node_14",
+      "tables" : [
+        {
+          "name" : "tbl_clone_psa93",
+          "id" : 6,
+          "source_info" : {
+            "filename" : "clone_psa.p4",
+            "line" : 93,
+            "column" : 39,
+            "source_fragment" : "= 1; ..."
+          },
+          "key" : [],
+          "match_type" : "exact",
+          "type" : "simple",
+          "max_size" : 1024,
+          "with_counters" : false,
+          "support_timeout" : false,
+          "direct_meters" : null,
+          "action_ids" : [8],
+          "actions" : ["clone_psa93"],
+          "base_default_next" : "node_16",
+          "next_tables" : {
+            "clone_psa93" : "node_16"
+          },
+          "default_entry" : {
+            "action_id" : 8,
+            "action_const" : true,
+            "action_data" : [],
+            "action_entry_const" : true
+          }
+        },
+        {
+          "name" : "tbl_clone_psa97",
+          "id" : 7,
+          "source_info" : {
+            "filename" : "clone_psa.p4",
+            "line" : 97,
+            "column" : 27,
+            "source_fragment" : "= true; ..."
+          },
+          "key" : [],
+          "match_type" : "exact",
+          "type" : "simple",
+          "max_size" : 1024,
+          "with_counters" : false,
+          "support_timeout" : false,
+          "direct_meters" : null,
+          "action_ids" : [7],
+          "actions" : ["clone_psa97"],
+          "base_default_next" : "node_18",
+          "next_tables" : {
+            "clone_psa97" : "node_18"
+          },
+          "default_entry" : {
+            "action_id" : 7,
+            "action_const" : true,
+            "action_data" : [],
+            "action_entry_const" : true
+          }
+        },
+        {
+          "name" : "tbl_egress_drop",
+          "id" : 8,
+          "source_info" : {
+            "filename" : "clone_psa.p4",
+            "line" : 101,
+            "column" : 16,
+            "source_fragment" : "egress_drop(ostd)"
+          },
+          "key" : [],
+          "match_type" : "exact",
+          "type" : "simple",
+          "max_size" : 1024,
+          "with_counters" : false,
+          "support_timeout" : false,
+          "direct_meters" : null,
+          "action_ids" : [6],
+          "actions" : ["egress_drop"],
+          "base_default_next" : null,
+          "next_tables" : {
+            "egress_drop" : null
+          },
+          "default_entry" : {
+            "action_id" : 6,
+            "action_const" : true,
+            "action_data" : [],
+            "action_entry_const" : true
+          }
+        },
+        {
+          "name" : "tbl_clone_psa104",
+          "id" : 9,
+          "source_info" : {
+            "filename" : "clone_psa.p4",
+            "line" : 104,
+            "column" : 39,
+            "source_fragment" : "="
+          },
+          "key" : [],
+          "match_type" : "exact",
+          "type" : "simple",
+          "max_size" : 1024,
+          "with_counters" : false,
+          "support_timeout" : false,
+          "direct_meters" : null,
+          "action_ids" : [9],
+          "actions" : ["clone_psa104"],
+          "base_default_next" : null,
+          "next_tables" : {
+            "clone_psa104" : null
+          },
+          "default_entry" : {
+            "action_id" : 9,
+            "action_const" : true,
+            "action_data" : [],
+            "action_entry_const" : true
+          }
+        },
+        {
+          "name" : "tbl_clone_psa106",
+          "id" : 10,
+          "source_info" : {
+            "filename" : "clone_psa.p4",
+            "line" : 106,
+            "column" : 39,
+            "source_fragment" : "="
+          },
+          "key" : [],
+          "match_type" : "exact",
+          "type" : "simple",
+          "max_size" : 1024,
+          "with_counters" : false,
+          "support_timeout" : false,
+          "direct_meters" : null,
+          "action_ids" : [10],
+          "actions" : ["clone_psa106"],
+          "base_default_next" : null,
+          "next_tables" : {
+            "clone_psa106" : null
+          },
+          "default_entry" : {
+            "action_id" : 10,
+            "action_const" : true,
+            "action_data" : [],
+            "action_entry_const" : true
+          }
+        }
+      ],
+      "action_profiles" : [],
+      "conditionals" : [
+        {
+          "name" : "node_14",
+          "id" : 4,
+          "source_info" : {
+            "filename" : "clone_psa.p4",
+            "line" : 92,
+            "column" : 12,
+            "source_fragment" : "istd.packet_path == PSA_PacketPath_t.NORMAL_UNICAST"
+          },
+          "expression" : {
+            "type" : "expression",
+            "value" : {
+              "op" : "==",
+              "left" : {
+                "type" : "field",
+                "value" : ["psa_egress_input_metadata", "packet_path"]
+              },
+              "right" : {
+                "type" : "hexstr",
+                "value" : "0x00000001"
+              }
+            }
+          },
+          "true_next" : "tbl_clone_psa93",
+          "false_next" : "node_20"
+        },
+        {
+          "name" : "node_16",
+          "id" : 5,
+          "source_info" : {
+            "filename" : "clone_psa.p4",
+            "line" : 96,
+            "column" : 16,
+            "source_fragment" : "op == 2 || op == 7"
+          },
+          "expression" : {
+            "type" : "expression",
+            "value" : {
+              "op" : "or",
+              "left" : {
+                "type" : "expression",
+                "value" : {
+                  "op" : "==",
+                  "left" : {
+                    "type" : "expression",
+                    "value" : {
+                      "op" : "&",
+                      "left" : {
+                        "type" : "field",
+                        "value" : ["ethernet", "etherType"]
+                      },
+                      "right" : {
+                        "type" : "hexstr",
+                        "value" : "0x0f"
+                      }
+                    }
+                  },
+                  "right" : {
+                    "type" : "hexstr",
+                    "value" : "0x02"
+                  }
+                }
+              },
+              "right" : {
+                "type" : "expression",
+                "value" : {
+                  "op" : "==",
+                  "left" : {
+                    "type" : "expression",
+                    "value" : {
+                      "op" : "&",
+                      "left" : {
+                        "type" : "field",
+                        "value" : ["ethernet", "etherType"]
+                      },
+                      "right" : {
+                        "type" : "hexstr",
+                        "value" : "0x0f"
+                      }
+                    }
+                  },
+                  "right" : {
+                    "type" : "hexstr",
+                    "value" : "0x07"
+                  }
+                }
+              }
+            }
+          },
+          "true_next" : "tbl_clone_psa97",
+          "false_next" : "node_18"
+        },
+        {
+          "name" : "node_18",
+          "id" : 6,
+          "source_info" : {
+            "filename" : "clone_psa.p4",
+            "line" : 100,
+            "column" : 16,
+            "source_fragment" : "op == 7"
+          },
+          "expression" : {
+            "type" : "expression",
+            "value" : {
+              "op" : "==",
+              "left" : {
+                "type" : "expression",
+                "value" : {
+                  "op" : "&",
+                  "left" : {
+                    "type" : "field",
+                    "value" : ["ethernet", "etherType"]
+                  },
+                  "right" : {
+                    "type" : "hexstr",
+                    "value" : "0x0f"
+                  }
+                }
+              },
+              "right" : {
+                "type" : "hexstr",
+                "value" : "0x07"
+              }
+            }
+          },
+          "false_next" : null,
+          "true_next" : "tbl_egress_drop"
+        },
+        {
+          "name" : "node_20",
+          "id" : 7,
+          "source_info" : {
+            "filename" : "clone_psa.p4",
+            "line" : 103,
+            "column" : 19,
+            "source_fragment" : "istd.packet_path == PSA_PacketPath_t.CLONE_I2E"
+          },
+          "expression" : {
+            "type" : "expression",
+            "value" : {
+              "op" : "==",
+              "left" : {
+                "type" : "field",
+                "value" : ["psa_egress_input_metadata", "packet_path"]
+              },
+              "right" : {
+                "type" : "hexstr",
+                "value" : "0x00000003"
+              }
+            }
+          },
+          "true_next" : "tbl_clone_psa104",
+          "false_next" : "node_22"
+        },
+        {
+          "name" : "node_22",
+          "id" : 8,
+          "source_info" : {
+            "filename" : "clone_psa.p4",
+            "line" : 105,
+            "column" : 19,
+            "source_fragment" : "istd.packet_path == PSA_PacketPath_t.CLONE_E2E"
+          },
+          "expression" : {
+            "type" : "expression",
+            "value" : {
+              "op" : "==",
+              "left" : {
+                "type" : "field",
+                "value" : ["psa_egress_input_metadata", "packet_path"]
+              },
+              "right" : {
+                "type" : "hexstr",
+                "value" : "0x00000004"
+              }
+            }
+          },
+          "false_next" : null,
+          "true_next" : "tbl_clone_psa106"
+        }
+      ]
+    }
+  ],
+  "checksums" : [],
+  "force_arith" : [],
+  "extern_instances" : [],
+  "field_aliases" : [],
+  "program" : "clone_psa.p4",
+  "__meta__" : {
+    "version" : [2, 23],
+    "compiler" : "https://github.com/p4lang/p4c"
+  }
+}

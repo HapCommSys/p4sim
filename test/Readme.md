@@ -55,7 +55,7 @@ with three ports, once per architecture: `forward_v1model.p4`, `forward_pna.p4` 
 `forward_psa.p4` behave the same. [`p4src/priority`](p4src/priority) checks the
 priority queues of v1model, [`p4src/resubmit`](p4src/resubmit) and
 [`p4src/recirculate`](p4src/recirculate) its resubmit and recirculation,
-[`p4src/clone`](p4src/clone) its clones (also to a multicast group), [`p4src/primitives`](p4src/primitives)
+[`p4src/clone`](p4src/clone) its clones (also to a multicast group) and those of PSA, [`p4src/primitives`](p4src/primitives)
 `digest()`, `hash()` with max 0 and `random()` with lo > hi, and [`p4src/lag`](p4src/lag)
 the LAG member that its multicast picks. The format is a subset of p4c's STF:
 

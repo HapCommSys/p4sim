@@ -76,7 +76,8 @@ channel. It has all of main's PRs up to #55 (merged in "phase B", last in #60).
     cancelled when a switch is destroyed (v1model twice, PSA once). They only
     matter for a switch destroyed in the same instant.
   - PNA and the pipeline core ignore `PipelineDelay`.
-  - PSA clones and mirroring sessions have no test.
+  - PSA clones to a multicast group have no test: the `.stf` files of
+    `p4-packet` configure multicast on v1model only.
   - There is no `psa_switch` (or PNA) Thrift service, so the target-specific
     commands of `psa_switch_CLI` do not work.
   - `P4Controller` works on v1model switches only.

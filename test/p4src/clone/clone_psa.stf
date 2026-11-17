@@ -1,0 +1,30 @@
+# Cloning on PSA, as in BMv2's psa_switch. Mirroring sessions 5 and 0 send
+# their clones to port 2; session 6 does not exist. The low 4 bits of the
+# EtherType select the operation (see clone_psa.p4). The ingress writes ab into
+# the low byte of the source MAC; an ingress clone is the frame as it entered
+# the ingress, without ab. The egress writes the packet path into bits 15:8 of
+# the destination MAC (1 = normal unicast, 3 = ingress clone, 4 = egress
+# clone), and ee into bits 23:16 of a normal frame, which an egress clone keeps.
+
+mirroring_add 5 2
+mirroring_add 0 2
+
+packet 0 000000000001 000000000000 9000  00000001   # A, no clone
+packet 0 000000000001 000000000000 9001  00000002   # B, clone at the ingress
+packet 0 000000000001 000000000000 9002  00000003   # C, clone at the egress
+packet 0 000000000001 000000000000 9003  00000004   # D, clone to session 6
+packet 0 000000000001 000000000000 9005  00000006   # E, clone at the ingress to session 0
+packet 0 000000000001 000000000000 9006  00000007   # F, clone at the ingress, then dropped
+packet 0 000000000001 000000000000 9007  00000008   # G, clone at the egress, then dropped
+
+#        dst          src          type
+expect 1 000000ee0101 0000000000ab 9000  00000001   # the original frames, except F and G
+expect 1 000000ee0101 0000000000ab 9001  00000002
+expect 1 000000ee0101 0000000000ab 9002  00000003
+expect 1 000000ee0101 0000000000ab 9003  00000004
+expect 1 000000ee0101 0000000000ab 9005  00000006
+expect 2 000000000301 000000000000 9001  00000002   # B's clone: ingress clone, as received
+expect 2 000000000301 000000000000 9005  00000006   # E's clone
+expect 2 000000000301 000000000000 9006  00000007   # F's clone, although F was dropped
+expect 2 000000ee0401 0000000000ab 9002  00000003   # C's clone: egress clone, as sent
+expect 2 000000ee0401 0000000000ab 9007  00000008   # G's clone, although G was dropped
