@@ -72,9 +72,6 @@ channel. It has all of main's PRs up to #55 (merged in "phase B", last in #60).
   - PNA loses frames on a congested port: host 0 sends 20 frames, one per
     microsecond, to a 1 Gbps port (8.1 us per frame); only 3 arrive, the
     second 888 ns late. Found while testing #59; it happens without #59 too.
-  - Three zero-delay `Simulator::ScheduleNow(PortTxComplete)` events are not
-    cancelled when a switch is destroyed (v1model twice, PSA once). They only
-    matter for a switch destroyed in the same instant.
   - PNA and the pipeline core ignore `PipelineDelay`.
   - PSA clones and mirroring sessions have no test.
   - There is no `psa_switch` (or PNA) Thrift service, so the target-specific

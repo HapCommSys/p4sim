@@ -25,7 +25,7 @@ full BMv2 log to `/tmp`.
 | `p4sim` | v1model, PSA and PNA load their program; Thrift ports; `BmLogLevel` | yes |
 | `p4-controller` | flow entries, action profiles and mirroring sessions, read back from the switch; the commands of `simple_switch_CLI` for mirroring, queues and time | yes, and `simple_switch_CLI` |
 | `p4-packet` | frames sent into a switch and the frames that leave it, on v1model, PNA and PSA | yes |
-| `p4-egress` | switched-Ethernet ports: a congested port sends back to back at its line rate; a switch with a full egress queue can be destroyed | yes |
+| `p4-egress` | switched-Ethernet ports: a congested port sends back to back at its line rate; a switch with a full egress queue, or one whose port just refused a frame, can be destroyed | yes |
 | `p4-switch-rate` | `SwitchRate` limits the whole pipeline, 0 means no limit, a full input buffer drops | yes |
 | `p4-pipeline-delay` | `PipelineDelay` delays every packet by the same time without lowering the throughput (default egress path, VOQ, PSA, with `SwitchRate`, on a congested port); a switch with packets in its pipeline can be destroyed | yes |
 | `p4-bridge-port` | CSMA and point-to-point bridge ports next to a switched-Ethernet port | yes |
