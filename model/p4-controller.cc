@@ -173,9 +173,9 @@ void P4Controller::AddFlowEntry(uint32_t index, const std::string &tableName,
   int result = core->AddFlowEntry(tableName, matchKey, actionName,
                                   std::move(actionData), &handle, priority);
   if (result == 0) {
-    std::cout << "Successfully added flow entry to table [" << tableName
-              << "] on switch " << index << " (handle = " << handle << ")"
-              << std::endl;
+    NS_LOG_INFO("Added flow entry to table [" << tableName << "] on switch "
+                                               << index << " (handle = " << handle
+                                               << ")");
   } else {
     std::cout << "Failed to add flow entry to table [" << tableName
               << "] on switch " << index << ", result code = " << result
@@ -343,7 +343,7 @@ void P4Controller::SetEntryTtl(uint32_t index, const std::string &tableName,
 void P4Controller::AddActionProfileMember(
     uint32_t index, const std::string &profileName,
     const std::string &actionName, bm::ActionData &&actionData,
-    bm::ActionProfile::mbr_hdl_t mbrHandle) {
+    bm::ActionProfile::mbr_hdl_t &mbrHandle) {
   NS_LOG_FUNCTION(this << index << profileName << actionName);
 
   if (index >= m_connectedSwitches.size()) {
@@ -497,9 +497,9 @@ void P4Controller::AddMemberToGroup(uint32_t index,
 
   int status = core->AddMemberToGroup(profileName, memberHandle, groupHandle);
   if (status == 0) {
-    std::cout << "Added member " << memberHandle << " to group " << groupHandle
-              << " in action profile [" << profileName << "] on switch "
-              << index;
+    NS_LOG_INFO("Added member " << memberHandle << " to group " << groupHandle
+                                << " in action profile [" << profileName
+                                << "] on switch " << index);
   } else {
     NS_LOG_ERROR("Failed to add member "
                  << memberHandle << " to group " << groupHandle

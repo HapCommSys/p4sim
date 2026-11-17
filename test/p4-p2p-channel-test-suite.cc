@@ -143,7 +143,7 @@ public:
   PointToPointTestSuite ();
 };
 
-PointToPointTestSuite::PointToPointTestSuite () : TestSuite ("p4-p2p-channel-test-suite", UNIT)
+PointToPointTestSuite::PointToPointTestSuite () : TestSuite ("p4-p2p-channel", UNIT)
 {
   AddTestCase (new PointToPointTest, TestCase::QUICK);
 }

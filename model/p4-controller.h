@@ -188,12 +188,12 @@ public:
    * @param profileName The name of the action profile.
    * @param actionName The name of the action associated with the member.
    * @param actionData The parameters for the action.
-   * @param mbrHandle The handle of the member to add.
+   * @param mbrHandle Set to the handle of the new member.
    */
   void AddActionProfileMember(uint32_t index, const std::string &profileName,
                               const std::string &actionName,
                               bm::ActionData &&actionData,
-                              bm::ActionProfile::mbr_hdl_t mbrHandle);
+                              bm::ActionProfile::mbr_hdl_t &mbrHandle);
 
   /**
    * @brief Deletes a member from an action profile on a switch.

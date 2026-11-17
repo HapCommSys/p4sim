@@ -98,6 +98,28 @@ P4SwitchNetDevice::GetTypeId()
                                              &P4SwitchNetDevice::SetFlowTablePath),
                           MakeStringChecker())
 
+            .AddAttribute(
+                "BmLogLevel",
+                "Level of the BMv2 pipeline log written to "
+                "/tmp/bmv2-<thrift port>-pipeline.log: trace, debug, info, notice, "
+                "warn, error, critical, alert, emerg or off. With off, no log file "
+                "is written, which also speeds up the simulation. The BMv2 logger "
+                "is shared by all switches of a simulation, so use the same level "
+                "for all of them (e.g. with Config::SetDefault).",
+                StringValue("trace"),
+                MakeStringAccessor(&P4SwitchNetDevice::m_bmLogLevel),
+                MakeStringChecker())
+
+            .AddAttribute(
+                "ThriftPort",
+                "Thrift port of the switch, used by the runtime CLI that loads "
+                "the flow table. 0 picks the first free port, starting at "
+                "$P4SIM_THRIFT_PORT_BASE (9090 if unset). A port is free if no "
+                "other p4sim process has reserved it and no program listens on it.",
+                UintegerValue(0),
+                MakeUintegerAccessor(&P4SwitchNetDevice::m_thriftPort),
+                MakeUintegerChecker<uint16_t>())
+
             .AddAttribute("InputBufferSizeLow",
                           "Normal-priority input buffer depth (packets).",
                           UintegerValue(128),
@@ -196,6 +218,8 @@ P4SwitchNetDevice::P4SwitchNetDevice()
     : m_enableTracing(false),
       m_enableSwap(false),
       m_switchArch(P4SWITCH_ARCH_V1MODEL),
+      m_bmLogLevel("trace"),
+      m_thriftPort(0),
       m_v1modelSwitch(nullptr),
       m_psaSwitch(nullptr),
       m_pnaNic(nullptr),
@@ -248,6 +272,7 @@ P4SwitchNetDevice::DoInitialize()
                                                           m_InputBufferSizeLow,
                                                           m_InputBufferSizeHigh,
                                                           m_queueBufferSize);
+        ConfigureCore(*m_v1modelSwitch);
         m_v1modelSwitch->InitializeSwitchFromP4Json(m_jsonPath);
         m_v1modelSwitch->LoadFlowTableToSwitch(m_flowTablePath);
         m_v1modelSwitch->SetEnableVoqFabric(m_enableVoqFabric);
@@ -263,6 +288,7 @@ P4SwitchNetDevice::DoInitialize()
                                                   m_switchRate,
                                                   m_InputBufferSizeLow,
                                                   m_queueBufferSize);
+        ConfigureCore(*m_psaSwitch);
         m_psaSwitch->InitializeSwitchFromP4Json(m_jsonPath);
         m_psaSwitch->LoadFlowTableToSwitch(m_flowTablePath);
         SetPortTxDoneCallback(MakeCallback(&P4CorePsa::PortTxComplete, m_psaSwitch.get()));
@@ -272,6 +298,7 @@ P4SwitchNetDevice::DoInitialize()
     case P4NIC_ARCH_PNA:
         NS_LOG_DEBUG("Initialising PNA NIC");
         m_pnaNic = std::make_unique<P4PnaNic>(this, m_enableSwap);
+        ConfigureCore(*m_pnaNic);
         m_pnaNic->InitializeSwitchFromP4Json(m_jsonPath);
         m_pnaNic->start_and_return_();
         break;
@@ -279,6 +306,7 @@ P4SwitchNetDevice::DoInitialize()
     case P4SWITCH_ARCH_PIPELINE:
         NS_LOG_DEBUG("Initialising pipeline core");
         m_p4Pipeline = std::make_unique<P4CorePipeline>(this, m_enableSwap, m_enableTracing);
+        ConfigureCore(*m_p4Pipeline);
         m_p4Pipeline->InitializeSwitchFromP4Json(m_jsonPath);
         m_p4Pipeline->LoadFlowTableToSwitch(m_flowTablePath);
         m_p4Pipeline->start_and_return_();
@@ -769,6 +797,35 @@ P4CoreV1model*
 P4SwitchNetDevice::GetV1ModelCore() const
 {
     return m_v1modelSwitch.get();
+}
+
+void
+P4SwitchNetDevice::ConfigureCore(P4SwitchCore& core) const
+{
+    core.SetBmLogLevel(m_bmLogLevel);
+    core.SetThriftPort(m_thriftPort);
+}
+
+int
+P4SwitchNetDevice::GetThriftPort() const
+{
+    if (m_v1modelSwitch)
+    {
+        return m_v1modelSwitch->GetThriftPort();
+    }
+    if (m_psaSwitch)
+    {
+        return m_psaSwitch->GetThriftPort();
+    }
+    if (m_pnaNic)
+    {
+        return m_pnaNic->GetThriftPort();
+    }
+    if (m_p4Pipeline)
+    {
+        return m_p4Pipeline->GetThriftPort();
+    }
+    return 0;
 }
 
 void

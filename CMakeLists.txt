@@ -138,10 +138,11 @@ build_lib(
         test/p4-switch-rate-test-suite.cc
         test/switched-ethernet-host-test-suite.cc
         test/switched-ethernet-tc-test-suite.cc
-        # test/p4-controller-test-suite.cc
-        #  test/p4sim-test-suite.cc
+        test/p4-controller-test-suite.cc
+        test/p4sim-test-suite.cc
         test/format-utils-test-suite.cc
-        #  test/p4-topology-reader-test-suite.cc
-        #  test/p4-p2p-channel-test-suite.cc
+        test/p4-topology-reader-test-suite.cc
+        test/p4-p2p-channel-test-suite.cc
+        test/p4-queue-test-suite.cc
         ${examples_as_tests_sources}
 )

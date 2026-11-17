@@ -150,6 +150,8 @@ The forwarding behaviour is defined by the P4 program and its flow-table configu
 | `InputBufferSizeHigh` | Input buffer size for high-priority (internal) packets |
 | `EnableTracing` | Enable basic throughput tracing |
 | `EnableSwap` | Enable runtime swapping of the P4 configuration |
+| `BmLogLevel` | Level of the BMv2 pipeline log in `/tmp/bmv2-<thrift port>-pipeline.log`: `trace` (default) ... `off`. `off` writes no log and speeds up the simulation |
+| `ThriftPort` | Thrift port for the runtime CLI. `0` (default) picks the first free port from `$P4SIM_THRIFT_PORT_BASE` (9090), so simulations can run in parallel |
 
 > **Notes:**
 > 1. When using a CSMA channel, the P4 program must handle ARP explicitly.

@@ -38,6 +38,9 @@ int
 main(int argc, char* argv[])
 {
     LogComponentEnable("P4L3Router", LOG_LEVEL_INFO);
+
+    CommandLine cmd(__FILE__);
+    cmd.Parse(argc, argv);
     Config::SetDefault("ns3::ArpCache::DeadTimeout", TimeValue(Seconds(0)));
 
     // P4 parameters
