@@ -23,7 +23,7 @@ full BMv2 log to `/tmp`.
 | `p4-p2p-channel` | the P4 point-to-point channel | no |
 | `p4-queue` | egress queue: capacity, rate, FIFO, per-port rate, priorities | no |
 | `p4sim` | v1model, PSA and PNA load their program; Thrift ports; `BmLogLevel` | yes |
-| `p4-controller` | flow entries and action profiles, read back from the switch | yes, and `simple_switch_CLI` |
+| `p4-controller` | flow entries, action profiles and mirroring sessions, read back from the switch | yes, and `simple_switch_CLI` |
 | `p4-packet` | frames sent into a switch and the frames that leave it, on v1model, PNA and PSA | yes |
 | `p4-egress` | switched-Ethernet ports: a congested port sends back to back at its line rate; a switch with a full egress queue can be destroyed | yes |
 | `p4-switch-rate` | `SwitchRate` limits the whole pipeline, 0 means no limit, a full input buffer drops | yes |
