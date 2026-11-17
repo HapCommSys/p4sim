@@ -110,10 +110,6 @@ channel. It has all of main's PRs up to #55 (merged in "phase B", last in #60).
   without synchronisation. Proposal: a locked registry of live cores that the
   handlers check; document that the CLI is for before and after the simulation,
   and `P4Controller` for changes during it.
-- **The P4 point-to-point device** (`switch_channel`) gives the switch its own
-  port's MAC address as a frame's destination, not the frame's. Programs that
-  forward by IP address are not affected; programs that forward by destination
-  MAC are.
 - **Smaller gaps, to do when a test or user needs them:**
   - byte queue limits on host devices (`TrafficControlHelper::SetQueueLimits()`)
     should work since #42, but are not tested;
