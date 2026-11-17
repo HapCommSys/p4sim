@@ -112,7 +112,8 @@ P4CoreV1model::P4CoreV1model(P4SwitchNetDevice* net_device,
       m_packetId(0),
       m_switchRate(packet_rate),
       m_nbQueuesPerPort(nb_queues_per_port),
-      // InputBuffer takes the high-priority capacity first
+      // InputBuffer takes the capacity of the resubmit/recirculate queue first,
+      // then that of the queue for normal packets
       input_buffer(std::make_unique<InputBuffer>(input_buffer_size_high, input_buffer_size_low)),
       egress_buffer(m_nbEgressThreads,
                     queue_buffer_size,

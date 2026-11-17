@@ -121,13 +121,16 @@ P4SwitchNetDevice::GetTypeId()
                 MakeUintegerChecker<uint16_t>())
 
             .AddAttribute("InputBufferSizeLow",
-                          "Normal-priority input buffer depth (packets).",
+                          "Capacity of the input buffer for the packets received on the "
+                          "ports, in packets (PSA: for all packets that enter the ingress).",
                           UintegerValue(128),
                           MakeUintegerAccessor(&P4SwitchNetDevice::m_InputBufferSizeLow),
                           MakeUintegerChecker<size_t>())
 
             .AddAttribute("InputBufferSizeHigh",
-                          "High-priority input buffer depth (packets).",
+                          "v1model: capacity of the input buffer for resubmitted and "
+                          "recirculated packets, in packets. The ingress takes these "
+                          "before the packets received on the ports.",
                           UintegerValue(128),
                           MakeUintegerAccessor(&P4SwitchNetDevice::m_InputBufferSizeHigh),
                           MakeUintegerChecker<size_t>())
