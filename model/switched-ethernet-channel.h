@@ -25,6 +25,7 @@
 
 #include "ns3/channel.h"
 #include "ns3/data-rate.h"
+#include "ns3/link-framing.h"
 #include "ns3/nstime.h"
 #include "ns3/ptr.h"
 
@@ -174,9 +175,13 @@ class SwitchedEthernetChannel : public Channel
      * while the slot is still serialising a frame (TRANSMITTING_STATE), not
      * while it is merely PROPAGATING.
      *
-     * The serialisation time is computed here, for both kinds of sender. The
-     * simulator rounds every event time to its resolution (1 ns by default),
-     * so the channel keeps the exact end of the last frame of each slot: a
+     * The serialisation time is computed here, for both kinds of sender: the
+     * frame's bytes on the wire (see the Framing attribute and LinkFraming) at
+     * the data rate. After the frame, the slot stays idle for the interframe
+     * gap of the framing: a frame that follows starts after the gap, but the
+     * gap does not delay the delivery of the frame before it. The simulator
+     * rounds every event time to its resolution (1 ns by default), so the
+     * channel keeps the exact end of the last frame and gap of each slot: a
      * frame that follows back to back starts there, and the rounding does not
      * add up. Each frame ends within half a time step of its exact end.
      *
@@ -263,9 +268,12 @@ class SwitchedEthernetChannel : public Channel
     /// PROPAGATING_STATE from a positive count.
     uint32_t m_propCount[2];
 
-    /// Exact end of the last frame serialised on each slot, in seconds (not
-    /// rounded to the simulator's resolution; see TransmitStart())
+    /// Exact end of the last frame serialised on each slot and of its
+    /// interframe gap, in seconds (not rounded to the simulator's resolution;
+    /// see TransmitStart())
     int64x64_t m_txEnd[2];
+
+    LinkFraming::Type m_framing; ///< "Framing" attribute: what the link adds to each frame
 };
 
 } // namespace ns3

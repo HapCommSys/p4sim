@@ -9,23 +9,6 @@ Branches: `main` is the released line. `switch_channel` is the development line
 with the event-driven egress, the traffic manager (TM) and the switched-Ethernet
 channel. It has all of main's PRs up to #55 (merged in "phase B", last in #60).
 
-## Next
-
-### Ethernet overhead on the switched-Ethernet channel
-- **Problem.** The channel sends a frame in (frame size × 8 / rate). It does not
-  count the preamble and start-of-frame delimiter (8 bytes), the FCS (4 bytes)
-  and the interframe gap (12 bytes). So a 1400-byte UDP payload reaches
-  970.93 Mbps on a 1 Gbps link (97.09 % of the line rate), where real Gigabit
-  Ethernet gives about 95.5 %.
-- **Also.** The TM estimates when a frame on a bridge port is sent from its size
-  and the port's rate, without the CSMA trailer and interframe gap.
-- **Plan.** A configurable overhead per frame, off by default, so that results
-  stay the same unless it is switched on. Since #59 the channel computes the
-  serialisation time for both senders (host device and switch port), so the
-  overhead goes there.
-- **Note.** The channel's default `DataRate` is 0xffffffff bit/s (about
-  4.29 Gbps), as in ns-3's CSMA channel; the examples set it explicitly.
-
 ## Design questions
 
 ### Where does a congested switch hold its backlog?
@@ -64,6 +47,14 @@ channel. It has all of main's PRs up to #55 (merged in "phase B", last in #60).
     besides the one that the port is sending, and the dequeued packet does not
     count in `deq_qdepth` (as in BMv2).
 
+### Store and forward, or cut-through?
+- **Today.** Every hop is store and forward: a device gets a frame only when its
+  last bit has arrived, so each hop adds one serialisation time (120 ns for a
+  1500-byte frame at 100 Gbps).
+- **Question.** Tofino can also forward cut-through, starting on a frame before
+  it has fully arrived (it is store and forward by default). Whether to model
+  that is open; it changes the latency, not the throughput.
+
 ### The timing model of `main`
 - **Problem.** `main` still has the old timing model: a switch-wide egress timer
   driven by `SwitchRate`; a queue without a rate spaces its packets 1 ms apart
@@ -89,6 +80,12 @@ channel. It has all of main's PRs up to #55 (merged in "phase B", last in #60).
   - There is no `psa_switch` (or PNA) Thrift service, so the target-specific
     commands of `psa_switch_CLI` do not work.
   - `P4Controller` works on v1model switches only.
+- **Link framing on other devices.** Only the switched-Ethernet channel uses
+  `LinkFraming` (its `Framing` attribute). The P4 point-to-point device, and the
+  TM's estimate of when a frame on a bridge port is sent, use the frame's bytes
+  only. ns-3's own CSMA device adds its FCS and a 96-bit gap itself.
+- **The default `DataRate`** of the switched-Ethernet channel is 0xffffffff
+  bit/s (about 4.29 Gbps), as in ns-3's CSMA channel; the examples set it.
 - **`PipelineDelay` follow-ups (#59).**
   - Test it with recirculation and egress clones; the programs for these
     came with #60.

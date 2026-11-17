@@ -76,6 +76,7 @@ build_lib(
         utils/p4-traffic-manager.cc
         utils/fattree-topo-helper.cc
         model/switched-ethernet-channel.cc
+        model/link-framing.cc
         model/eth-net-device.cc
         model/p4-switch-core.cc
         model/p4-core-v1model.cc
@@ -106,6 +107,7 @@ build_lib(
         utils/primitives-pna.h
         utils/fattree-topo-helper.h
         model/switched-ethernet-channel.h
+        model/link-framing.h
         model/eth-net-device.h
         model/p4-switch-core.h
         model/p4-core-v1model.h
@@ -146,6 +148,7 @@ build_lib(
         test/p4-pipeline-delay-test-suite.cc
         test/switched-ethernet-host-test-suite.cc
         test/switched-ethernet-tc-test-suite.cc
+        test/link-framing-test-suite.cc
         test/p4-controller-test-suite.cc
         test/p4sim-test-suite.cc
         test/format-utils-test-suite.cc
