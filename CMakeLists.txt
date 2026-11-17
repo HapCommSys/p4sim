@@ -137,6 +137,7 @@ build_lib(
         test/p4-pna-test-suite.cc
         test/p4-switch-rate-test-suite.cc
         test/switched-ethernet-host-test-suite.cc
+        test/switched-ethernet-tc-test-suite.cc
         test/p4-controller-test-suite.cc
         test/p4sim-test-suite.cc
         test/format-utils-test-suite.cc
