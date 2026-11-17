@@ -136,7 +136,9 @@ class P4SwitchNetDevice : public NetDevice
      * The device must support SendFrom() and EUI-48 addresses, and this
      * switch device must already be added to the node. The frames the device
      * receives go to the P4 pipeline, and its PhyTxEnd and PhyTxDrop traces
-     * tell the P4 core that the port is free again.
+     * tell the P4 core that the port is free again. A device without these
+     * traces (e.g. SimpleNetDevice) frees the port as soon as it has taken a
+     * frame: its own transmit queue then holds the frames that wait.
      */
     void AddBridgePort(Ptr<NetDevice> bridgePort);
 
@@ -427,6 +429,9 @@ class P4SwitchNetDevice : public NetDevice
 
     /// m_bridgePorts[i] is the device of port i if it is a bridge port, else nullptr
     std::vector<Ptr<NetDevice>> m_bridgePorts;
+
+    /// m_bridgePortTxEnd[i]: bridge port i reports the end of each transmission
+    std::vector<bool> m_bridgePortTxEnd;
 
     /// The channels of the bridge ports (GetChannel() when port 0 is a bridge port)
     Ptr<P4BridgeChannel> m_bridgeChannel;

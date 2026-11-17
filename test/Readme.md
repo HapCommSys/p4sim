@@ -24,6 +24,7 @@ full BMv2 log to `/tmp`.
 | `p4-queue` | egress queue: capacity, rate, FIFO, per-port rate, priorities | no |
 | `p4sim` | v1model, PSA and PNA load their program; Thrift ports; `BmLogLevel` | yes |
 | `p4-controller` | flow entries and action profiles, read back from the switch | yes, and `simple_switch_CLI` |
+| `p4-packet` | frames sent into a switch and the frames that leave it, on v1model, PNA and PSA | yes |
 | `p4-egress` | switched-Ethernet ports: a congested port sends back to back at its line rate; a switch with a full egress queue can be destroyed | yes |
 | `p4-switch-rate` | `SwitchRate` limits the whole pipeline, 0 means no limit, a full input buffer drops | yes |
 | `p4-bridge-port` | CSMA and point-to-point bridge ports next to a switched-Ethernet port | yes |
@@ -43,6 +44,23 @@ tests never read `examples/p4src`. The JSON is committed, so p4c is not needed; 
 regenerate it, run `p4c-bm2-ss` (v1model), `p4c-bm2-psa` or `p4c-bm2-pna` with
 `--p4v 16 -o <name>.json <name>.p4`, then run the tests again (another p4c version
 can change details such as generated names).
+
+## Packet tests
+
+`p4-packet` runs the `.stf` files in [`p4src/forward`](p4src/forward) on a switch
+with three ports, once per architecture: `forward_v1model.p4`, `forward_pna.p4` and
+`forward_psa.p4` behave the same. The format is a subset of p4c's STF:
+
+```
+# comment
+packet 0 0000000000fe 000000000010 0800 ...   # send this frame into port 0
+expect 1 000000000011 0000000000fe 0800 ...   # this frame leaves port 1
+```
+
+Frames are Ethernet frames in hex; spaces are ignored and `*` in `expect` matches
+any nibble. A test passes if each port sends exactly the frames expected on it, in
+that order. To add a case, add an `.stf` file and its name in
+`p4-packet-test-suite.cc`.
 
 ## Writing a test
 
