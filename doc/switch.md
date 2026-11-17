@@ -57,7 +57,8 @@ NetDeviceContainer hostDevs = eth.Install(sw, terminals);
 ## Timing on the wire
 
 A frame takes (its bytes × 8 / `DataRate`) on the wire, then `Delay` to reach
-the far end, which gets it whole (store and forward). The channel computes this
+the far end, which gets it whole (store and forward). The defaults are 10 Gbps
+and no delay. The channel computes this
 for both ends and keeps the exact times, so that rounding to the simulator's
 1 ns resolution does not add up over back-to-back frames.
 
