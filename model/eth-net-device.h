@@ -21,8 +21,10 @@
 #ifndef ETH_NET_DEVICE_H
 #define ETH_NET_DEVICE_H
 
+#include "ns3/event-id.h"
 #include "ns3/mac48-address.h"
 #include "ns3/net-device.h"
+#include "ns3/queue.h"
 #include "ns3/traced-callback.h"
 
 namespace ns3
@@ -40,12 +42,13 @@ class SwitchedEthernetChannel;
  * this device strips/adds the Ethernet header when handing off to/from the
  * IP stack, exactly like a CsmaNetDevice.
  *
- * Typical setup via P4Helper:
+ * Typical setup via SwitchedEthernetHelper:
  * \code
- *   NetDeviceContainer devs = p4.Install(switchNode, hosts);
- *   // devs[0] = P4SwitchNetDevice on switchNode
- *   // devs[1] = SwitchedEthernetHostDevice on hosts[0]
- *   // devs[2] = SwitchedEthernetHostDevice on hosts[1]
+ *   Ptr<P4SwitchNetDevice> sw =
+ *       DynamicCast<P4SwitchNetDevice>(p4.Install(switchNode).Get(0));
+ *   SwitchedEthernetHelper eth;
+ *   NetDeviceContainer devs = eth.Install(sw, hosts);
+ *   // devs.Get(i) = SwitchedEthernetHostDevice on hosts.Get(i)
  * \endcode
  */
 class SwitchedEthernetHostDevice : public NetDevice
@@ -72,6 +75,20 @@ class SwitchedEthernetHostDevice : public NetDevice
      * the registered receive callbacks.
      */
     void ReceiveFrame(Ptr<Packet> frame);
+
+    /**
+     * \brief Set the transmit queue.
+     *
+     * Frames that arrive while the device is sending wait here and leave back
+     * to back; a frame that does not fit is dropped (MacTxDrop). The default
+     * is a DropTailQueue of 100 packets. SwitchedEthernetHelper sets the
+     * queue and connects it to the traffic control layer (flow control); a
+     * queue set later is not connected.
+     */
+    void SetQueue(Ptr<Queue<Packet>> queue);
+
+    /** \return The transmit queue. */
+    Ptr<Queue<Packet>> GetQueue() const;
 
     // -----------------------------------------------------------------------
     // NetDevice interface
@@ -104,7 +121,23 @@ class SwitchedEthernetHostDevice : public NetDevice
     void SetPromiscReceiveCallback(NetDevice::PromiscReceiveCallback cb) override;
     bool SupportsSendFrom() const override;
 
+  protected:
+    void DoDispose() override;
+
   private:
+    /// Puts the next queued frame on the wire, unless a frame is being sent
+    void TransmitStart();
+
+    /// The frame on the wire has been serialised: free the channel slot and
+    /// send the next one. If the link was detached meanwhile, the frame is
+    /// lost and reported through PhyTxDrop.
+    void TransmitComplete();
+
+    Ptr<Queue<Packet>> m_queue; ///< frames waiting to be sent
+    bool m_txBusy{false};       ///< true while a frame is being serialised
+    Ptr<Packet> m_currentPkt;   ///< the frame being serialised
+    EventId m_txCompleteEvent;  ///< the pending TransmitComplete()
+    EventId m_txRetryEvent;     ///< the pending TransmitStart() after a refused frame
     Ptr<SwitchedEthernetChannel> m_channel;
     uint32_t m_devId{0};
     Mac48Address m_address;
@@ -117,6 +150,7 @@ class SwitchedEthernetHostDevice : public NetDevice
     TracedCallback<Ptr<const Packet>> m_macTxTrace;
     TracedCallback<Ptr<const Packet>> m_macRxTrace;
     TracedCallback<Ptr<const Packet>> m_macTxDropTrace;
+    TracedCallback<Ptr<const Packet>> m_phyTxDropTrace; ///< a frame lost on a detached link
     /**
      * A trace source that emulates a non-promiscuous protocol sniffer connected
      * to the device.  Unlike your average everyday sniffer, this trace source

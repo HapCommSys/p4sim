@@ -14,6 +14,9 @@
  *   full is dropped and reported through MacRxDrop.
  * - An egress queue rate (SetAllEgressQueueRates()) does not hold back the
  *   first packet either.
+ * - The v1model input buffer serves resubmitted and recirculated packets
+ *   before new ones, each queue oldest first, and refuses a packet whose queue
+ *   is full.
  */
 
 #include "ns3/core-module.h"
@@ -23,6 +26,9 @@
 #include "ns3/p4-switch-net-device.h"
 #include "ns3/switched-ethernet-channel.h"
 #include "ns3/test.h"
+
+#include <bm/bm_sim/phv.h>
+#include <bm/bm_sim/phv_source.h>
 
 using namespace ns3;
 
@@ -171,6 +177,60 @@ SwitchRateTestCase::DoRun()
     }
 }
 
+/// The v1model input buffer on its own: which packet the pipeline gets next
+class InputBufferTestCase : public TestCase
+{
+  public:
+    InputBufferTestCase()
+        : TestCase("v1model: the input buffer serves resubmitted and recirculated packets first")
+    {
+    }
+
+  private:
+    void DoRun() override
+    {
+        // Packets need a PHV source; it must outlive them
+        bm::PHVFactory phvFactory;
+        std::unique_ptr<bm::PHVSourceIface> phvSource = bm::PHVSourceIface::make_phv_source();
+        phvSource->set_phv_factory(0, &phvFactory);
+        auto packet = [&phvSource](bm::packet_id_t id) {
+            return std::make_unique<bm::Packet>(
+                bm::Packet::make_new(0, 0, id, 0, 0, bm::PacketBuffer(64), phvSource.get()));
+        };
+        using Type = InputBuffer::PacketType;
+
+        // Room for 2 resubmitted or recirculated packets and for 1 normal packet
+        InputBuffer buffer(2, 1);
+        NS_TEST_ASSERT_MSG_EQ(buffer.push_front(Type::NORMAL, packet(1)), true, "Normal packet 1");
+        NS_TEST_ASSERT_MSG_EQ(buffer.push_front(Type::NORMAL, packet(2)),
+                              false,
+                              "The queue for normal packets holds 1 packet");
+        NS_TEST_ASSERT_MSG_EQ(buffer.push_front(Type::RESUBMIT, packet(3)), true, "Resubmit 3");
+        NS_TEST_ASSERT_MSG_EQ(buffer.push_front(Type::RECIRCULATE, packet(4)),
+                              true,
+                              "Recirculate 4");
+        NS_TEST_ASSERT_MSG_EQ(buffer.push_front(Type::RECIRCULATE, packet(5)),
+                              false,
+                              "The queue for resubmitted and recirculated packets holds 2");
+        NS_TEST_ASSERT_MSG_EQ(buffer.size(), 3, "Three packets wait");
+
+        std::vector<bm::packet_id_t> order;
+        while (buffer.size() > 0)
+        {
+            std::unique_ptr<bm::Packet> next;
+            buffer.pop_back(&next);
+            order.push_back(next->get_packet_id());
+        }
+        NS_TEST_EXPECT_MSG_EQ((order == std::vector<bm::packet_id_t>{3, 4, 1}),
+                              true,
+                              "Resubmitted and recirculated packets go first, oldest first");
+
+        std::unique_ptr<bm::Packet> none;
+        buffer.pop_back(&none);
+        NS_TEST_EXPECT_MSG_EQ((none == nullptr), true, "An empty buffer gives no packet");
+    }
+};
+
 static class P4SwitchRateTestSuite : public TestSuite
 {
   public:
@@ -196,5 +256,6 @@ static class P4SwitchRateTestSuite : public TestSuite
         {
             AddTestCase(new SwitchRateTestCase(config), TestCase::QUICK);
         }
+        AddTestCase(new InputBufferTestCase, TestCase::QUICK);
     }
 } g_p4SwitchRateTestSuite;
