@@ -201,14 +201,19 @@ BridgePortTestCase::DoRun()
 
 /**
  * A bridge port whose device does not report the end of a transmission
- * (SimpleNetDevice has no PhyTxEnd trace): the port is free again as soon as
- * the device has taken a frame, so all frames for it leave the switch.
+ * (SimpleNetDevice has no PhyTxEnd trace). Host 0 sends 5 frames, 1 us apart,
+ * to the host behind such a port, and all 5 must arrive. Without a data rate,
+ * the port is free again at once. With one, it is free again one transmission
+ * time after each frame, so the switch sends the frames that far apart.
  */
 class BridgePortNoTxEndTestCase : public TestCase
 {
   public:
-    BridgePortNoTxEndTestCase()
-        : TestCase("v1model: a bridge port without PhyTxEnd sends every frame")
+    explicit BridgePortNoTxEndTestCase(DataRate rate)
+        : TestCase(rate.GetBitRate() == 0
+                       ? "v1model: a bridge port without PhyTxEnd sends every frame"
+                       : "v1model: a bridge port without PhyTxEnd sends at its data rate"),
+          m_rate(rate)
     {
     }
 
@@ -233,8 +238,16 @@ class BridgePortNoTxEndTestCase : public TestCase
         m_host0->Send(Create<Packet>(PAYLOAD), Mac48Address("00:00:00:00:00:01"), 0x88b5);
     }
 
+    /// Records when the switch sends a frame
+    void SwitchTx(Ptr<const Packet>)
+    {
+        m_switchTx.push_back(Simulator::Now());
+    }
+
+    DataRate m_rate; ///< "DataRate" of the SimpleNetDevice port, 0 = none
     Ptr<SwitchedEthernetHostDevice> m_host0;
     uint32_t m_received{0};
+    std::vector<Time> m_switchTx; ///< when the switch sent each frame
 };
 
 void
@@ -266,12 +279,15 @@ BridgePortNoTxEndTestCase::DoRun()
     Ptr<SimpleNetDevice> host1 = CreateObject<SimpleNetDevice>();
     port->SetAddress(Mac48Address("00:00:00:00:00:20"));
     host1->SetAddress(Mac48Address("00:00:00:00:00:01"));
+    port->SetAttribute("DataRate", DataRateValue(m_rate));
     port->SetChannel(simple);
     host1->SetChannel(simple);
     switchNode->AddDevice(port);
     node1->AddDevice(host1);
     sw->AddBridgePort(port);
     host1->SetReceiveCallback(MakeCallback(&BridgePortNoTxEndTestCase::Receive, this));
+    sw->TraceConnectWithoutContext("MacTx",
+                                   MakeCallback(&BridgePortNoTxEndTestCase::SwitchTx, this));
     sw->Initialize();
 
     for (uint32_t k = 0; k < 5; k++)
@@ -282,6 +298,18 @@ BridgePortNoTxEndTestCase::DoRun()
     Simulator::Run();
 
     NS_TEST_EXPECT_MSG_EQ(m_received, 5, "Frames for the SimpleNetDevice port were lost");
+    NS_TEST_EXPECT_MSG_EQ(m_switchTx.size(), 5, "The switch did not send 5 frames");
+    if (m_rate.GetBitRate() > 0)
+    {
+        // The SimpleNetDevice sends the payload without a header
+        Time txTime = m_rate.CalculateBytesTxTime(PAYLOAD);
+        for (size_t k = 1; k < m_switchTx.size(); k++)
+        {
+            NS_TEST_EXPECT_MSG_EQ(m_switchTx[k] - m_switchTx[k - 1],
+                                  txTime,
+                                  "Frame " << k << " not one transmission time after the last");
+        }
+    }
 }
 
 static class P4BridgePortTestSuite : public TestSuite
@@ -292,6 +320,7 @@ static class P4BridgePortTestSuite : public TestSuite
     {
         AddTestCase(new BridgePortTestCase("v1model", P4SWITCH_ARCH_V1MODEL), TestCase::QUICK);
         AddTestCase(new BridgePortTestCase("psa", P4SWITCH_ARCH_PSA), TestCase::QUICK);
-        AddTestCase(new BridgePortNoTxEndTestCase(), TestCase::QUICK);
+        AddTestCase(new BridgePortNoTxEndTestCase(DataRate(0)), TestCase::QUICK);
+        AddTestCase(new BridgePortNoTxEndTestCase(DataRate("100Mbps")), TestCase::QUICK);
     }
 } g_p4BridgePortTestSuite;
