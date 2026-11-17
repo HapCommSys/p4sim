@@ -80,7 +80,7 @@ class P4CoreV1model : public P4SwitchCore
     void reset_target_state_() override;
     void HandleIngressPipeline() override;
     size_t GetNInputPackets() const override;
-    void Enqueue(uint32_t egress_port, std::unique_ptr<bm::Packet>&& packet) override;
+    void EnqueueNow(uint32_t egress_port, std::unique_ptr<bm::Packet>&& packet) override;
     bool HandleEgressPipeline(size_t workerId) override;
 
     // === Scheduling ===

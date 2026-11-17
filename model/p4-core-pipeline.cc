@@ -196,7 +196,7 @@ P4CorePipeline::HandleEgressPipeline(size_t workerId)
 }
 
 void
-P4CorePipeline::Enqueue(uint32_t egress_port, std::unique_ptr<bm::Packet>&& packet)
+P4CorePipeline::EnqueueNow(uint32_t egress_port, std::unique_ptr<bm::Packet>&& packet)
 {
     NS_LOG_WARN("NO inter queue buffer in this simple v1model, use ReceivePacket instead");
 }

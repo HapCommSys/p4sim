@@ -8,6 +8,11 @@
  * drop only what does not fit into the queue. When the link of host 0 is
  * detached, its device drops the frames and reports them: through MacTxDrop
  * before a frame is sent, through PhyTxDrop for the frame being sent.
+ *
+ * On a fast link, a short frame takes a fraction of a nanosecond more than a
+ * whole number of nanoseconds (64 bytes: 5.12 ns at 100 Gbps, 1.28 ns at
+ * 400 Gbps). The simulator rounds each event time to 1 ns, but back-to-back
+ * frames must still keep the exact line rate: the rounding must not add up.
  */
 
 #include "ns3/core-module.h"
@@ -15,6 +20,8 @@
 #include "ns3/network-module.h"
 #include "ns3/switched-ethernet-channel.h"
 #include "ns3/test.h"
+
+#include <cmath>
 
 using namespace ns3;
 
@@ -122,6 +129,63 @@ HostTxQueueTestCase::DoRun()
     }
 }
 
+/// Host 0 sends a burst of 64-byte frames on a fast link
+class HostExactRateTestCase : public TestCase
+{
+  public:
+    HostExactRateTestCase(const std::string& rate)
+        : TestCase("Short frames on a " + rate + " link keep the exact line rate"),
+          m_rate(rate)
+    {
+    }
+
+  private:
+    void DoRun() override
+    {
+        const uint32_t frames = 50;
+        const uint32_t payload = 50; // with the Ethernet header a frame has 64 bytes
+        Ptr<SwitchedEthernetChannel> channel = CreateObject<SwitchedEthernetChannel>();
+        channel->SetAttribute("DataRate", DataRateValue(DataRate(m_rate)));
+        Ptr<SwitchedEthernetHostDevice> hosts[2];
+        for (auto& host : hosts)
+        {
+            Ptr<Node> node = CreateObject<Node>();
+            host = CreateObject<SwitchedEthernetHostDevice>();
+            host->SetAddress(Mac48Address::Allocate());
+            node->AddDevice(host);
+            host->Attach(channel);
+        }
+        std::vector<Time> arrivals;
+        hosts[1]->TraceConnectWithoutContext("MacRx", MakeBoundCallback(&Record, &arrivals));
+        for (uint32_t k = 0; k < frames; k++)
+        {
+            Simulator::Schedule(MicroSeconds(1),
+                                &SwitchedEthernetHostDevice::Send,
+                                hosts[0],
+                                Create<Packet>(payload),
+                                hosts[1]->GetAddress(),
+                                0x88b5);
+        }
+        Simulator::Run();
+        Simulator::Destroy();
+
+        NS_TEST_ASSERT_MSG_EQ(arrivals.size(), frames, "Frames were lost");
+        const double txNs =
+            (payload + 14) * 8.0 / static_cast<double>(DataRate(m_rate).GetBitRate()) * 1e9;
+        for (size_t k = 1; k < arrivals.size(); k++)
+        {
+            // Frame k arrives k serialisation times after the first one
+            double error = (arrivals[k] - arrivals[0]).GetNanoSeconds() - k * txNs;
+            NS_TEST_EXPECT_MSG_LT_OR_EQ(std::abs(error),
+                                        1.0,
+                                        "Frame " << k << " is " << error
+                                                 << " ns from its exact arrival");
+        }
+    }
+
+    std::string m_rate; ///< the data rate of the link
+};
+
 /// The link of host 0 is detached before a burst, and during the first frame of
 /// another burst; then it is attached again
 class HostDetachTestCase : public TestCase
@@ -214,5 +278,7 @@ static class SwitchedEthernetHostTestSuite : public TestSuite
         AddTestCase(new HostTxQueueTestCase(0), TestCase::QUICK);
         AddTestCase(new HostTxQueueTestCase(5), TestCase::QUICK);
         AddTestCase(new HostDetachTestCase(), TestCase::QUICK);
+        AddTestCase(new HostExactRateTestCase("100Gbps"), TestCase::QUICK);
+        AddTestCase(new HostExactRateTestCase("400Gbps"), TestCase::QUICK);
     }
 } g_switchedEthernetHostTestSuite;

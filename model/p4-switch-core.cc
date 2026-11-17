@@ -282,14 +282,69 @@ P4SwitchCore::P4SwitchCore(P4SwitchNetDevice* netDevice,
 
 P4SwitchCore::~P4SwitchCore()
 {
-    // A pending ServeIngress() must not run on a destroyed core
+    // A pending ServeIngress() must not run on a destroyed core, nor a pending
+    // ReleaseFromPipeline(). The packets still in the pipeline are freed with it.
     Simulator::Cancel(m_ingressEvent);
+    Simulator::Cancel(m_pipelineEvent);
 }
 
 void
 P4SwitchCore::SetPipelineRate(uint64_t pps)
 {
     m_ingressServiceTime = (pps == 0) ? Time(0) : Seconds(1.0 / static_cast<double>(pps));
+}
+
+void
+P4SwitchCore::SetPipelineDelay(Time delay)
+{
+    NS_ABORT_MSG_IF(delay.IsStrictlyNegative(), "The pipeline delay must not be negative");
+    m_pipelineDelay = delay;
+}
+
+Time
+P4SwitchCore::GetPipelineDelay() const
+{
+    return m_pipelineDelay;
+}
+
+void
+P4SwitchCore::Enqueue(uint32_t egress_port, std::unique_ptr<bm::Packet>&& packet)
+{
+    if (m_pipelineDelay.IsZero())
+    {
+        EnqueueNow(egress_port, std::move(packet));
+        return;
+    }
+    // Every packet is delayed by the same time, so the packets leave the
+    // pipeline in the order in which they entered it
+    Time leaves = Simulator::Now() + m_pipelineDelay;
+    m_pipelinePackets.push_back({leaves, egress_port, std::move(packet)});
+    if (!m_pipelineEvent.IsRunning())
+    {
+        m_pipelineEvent =
+            Simulator::Schedule(m_pipelineDelay, &P4SwitchCore::ReleaseFromPipeline, this);
+    }
+}
+
+void
+P4SwitchCore::ReleaseFromPipeline()
+{
+    Time now = Simulator::Now();
+    while (!m_pipelinePackets.empty() && m_pipelinePackets.front().leaves <= now)
+    {
+        PipelinePacket next = std::move(m_pipelinePackets.front());
+        m_pipelinePackets.pop_front();
+        EnqueueNow(next.egressPort, std::move(next.packet));
+    }
+    // EnqueueNow() may have scheduled this again, for a new packet (an egress
+    // clone): replace that event with one for the oldest packet.
+    Simulator::Cancel(m_pipelineEvent);
+    if (!m_pipelinePackets.empty())
+    {
+        m_pipelineEvent = Simulator::Schedule(m_pipelinePackets.front().leaves - now,
+                                              &P4SwitchCore::ReleaseFromPipeline,
+                                              this);
+    }
 }
 
 void

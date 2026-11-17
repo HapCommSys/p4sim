@@ -23,6 +23,8 @@
 #include "ns3/switched-ethernet-channel.h"
 #include "ns3/test.h"
 
+#include <cmath>
+
 using namespace ns3;
 
 namespace
@@ -170,6 +172,10 @@ BridgePortTestCase::DoRun()
 
     // A CSMA device waits 96 bit times between two frames (CsmaNetDevice::Attach())
     Time csmaGap = DataRate("1Gbps").CalculateBytesTxTime(96 / 8);
+
+    // ns-3's CSMA device rounds each frame's time to 1 ns. The P4 point-to-point
+    // device keeps the exact times: a frame takes 3244.8 ns on port 2, and each
+    // arrival lies within 1 ns of its exact time.
     struct
     {
         const char* name;
@@ -177,13 +183,27 @@ BridgePortTestCase::DoRun()
         DataRate rate;
         Time gap;
         uint32_t expected;
-    } ports[] = {{"CSMA port", m_phy1, DataRate("1Gbps"), csmaGap, N_FRAMES / 2},
-                 {"P2P port", m_phy2, DataRate("2.5Gbps"), Time(0), N_FRAMES / 2 + 1}};
+        bool exact;
+    } ports[] = {{"CSMA port", m_phy1, DataRate("1Gbps"), csmaGap, N_FRAMES / 2, false},
+                 {"P2P port", m_phy2, DataRate("2.5Gbps"), Time(0), N_FRAMES / 2 + 1, true}};
+
     for (const auto& port : ports)
     {
         NS_TEST_EXPECT_MSG_EQ(port.arrivals.size(), port.expected, port.name << ": frames lost");
+        double exactNs = 0; // exact time from the first arrival to frame k
         for (size_t k = 1; k < port.arrivals.size() && k < N_FRAMES / 2; k++)
         {
+            if (port.exact)
+            {
+                exactNs += port.arrivals[k - 1].size * 8.0 /
+                           static_cast<double>(port.rate.GetBitRate()) * 1e9;
+                double error =
+                    (port.arrivals[k].time - port.arrivals[0].time).GetNanoSeconds() - exactNs;
+                NS_TEST_EXPECT_MSG_LT_OR_EQ(std::abs(error),
+                                            1.0,
+                                            port.name << ": frame " << k << " not back to back");
+                continue;
+            }
             Time expected = port.rate.CalculateBytesTxTime(port.arrivals[k - 1].size) + port.gap;
             NS_TEST_EXPECT_MSG_EQ(port.arrivals[k].time - port.arrivals[k - 1].time,
                                   expected,

@@ -6,7 +6,10 @@
  * ports 1 and 2 have 1 and 2.5 Gbps links, so the frames queue up in the
  * switch. A congested port must then send back to back at its own line rate:
  * every frame arrives, one serialisation time after the previous one. This
- * also holds when two ports with different rates are congested at the same time.
+ * also holds when two ports with different rates are congested at the same time,
+ * for v1model and PSA. A frame takes 3244.8 ns on the 2.5 Gbps link:
+ * each arrival is rounded to the simulator's resolution (1 ns), so it may lie up
+ * to 1 ns from its exact time, but the rounding must not add up.
  */
 
 #include "ns3/core-module.h"
@@ -16,6 +19,8 @@
 #include "ns3/p4-switch-net-device.h"
 #include "ns3/switched-ethernet-channel.h"
 #include "ns3/test.h"
+
+#include <cmath>
 
 using namespace ns3;
 
@@ -115,14 +120,19 @@ EgressRateTestCase::DoRun()
 
     for (uint32_t port = 1; port <= m_nPorts; port++)
     {
-        Time txTime = DataRate(rates[port]).CalculateBytesTxTime(PAYLOAD + 14);
+        // Exact serialisation time of a frame, in ns
+        const double txNs =
+            (PAYLOAD + 14) * 8.0 / static_cast<double>(DataRate(rates[port]).GetBitRate()) * 1e9;
         const std::vector<Time>& arrivals = m_arrivals[port];
         NS_TEST_EXPECT_MSG_EQ(arrivals.size(), N_FRAMES / m_nPorts, "Port " << port << " lost frames");
         for (size_t k = 1; k < arrivals.size(); k++)
         {
-            NS_TEST_EXPECT_MSG_EQ(arrivals[k] - arrivals[k - 1],
-                                  txTime,
-                                  "Port " << port << ": frame " << k << " not back to back");
+            // Frame k arrives k serialisation times after the first one
+            double error = (arrivals[k] - arrivals[0]).GetNanoSeconds() - k * txNs;
+            NS_TEST_EXPECT_MSG_LT_OR_EQ(std::abs(error),
+                                        1.0,
+                                        "Port " << port << ": frame " << k
+                                                << " not back to back at the line rate");
         }
     }
 }

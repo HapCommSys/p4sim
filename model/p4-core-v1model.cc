@@ -843,7 +843,7 @@ P4CoreV1model::HandleIngressPipeline()
 }
 
 void
-P4CoreV1model::Enqueue(uint32_t egress_port, std::unique_ptr<bm::Packet>&& packet)
+P4CoreV1model::EnqueueNow(uint32_t egress_port, std::unique_ptr<bm::Packet>&& packet)
 {
     // Opt-in VOQ + fabric path.  Steer normal port traffic into the Traffic
     // Manager; anything with an out-of-range port (e.g. CPU / drop ports beyond

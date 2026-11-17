@@ -432,7 +432,7 @@ P4CorePsa::ReceivePacket(Ptr<Packet> packetIn,
 }
 
 void
-P4CorePsa::Enqueue(uint32_t egress_port, std::unique_ptr<bm::Packet>&& packet)
+P4CorePsa::EnqueueNow(uint32_t egress_port, std::unique_ptr<bm::Packet>&& packet)
 {
     packet->set_egress_port(egress_port);
 

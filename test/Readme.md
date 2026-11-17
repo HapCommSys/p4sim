@@ -20,17 +20,19 @@ full BMv2 log to `/tmp`.
 |---|---|---|
 | `format-utils` | string and number conversion helpers | no |
 | `p4-topology-reader` | reading a topology file | no |
-| `p4-p2p-channel` | the P4 point-to-point channel | no |
+| `p4-p2p-channel` | the P4 point-to-point channel; short frames on a 100 Gbps link keep the exact line rate | no |
 | `p4-queue` | egress queue: capacity, rate, FIFO, per-port rate, priorities | no |
 | `p4sim` | v1model, PSA and PNA load their program; Thrift ports; `BmLogLevel` | yes |
 | `p4-controller` | flow entries, action profiles and mirroring sessions, read back from the switch; the commands of `simple_switch_CLI` for mirroring, queues and time | yes, and `simple_switch_CLI` |
 | `p4-packet` | frames sent into a switch and the frames that leave it, on v1model, PNA and PSA | yes |
 | `p4-egress` | switched-Ethernet ports: a congested port sends back to back at its line rate; a switch with a full egress queue can be destroyed | yes |
 | `p4-switch-rate` | `SwitchRate` limits the whole pipeline, 0 means no limit, a full input buffer drops | yes |
+| `p4-pipeline-delay` | `PipelineDelay` delays every packet by the same time without lowering the throughput (default egress path, VOQ, PSA, with `SwitchRate`, on a congested port); a switch with packets in its pipeline can be destroyed | yes |
 | `p4-bridge-port` | CSMA and point-to-point bridge ports next to a switched-Ethernet port | yes |
 | `p4-pna` | a PNA switch forwards, and drops what its program does not send | yes |
 | `p4-traffic-manager` | the VOQ + fabric Traffic Manager | no |
 | `channel-state-test-suite` | the states of the switched-Ethernet channel | no |
+| `switched-ethernet-host` | the transmit queue of a host device; short frames on 100 and 400 Gbps links keep the exact line rate | no |
 | `p4-switch-queue-item-test-suite` | the items in the queue discs of the switch ports | no |
 
 [`examples-to-run.py`](examples-to-run.py) lists the examples that `test.py` runs

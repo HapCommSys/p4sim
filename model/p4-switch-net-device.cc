@@ -151,6 +151,22 @@ P4SwitchNetDevice::GetTypeId()
                           MakeUintegerAccessor(&P4SwitchNetDevice::m_switchRate),
                           MakeUintegerChecker<uint64_t>())
 
+            .AddAttribute("PipelineDelay",
+                          "Time a packet spends in the P4 pipeline (parser, ingress, egress "
+                          "and deparser), as a fixed latency: every packet reaches the egress "
+                          "queues this much later, clones and multicast copies included; the "
+                          "egress then takes no time. The pipeline takes the next packet at "
+                          "once, so the delay does not lower the throughput (see SwitchRate). "
+                          "A recirculated packet passes the pipeline again and is delayed "
+                          "again. 0 (the default) means no delay. v1model and PSA; PNA and the "
+                          "pipeline core ignore it. For scale: on Tofino, the ingress block "
+                          "(parser, control, deparser) was measured at 162 to 224 ns on 100G "
+                          "ports and 221 to 472 ns on 10G ports, depending on the program "
+                          "(Franco et al., Computer Communications 218, 2024).",
+                          TimeValue(Seconds(0)),
+                          MakeTimeAccessor(&P4SwitchNetDevice::m_pipelineDelay),
+                          MakeTimeChecker(Seconds(0)))
+
             .AddAttribute("EnableVoqFabric",
                           "If true, a V1model switch routes post-ingress traffic through the "
                           "VOQ + fabric Traffic Manager instead of the legacy output queues. "
@@ -522,16 +538,14 @@ bool
 P4SwitchNetDevice::TransmitOn(uint32_t port, Ptr<Packet> packet, Time* txTime)
 {
     Ptr<SwitchedEthernetChannel> channel = m_portChannels[port];
-    if (!channel->TransmitStart(packet, m_portDeviceIds[port]))
+    // The channel computes the serialisation time from its data rate
+    Time serialisationTime;
+    if (!channel->TransmitStart(packet, m_portDeviceIds[port], &serialisationTime))
     {
         NS_LOG_WARN("TransmitOn: channel busy or device inactive — packet dropped");
         m_macTxDropTrace(packet);
         return false;
     }
-
-    // Compute serialisation delay from the channel's data rate.
-    DataRate bps = channel->GetDataRate();
-    Time serialisationTime = bps.CalculateBytesTxTime(packet->GetSize());
 
     Simulator::Schedule(serialisationTime, &P4SwitchNetDevice::PortTransmitEnd, this, port);
 
@@ -831,6 +845,7 @@ P4SwitchNetDevice::ConfigureCore(P4SwitchCore& core) const
 {
     core.SetBmLogLevel(m_bmLogLevel);
     core.SetThriftPort(m_thriftPort);
+    core.SetPipelineDelay(m_pipelineDelay);
 }
 
 int

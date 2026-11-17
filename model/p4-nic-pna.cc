@@ -243,7 +243,7 @@ P4PnaNic::HandleEgressPipeline(size_t workerId)
 }
 
 void
-P4PnaNic::Enqueue(uint32_t egress_port, std::unique_ptr<bm::Packet>&& packet)
+P4PnaNic::EnqueueNow(uint32_t egress_port, std::unique_ptr<bm::Packet>&& packet)
 {
     NS_LOG_WARN("NO inter queue buffer in PNA, use main_processing_pipeline instead");
 }

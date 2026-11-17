@@ -360,8 +360,8 @@ class P4SwitchNetDevice : public NetDevice
     void PortTransmitEnd(uint32_t port);
 
     /**
-     * \brief Pass the BMv2 options of this device (BmLogLevel, ThriftPort) to
-     *        its P4 core, before the core loads the P4 JSON.
+     * \brief Pass the BMv2 options of this device (BmLogLevel, ThriftPort) and
+     *        its PipelineDelay to its P4 core, before the core loads the P4 JSON.
      * \param core the P4 core created by DoInitialize()
      */
     void ConfigureCore(P4SwitchCore& core) const;
@@ -426,6 +426,7 @@ class P4SwitchNetDevice : public NetDevice
     size_t m_InputBufferSizeHigh;
     size_t m_queueBufferSize;
     uint64_t m_switchRate;
+    Time m_pipelineDelay; //!< "PipelineDelay" attribute, passed to the core
 
     /// When true, a V1model core routes traffic through the VOQ + fabric
     /// Traffic Manager instead of the legacy output queues (attribute

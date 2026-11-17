@@ -99,9 +99,9 @@ class P4CorePipeline : public P4SwitchCore
     void HandleIngressPipeline() override;
 
     /**
-     * @brief [override, dummy] Enqueue a packet to the switch queue buffer
+     * @brief [override, dummy] Put a packet into the egress queues
      */
-    void Enqueue(uint32_t egress_port, std::unique_ptr<bm::Packet>&& packet) override;
+    void EnqueueNow(uint32_t egress_port, std::unique_ptr<bm::Packet>&& packet) override;
 
     /**
      * @brief [override, dummy] Handle the egress pipeline

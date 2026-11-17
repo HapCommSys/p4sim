@@ -744,8 +744,17 @@ CustomP2PNetDevice::TransmitStart(Ptr<Packet> p)
     m_currentPkt = p;
     m_phyTxBeginTrace(m_currentPkt);
 
-    Time txTime = m_bps.CalculateBytesTxTime(p->GetSize());
-    Time txCompleteTime = txTime + m_tInterframeGap;
+    // Exact times in seconds. The simulator rounds every event time to its
+    // resolution (1 ns by default); a frame that follows the previous one back
+    // to back (it starts no later than the rounded end of that frame and its
+    // gap) starts at their exact end, so the rounding does not add up. After an
+    // idle time, a frame starts now.
+    bool backToBack = Time::From(m_txEnd, Time::S) >= Simulator::Now();
+    int64x64_t start = backToBack ? m_txEnd : Simulator::Now().To(Time::S);
+    int64x64_t frameEnd = start + int64x64_t(p->GetSize() * 8) / int64x64_t(m_bps.GetBitRate());
+    m_txEnd = frameEnd + m_tInterframeGap.To(Time::S);
+    Time txTime = Time::From(frameEnd, Time::S) - Simulator::Now();
+    Time txCompleteTime = Time::From(m_txEnd, Time::S) - Simulator::Now();
 
     NS_LOG_LOGIC("Schedule TransmitCompleteEvent in " << txCompleteTime.As(Time::S));
     Simulator::Schedule(txCompleteTime, &CustomP2PNetDevice::TransmitComplete, this);
