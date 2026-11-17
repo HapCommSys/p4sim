@@ -487,8 +487,10 @@ P4SwitchNetDevice::SendNs3Packet(Ptr<Packet> packetOut,
         return false;
     }
 
-    // Port 511 = P4 convention for drop.
-    if (outPort == 511)
+    // A frame for the drop port is dropped without a warning. The pipeline
+    // core, for example, passes the egress_spec of the ingress, which
+    // mark_to_drop() sets to the drop port.
+    if (outPort == SSWITCH_DROP_PORT)
     {
         NS_LOG_DEBUG("Drop port (511) — packet discarded");
         m_macTxDropTrace(packetOut);
