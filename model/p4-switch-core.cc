@@ -391,8 +391,23 @@ P4SwitchCore::ExecuteCliCommands(const std::string& commandsFile)
 
     // Get runtime port and start the server
     int port = get_runtime_port();
+    // The server thread points bm_runtime::processor_ to its processor, but for
+    // the second and later switches of a process, start_server() returns before
+    // that. So the services of the target are added after the wait, and only to
+    // a new processor: never to the server of another switch.
+    auto previousProcessor = bm_runtime::processor_;
     bm_runtime::start_server(this, port);
     std::this_thread::sleep_for(std::chrono::seconds(1));
+    if (bm_runtime::processor_ != previousProcessor)
+    {
+        AddThriftServices();
+    }
+    else
+    {
+        NS_LOG_WARN("Switch ID: " << m_p4SwitchId
+                                  << " Thrift server not started in time, so the commands "
+                                     "of the target (e.g. mirroring_add) are not available");
+    }
 
     // Construct the CLI command
     std::ostringstream cmdStream;
@@ -484,6 +499,11 @@ P4SwitchCore::reset_target_state_()
 {
     NS_LOG_DEBUG("Resetting simple_switch target-specific state");
     get_component<bm::McSimplePreLAG>()->reset_state();
+}
+
+void
+P4SwitchCore::AddThriftServices()
+{
 }
 
 bool

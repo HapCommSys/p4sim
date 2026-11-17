@@ -4,7 +4,9 @@
 /*
  * P4Controller on a v1model switch: flow entries, action profiles and mirroring
  * sessions. Every change is read back from the switch through the BMv2 runtime
- * API or, for mirroring sessions, the API of the P4 core.
+ * API or, for mirroring sessions, the API of the P4 core. Also the commands that
+ * simple_switch_CLI adds to the runtime CLI, through the "simple_switch" Thrift
+ * service.
  */
 
 #include "ns3/core-module.h"
@@ -13,6 +15,9 @@
 #include "ns3/p4-core-v1model.h"
 #include "ns3/p4-switch-net-device.h"
 #include "ns3/test.h"
+
+#include <algorithm>
+#include <cstdio>
 
 using namespace ns3;
 
@@ -44,6 +49,31 @@ CreateV1modelSwitch(const std::string& json, const std::string& flowTable)
     node->AddDevice(sw);
     sw->Initialize();
     return sw;
+}
+
+/// Runs simple_switch_CLI with \p commands on \p thriftPort; returns what it prints
+std::string
+RunSimpleSwitchCli(int thriftPort, const std::vector<std::string>& commands)
+{
+    std::string cmd = "printf '%s\\n'";
+    for (const std::string& command : commands)
+    {
+        cmd += " '" + command + "'";
+    }
+    cmd += " | simple_switch_CLI --thrift-port " + std::to_string(thriftPort) + " 2>&1";
+    std::string out;
+    FILE* pipe = popen(cmd.c_str(), "r");
+    if (pipe == nullptr)
+    {
+        return out;
+    }
+    char buffer[256];
+    while (fgets(buffer, sizeof(buffer), pipe) != nullptr)
+    {
+        out += buffer;
+    }
+    pclose(pipe);
+    return out;
 }
 
 /// Action data with a single value
@@ -236,6 +266,139 @@ class P4ControllerMirroringTestCase : public P4TestCase
 
 /**
  * \ingroup p4sim-tests
+ * The commands that simple_switch_CLI adds to the runtime CLI, which use the
+ * "simple_switch" Thrift service. The flow table file adds mirroring session 5
+ * (port 2), 6 (multicast group 1) and 7, deletes 7 again, gives egress port 1
+ * room for one frame and lets port 2 send 100 frames per second. Two frames that
+ * the P4 program clones to session 5 show that the clones use the session and
+ * that the queues follow these settings. Then simple_switch_CLI reads the
+ * sessions and the time of the switch.
+ */
+class P4SimpleSwitchCliTestCase : public P4TestCase
+{
+  public:
+    P4SimpleSwitchCliTestCase()
+        : P4TestCase("simple_switch_CLI: mirroring sessions, queue depth and rate, time")
+    {
+    }
+
+  private:
+    /// Host 0 sends a frame with this EtherType into port 0 (see clone_v1model.p4)
+    void Send(uint16_t etherType)
+    {
+        m_hosts[0]->Send(Create<Packet>(4), Mac48Address("00:00:00:00:00:01"), etherType);
+    }
+
+    /// A host received a frame from the switch: note its EtherType and the time
+    bool Receive(Ptr<NetDevice> host,
+                 Ptr<const Packet> packet,
+                 uint16_t protocol,
+                 const Address& from,
+                 const Address& to,
+                 NetDevice::PacketType type)
+    {
+        auto port = std::find(m_hosts.begin(), m_hosts.end(), host) - m_hosts.begin();
+        m_received[port].emplace_back(protocol, Simulator::Now());
+        return true;
+    }
+
+    void DoRun() override
+    {
+        SetDataDir(NS_TEST_SOURCEDIR);
+        Ptr<Node> switchNode = CreateObject<Node>();
+        Ptr<Node> hostNode = CreateObject<Node>();
+        Ptr<P4SwitchNetDevice> sw = CreateObject<P4SwitchNetDevice>();
+        sw->SetAttribute("JsonPath",
+                         StringValue(CreateDataDirFilename("p4src/clone/clone_v1model.json")));
+        sw->SetAttribute("FlowTablePath",
+                         StringValue(CreateDataDirFilename("p4src/clone/flowtable_cli.txt")));
+        sw->SetAttribute("BmLogLevel", StringValue("off"));
+        switchNode->AddDevice(sw);
+        for (uint32_t i = 0; i < 3; i++)
+        {
+            Ptr<SimpleChannel> channel = CreateObject<SimpleChannel>();
+            Ptr<SimpleNetDevice> port = CreateObject<SimpleNetDevice>();
+            Ptr<SimpleNetDevice> host = CreateObject<SimpleNetDevice>();
+            port->SetAddress(Mac48Address::Allocate());
+            host->SetAddress(Mac48Address::Allocate());
+            port->SetChannel(channel);
+            host->SetChannel(channel);
+            switchNode->AddDevice(port);
+            hostNode->AddDevice(host);
+            sw->AddBridgePort(port);
+            host->SetPromiscReceiveCallback(
+                MakeCallback(&P4SimpleSwitchCliTestCase::Receive, this));
+            m_hosts.push_back(host);
+        }
+        sw->Initialize(); // runs simple_switch_CLI with the flow table file
+
+        P4CoreV1model* core = sw->GetV1ModelCore();
+        P4SwitchCore::MirroringSessionConfig config{};
+        NS_TEST_ASSERT_MSG_EQ(core->GetMirroringSession(5, &config),
+                              true,
+                              "mirroring_add did not add session 5");
+        NS_TEST_EXPECT_MSG_EQ(config.egress_port_valid && config.egress_port == 2 &&
+                                  !config.mgid_valid,
+                              true,
+                              "Session 5 should send its clones to port 2");
+        config = {};
+        NS_TEST_ASSERT_MSG_EQ(core->GetMirroringSession(6, &config),
+                              true,
+                              "mirroring_add_mc did not add session 6");
+        NS_TEST_EXPECT_MSG_EQ(config.mgid_valid && config.mgid == 1 && !config.egress_port_valid,
+                              true,
+                              "Session 6 should send its clones to multicast group 1");
+        NS_TEST_EXPECT_MSG_EQ(core->GetMirroringSession(7, &config),
+                              false,
+                              "mirroring_delete did not delete session 7");
+
+        // Two frames that are cloned to session 5: the originals go to port 1, the
+        // clones to port 2
+        Simulator::Schedule(MilliSeconds(1), &P4SimpleSwitchCliTestCase::Send, this, 0x9001);
+        Simulator::Schedule(MilliSeconds(1), &P4SimpleSwitchCliTestCase::Send, this, 0x9004);
+        Simulator::Stop(Seconds(1));
+        Simulator::Run();
+
+        // set_queue_depth 1 1: port 1 holds one frame, so the second original is dropped
+        NS_TEST_EXPECT_MSG_EQ(m_received[1].size(), 1u, "Port 1 should send only one original");
+        // set_queue_rate 100 2: port 2 sends one frame per 10 ms
+        NS_TEST_EXPECT_MSG_EQ(m_received[2].size(), 2u, "Port 2 should send both clones");
+        if (m_received[2].size() == 2)
+        {
+            NS_TEST_EXPECT_MSG_EQ(m_received[2][0].first, 0x9001, "Wrong first clone");
+            NS_TEST_EXPECT_MSG_GT_OR_EQ(m_received[2][1].second - m_received[2][0].second,
+                                        MilliSeconds(10),
+                                        "Port 2 should send the clones 10 ms apart");
+        }
+
+        // The clock of the switch is the simulation clock: 1 s since the start
+        std::string out = RunSimpleSwitchCli(sw->GetThriftPort(),
+                                             {"mirroring_get 5",
+                                              "mirroring_get 6",
+                                              "mirroring_get 7",
+                                              "get_time_elapsed",
+                                              "get_time_since_epoch"});
+        const std::vector<std::string> expected = {
+            "RuntimeCmd: MirroringSessionConfig(port=2, mgid=None)\n",
+            "RuntimeCmd: MirroringSessionConfig(port=None, mgid=1)\n",
+            "RuntimeCmd: Invalid mirroring operation (SESSION_NOT_FOUND)\n",
+            "RuntimeCmd: 1000000\nRuntimeCmd: 1000000\n", // the two times
+        };
+        for (const std::string& line : expected)
+        {
+            NS_TEST_EXPECT_MSG_NE(out.find(line),
+                                  std::string::npos,
+                                  "simple_switch_CLI should print '" << line << "':\n"
+                                                                      << out);
+        }
+    }
+
+    std::vector<Ptr<SimpleNetDevice>> m_hosts;           ///< one per switch port
+    std::vector<std::pair<uint16_t, Time>> m_received[3]; ///< (EtherType, time) per port
+};
+
+/**
+ * \ingroup p4sim-tests
  * P4Controller tests.
  */
 class P4ControllerTestSuite : public TestSuite
@@ -247,6 +410,7 @@ class P4ControllerTestSuite : public TestSuite
         AddTestCase(new P4ControllerFlowEntryTestCase, TestCase::QUICK);
         AddTestCase(new P4ControllerActionProfileTestCase, TestCase::QUICK);
         AddTestCase(new P4ControllerMirroringTestCase, TestCase::QUICK);
+        AddTestCase(new P4SimpleSwitchCliTestCase, TestCase::QUICK);
     }
 };
 

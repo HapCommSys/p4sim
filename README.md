@@ -156,6 +156,7 @@ The forwarding behaviour is defined by the P4 program and its flow-table configu
 > 1. When using a CSMA channel, the P4 program must handle ARP explicitly.
 > 2. Buffer attributes only take effect if the selected architecture models that buffer.
 > 3. `EnableTracing` currently supports basic throughput measurement only.
+> 4. The flow-table file of a v1model switch runs in `simple_switch_CLI`, so besides the table commands it can use `mirroring_add`, `mirroring_add_mc`, `mirroring_delete`, `set_queue_depth` and `set_queue_rate`.
 
 ---
 

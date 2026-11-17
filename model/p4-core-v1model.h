@@ -880,6 +880,13 @@ public:
 
 protected:
   /**
+   * @brief Add the "simple_switch" Thrift service, which simple_switch_CLI uses
+   * for its own commands: mirroring_add, set_queue_depth, get_time_elapsed and
+   * the like (defined in p4-core-v1model-thrift.cc)
+   */
+  void AddThriftServices() override;
+
+  /**
    * @brief The egress thread mapper for dequeue process of queue buffer
    * bmv2 using 4u default, in ns-3 only single thread for processing
    */

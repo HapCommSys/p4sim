@@ -225,6 +225,14 @@ class P4SwitchCore : public bm::Switch
     void CheckQueueingMetadata();
 
     /**
+     * @brief Add the Thrift services of the target to the Thrift server of this
+     * switch, such as "simple_switch" for the commands that simple_switch_CLI adds
+     * to the runtime CLI. ExecuteCliCommands() calls it after starting the server.
+     * The default adds none.
+     */
+    virtual void AddThriftServices();
+
+    /**
      * @brief Ingress processing pipeline
      */
     virtual void HandleIngressPipeline() = 0;
