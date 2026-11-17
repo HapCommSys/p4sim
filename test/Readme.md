@@ -24,7 +24,7 @@ full BMv2 log to `/tmp`.
 | `p4-queue` | egress queue: capacity, rate, FIFO, per-port rate, priorities | no |
 | `p4sim` | v1model, PSA and PNA load their program; Thrift ports; `BmLogLevel` | yes |
 | `p4-controller` | flow entries, action profiles and mirroring sessions, read back from the switch; the commands of `simple_switch_CLI` for mirroring, queues and time | yes, and `simple_switch_CLI` |
-| `p4-packet` | frames sent into a switch and the frames that leave it, on v1model, PNA and PSA | yes |
+| `p4-packet` | frames sent into a switch and the frames that leave it, on v1model, PNA, PSA and the pipeline core | yes |
 | `p4-egress` | switched-Ethernet ports: a congested port sends back to back at its line rate; a switch with a full egress queue can be destroyed | yes |
 | `p4-switch-rate` | `SwitchRate` limits the whole pipeline, 0 means no limit, a full input buffer drops | yes |
 | `p4-pipeline-delay` | `PipelineDelay` delays every packet by the same time without lowering the throughput (default egress path, VOQ, PSA, with `SwitchRate`, on a congested port); a switch with packets in its pipeline can be destroyed | yes |
@@ -52,7 +52,9 @@ can change details such as generated names).
 
 `p4-packet` runs the `.stf` files in [`p4src/forward`](p4src/forward) on a switch
 with three ports, once per architecture: `forward_v1model.p4`, `forward_pna.p4` and
-`forward_psa.p4` behave the same. [`p4src/priority`](p4src/priority) checks the
+`forward_psa.p4` behave the same, and the pipeline core (`P4SwitchArch` 3) runs
+`forward_v1model.p4`. [`p4src/drop`](p4src/drop) checks `mark_to_drop()` in the
+ingress and in the egress, on v1model and the pipeline core. [`p4src/priority`](p4src/priority) checks the
 priority queues of v1model, [`p4src/resubmit`](p4src/resubmit) and
 [`p4src/recirculate`](p4src/recirculate) its resubmit and recirculation,
 [`p4src/clone`](p4src/clone) its clones (also to a multicast group), [`p4src/primitives`](p4src/primitives)
@@ -69,6 +71,7 @@ mc_node_create 0 2 | 3                        # node 0 (rid 0): port 2 and LAG 3
 mc_node_associate 1 0                         # node 0 is in group 1
 packet 0 0000000000fe 000000000010 0800 ...   # send this frame into port 0
 expect 1 000000000011 0000000000fe 0800 ...   # this frame leaves port 1
+register MyEgress.egress_frames 0 2           # after the run, this register holds 2
 ```
 
 Frames are Ethernet frames in hex; spaces are ignored and `*` in `expect` matches
