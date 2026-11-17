@@ -157,6 +157,7 @@ The forwarding behaviour is defined by the P4 program and its flow-table configu
 > 1. When using a CSMA channel, the P4 program must handle ARP explicitly.
 > 2. Buffer attributes only take effect if the selected architecture models that buffer.
 > 3. `EnableTracing` currently supports basic throughput measurement only.
+> 4. `SwitchRate` limits how fast the P4 pipeline of a switch processes packets, resubmitted and recirculated passes included. The default, 0, means no limit, as in a hardware switch: then only the links limit the traffic. Set it to model a slower switch, such as a software switch: an idle pipeline takes a packet at once, and packets that arrive while it is busy wait in the input buffer (`InputBufferSizeLow`), or are dropped and reported through `MacRxDrop` when it is full.
 
 ### Switch ports
 
@@ -209,7 +210,7 @@ In the [paper](https://dl.acm.org/doi/10.1145/3747204.3747210), P4sim is evaluat
 
 ## Known Limitations
 
-`SwitchRate` (packets per second) limits how fast the P4 pipeline of a switch processes packets, resubmitted and recirculated passes included. The default, 0, means no limit, as in a hardware switch: then only the links limit the traffic. Set it to model a slower switch, such as a software switch: an idle pipeline takes a packet at once, and packets that arrive while it is busy wait in the input buffer (`InputBufferSizeLow`), or are dropped and reported through `MacRxDrop` when it is full.
+`SwitchRate` models only the throughput of the P4 pipeline, not its per-packet latency: a packet that finds the pipeline idle passes it without delay.
 
 ---
 
