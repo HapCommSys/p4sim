@@ -33,7 +33,7 @@ full BMv2 log to `/tmp`.
 | `p4-traffic-manager` | the VOQ + fabric Traffic Manager | no |
 | `channel-state-test-suite` | the states of the switched-Ethernet channel | no |
 | `switched-ethernet-host` | the transmit queue of a host device; short frames on 100 and 400 Gbps links keep the exact line rate | no |
-| `link-framing` | Ethernet framing on the switched-Ethernet channel (preamble, FCS, padding, interframe gap), between two hosts and through a switch | yes |
+| `link-framing` | Ethernet framing (preamble, FCS, padding, interframe gap) on the switched-Ethernet channel and the P4 point-to-point device; between two hosts, through a switch, and in a switch's estimate for a point-to-point bridge port | yes |
 | `p4-switch-queue-item-test-suite` | the items in the queue discs of the switch ports | no |
 
 [`examples-to-run.py`](examples-to-run.py) lists the examples that `test.py` runs
