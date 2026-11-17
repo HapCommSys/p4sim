@@ -198,13 +198,6 @@ class P4SwitchCore : public bm::Switch
      */
     void reset_target_state_() override;
 
-    // Disabling copy and move operations
-    P4SwitchCore(const P4SwitchCore&) = delete;
-    P4SwitchCore& operator=(const P4SwitchCore&) = delete;
-    P4SwitchCore(P4SwitchCore&&) = delete;
-    P4SwitchCore&& operator=(P4SwitchCore&&) = delete;
-
-  protected:
     /**
      * @brief Configuration for a mirroring session
      * @details The configuration includes the egress port and the multicast group ID. The egress
@@ -221,7 +214,7 @@ class P4SwitchCore : public bm::Switch
 
     /**
      * @brief Add a mirroring session to the switch
-     * @param mirrorId the ID of the mirroring session
+     * @param mirrorId the ID of the mirroring session, 0 to 32767
      * @param config the configuration of the mirroring session
      * @return bool true if the mirroring session is added successfully, false otherwise
      */
@@ -236,16 +229,31 @@ class P4SwitchCore : public bm::Switch
 
     /**
      * @brief Get the configuration of a mirroring session
-     * @param mirrorId the ID of the mirroring session
+     * @param mirrorId the ID of the mirroring session, 0 to 32767
      * @param config the configuration of the mirroring session
      * @return bool true if the mirroring session is found, false otherwise
      */
     bool GetMirroringSession(int mirrorId, MirroringSessionConfig* config) const;
 
+    // Disabling copy and move operations
+    P4SwitchCore(const P4SwitchCore&) = delete;
+    P4SwitchCore& operator=(const P4SwitchCore&) = delete;
+    P4SwitchCore(P4SwitchCore&&) = delete;
+    P4SwitchCore&& operator=(P4SwitchCore&&) = delete;
+
+  protected:
     /**
      * @brief Check the queueing metadata
      */
     void CheckQueueingMetadata();
+
+    /**
+     * @brief Add the Thrift services of the target to the Thrift server of this
+     * switch, such as "simple_switch" for the commands that simple_switch_CLI adds
+     * to the runtime CLI. ExecuteCliCommands() calls it after starting the server.
+     * The default adds none.
+     */
+    virtual void AddThriftServices();
 
     /**
      * @brief Ingress processing pipeline

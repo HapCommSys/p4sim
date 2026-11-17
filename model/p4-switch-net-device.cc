@@ -121,13 +121,16 @@ P4SwitchNetDevice::GetTypeId()
                 MakeUintegerChecker<uint16_t>())
 
             .AddAttribute("InputBufferSizeLow",
-                          "Normal-priority input buffer depth (packets).",
+                          "Capacity of the input buffer for the packets received on the "
+                          "ports, in packets (PSA: for all packets that enter the ingress).",
                           UintegerValue(128),
                           MakeUintegerAccessor(&P4SwitchNetDevice::m_InputBufferSizeLow),
                           MakeUintegerChecker<size_t>())
 
             .AddAttribute("InputBufferSizeHigh",
-                          "High-priority input buffer depth (packets).",
+                          "v1model: capacity of the input buffer for resubmitted and "
+                          "recirculated packets, in packets. The ingress takes these "
+                          "before the packets received on the ports.",
                           UintegerValue(128),
                           MakeUintegerAccessor(&P4SwitchNetDevice::m_InputBufferSizeHigh),
                           MakeUintegerChecker<size_t>())
@@ -500,8 +503,10 @@ P4SwitchNetDevice::SendNs3Packet(Ptr<Packet> packetOut,
         return false;
     }
 
-    // Port 511 = P4 convention for drop.
-    if (outPort == 511)
+    // A frame for the drop port is dropped without a warning. The pipeline
+    // core, for example, passes the egress_spec of the ingress, which
+    // mark_to_drop() sets to the drop port.
+    if (outPort == SSWITCH_DROP_PORT)
     {
         NS_LOG_DEBUG("Drop port (511) — packet discarded");
         m_macTxDropTrace(packetOut);
@@ -863,6 +868,58 @@ P4SwitchNetDevice::GetThriftPort() const
         return m_p4Pipeline->GetThriftPort();
     }
     return 0;
+}
+
+P4SwitchCore*
+P4SwitchNetDevice::GetCore() const
+{
+    if (m_v1modelSwitch)
+    {
+        return m_v1modelSwitch.get();
+    }
+    if (m_psaSwitch)
+    {
+        return m_psaSwitch.get();
+    }
+    if (m_pnaNic)
+    {
+        return m_pnaNic.get();
+    }
+    return m_p4Pipeline.get();
+}
+
+bool
+P4SwitchNetDevice::AddMirroringSession(uint32_t sessionId, uint32_t egressPort)
+{
+    P4SwitchCore* core = GetCore();
+    if (!core)
+    {
+        NS_LOG_WARN("Cannot add mirroring session " << sessionId
+                                                    << ": the P4 core is not created yet");
+        return false;
+    }
+    P4SwitchCore::MirroringSessionConfig config{};
+    config.egress_port = egressPort;
+    config.egress_port_valid = true;
+    config.mgid_valid = false;
+    return core->AddMirroringSession(static_cast<int>(sessionId), config);
+}
+
+bool
+P4SwitchNetDevice::AddMulticastMirroringSession(uint32_t sessionId, uint32_t mgid)
+{
+    P4SwitchCore* core = GetCore();
+    if (!core)
+    {
+        NS_LOG_WARN("Cannot add mirroring session " << sessionId
+                                                    << ": the P4 core is not created yet");
+        return false;
+    }
+    P4SwitchCore::MirroringSessionConfig config{};
+    config.egress_port_valid = false;
+    config.mgid = mgid;
+    config.mgid_valid = true;
+    return core->AddMirroringSession(static_cast<int>(sessionId), config);
 }
 
 void

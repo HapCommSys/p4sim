@@ -112,7 +112,8 @@ P4CoreV1model::P4CoreV1model(P4SwitchNetDevice* net_device,
       m_packetId(0),
       m_switchRate(packet_rate),
       m_nbQueuesPerPort(nb_queues_per_port),
-      // InputBuffer takes the high-priority capacity first
+      // InputBuffer takes the capacity of the resubmit/recirculate queue first,
+      // then that of the queue for normal packets
       input_buffer(std::make_unique<InputBuffer>(input_buffer_size_high, input_buffer_size_low)),
       egress_buffer(m_nbEgressThreads,
                     queue_buffer_size,
@@ -765,7 +766,7 @@ P4CoreV1model::HandleIngressPipeline()
                           field_list_id);
             if (config.mgid_valid)
             {
-                NS_LOG_DEBUG("Cloning packet to MGID {}" << config.mgid);
+                NS_LOG_DEBUG("Cloning packet to MGID " << config.mgid);
                 MulticastPacket(bm_packet_copy.get(), config.mgid);
             }
             if (config.egress_port_valid)
@@ -949,7 +950,14 @@ P4CoreV1model::MulticastPacket(bm::Packet* packet, unsigned int mgid)
     NS_LOG_FUNCTION(this);
     auto* phv = packet->get_phv();
     auto& f_rid = phv->get_field("intrinsic_metadata.egress_rid");
-    const auto pre_out = m_pre->replicate({mgid});
+    // As in simple_switch, the LAG hash of the P4 program (lag_hash in
+    // standard_metadata) selects the member port of each LAG in the group
+    uint64_t lag_hash = 0;
+    if (phv->has_field("intrinsic_metadata.lag_hash"))
+    {
+        lag_hash = phv->get_field("intrinsic_metadata.lag_hash").get<uint64_t>();
+    }
+    const auto pre_out = m_pre->replicate({mgid, lag_hash});
     auto packet_size = packet->get_register(RegisterAccess::PACKET_LENGTH_REG_IDX);
     for (const auto& out : pre_out)
     {
