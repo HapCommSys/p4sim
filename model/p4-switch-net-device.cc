@@ -136,7 +136,8 @@ P4SwitchNetDevice::GetTypeId()
                           MakeUintegerChecker<size_t>())
 
             .AddAttribute("QueueBufferSize",
-                          "Output queue buffer depth (packets).",
+                          "Capacity of each output queue, in packets: per port and "
+                          "priority (v1model, PSA), or per port (PNA).",
                           UintegerValue(128),
                           MakeUintegerAccessor(&P4SwitchNetDevice::m_queueBufferSize),
                           MakeUintegerChecker<size_t>())
@@ -316,9 +317,10 @@ P4SwitchNetDevice::DoInitialize()
 
     case P4NIC_ARCH_PNA:
         NS_LOG_DEBUG("Initialising PNA NIC");
-        m_pnaNic = std::make_unique<P4PnaNic>(this, m_enableSwap);
+        m_pnaNic = std::make_unique<P4PnaNic>(this, m_enableSwap, m_queueBufferSize);
         ConfigureCore(*m_pnaNic);
         m_pnaNic->InitializeSwitchFromP4Json(m_jsonPath);
+        SetPortTxDoneCallback(MakeCallback(&P4PnaNic::PortTxComplete, m_pnaNic.get()));
         m_pnaNic->start_and_return_();
         break;
 
