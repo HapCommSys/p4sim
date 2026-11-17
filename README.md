@@ -158,6 +158,7 @@ The forwarding behaviour is defined by the P4 program and its flow-table configu
 > 2. Buffer attributes only take effect if the selected architecture models that buffer.
 > 3. `EnableTracing` currently supports basic throughput measurement only.
 > 4. `SwitchRate` limits how fast the P4 pipeline of a switch processes packets, resubmitted and recirculated passes included. The default, 0, means no limit, as in a hardware switch: then only the links limit the traffic. Set it to model a slower switch, such as a software switch: an idle pipeline takes a packet at once, and packets that arrive while it is busy wait in the input buffer (`InputBufferSizeLow`), or are dropped and reported through `MacRxDrop` when it is full.
+> 5. The flow-table file of a v1model switch runs in `simple_switch_CLI`, so besides the table commands it can use `mirroring_add`, `mirroring_add_mc`, `mirroring_delete`, `set_queue_depth` and `set_queue_rate`.
 
 ### Switch ports
 
