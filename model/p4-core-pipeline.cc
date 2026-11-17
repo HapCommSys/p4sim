@@ -111,6 +111,10 @@ P4CorePipeline::ReceivePacket(Ptr<Packet> packetIn,
     bm_packet.get()->set_ingress_port(inPort);
 
     phv->reset_metadata();
+    // ns-3 metadata, read back in EnqueueNow()
+    RegisterAccess::clear_all(bm_packet.get());
+    RegisterAccess::set_ns_protocol(bm_packet.get(), protocol);
+    RegisterAccess::set_ns_address(bm_packet.get(), GetAddressIndex(destination));
     phv->get_field("standard_metadata.ingress_port").set(inPort);
     bm_packet->set_register(RegisterAccess::PACKET_LENGTH_REG_IDX, len);
     phv->get_field("standard_metadata.packet_length").set(len);
@@ -149,9 +153,8 @@ P4CorePipeline::ReceivePacket(Ptr<Packet> packetIn,
     // === Deparser
     deparser->deparse(bm_packet.get());
 
-    // === Send the packet to the destination
-    Ptr<Packet> ns_packet = ConvertToNs3Packet(std::move(bm_packet));
-    m_switchNetDevice->SendNs3Packet(ns_packet, egress_spec, protocol, destination);
+    // === Send the packet once the pipeline delay is over (see EnqueueNow())
+    Enqueue(egress_spec, std::move(bm_packet));
     return 0;
 }
 
@@ -198,7 +201,14 @@ P4CorePipeline::HandleEgressPipeline(size_t workerId)
 void
 P4CorePipeline::EnqueueNow(uint32_t egress_port, std::unique_ptr<bm::Packet>&& packet)
 {
-    NS_LOG_WARN("NO inter queue buffer in this simple v1model, use ReceivePacket instead");
+    // No egress queues: the packet goes to its port at once
+    uint16_t protocol = RegisterAccess::get_ns_protocol(packet.get());
+    int addr_index = RegisterAccess::get_ns_address(packet.get());
+    Ptr<Packet> ns_packet = ConvertToNs3Packet(std::move(packet));
+    m_switchNetDevice->SendNs3Packet(ns_packet,
+                                     static_cast<int>(egress_port),
+                                     protocol,
+                                     m_destinationList[addr_index]);
 }
 
 } // namespace ns3

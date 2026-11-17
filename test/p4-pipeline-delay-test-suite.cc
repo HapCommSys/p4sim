@@ -2,9 +2,10 @@
 // Copyright (c) 2026 TU Dresden. Author: Mingyu Ma <mingyu.ma@tu-dresden.de>
 
 /*
- * PipelineDelay: the time a packet spends in the P4 pipeline of a switch. Host 0
- * sends frames, one per microsecond, through the switch to host 1. Each case
- * runs twice, without and with the delay.
+ * PipelineDelay: the time a packet spends in the P4 pipeline of a switch
+ * (v1model, PSA and the pipeline core). Host 0 sends frames, one per
+ * microsecond, through the switch to host 1. Each case runs twice, without and
+ * with the delay.
  * - With the delay, every frame arrives exactly PipelineDelay later, and the
  *   frames keep their spacing: the pipeline takes the next packet while the
  *   previous one is still in it, so the delay adds latency but does not lower
@@ -21,6 +22,8 @@
 #include "ns3/p4-switch-net-device.h"
 #include "ns3/switched-ethernet-channel.h"
 #include "ns3/test.h"
+
+#include <algorithm>
 
 using namespace ns3;
 
@@ -53,13 +56,26 @@ struct Network
 /// What a case configures
 struct Scenario
 {
-    std::string archName;   ///< "v1model" or "psa"
+    std::string archName;   ///< "v1model", "psa" or "pipeline"
     uint32_t arch;          ///< P4SWITCH_ARCH_*
     bool voq;               ///< EnableVoqFabric
     uint64_t switchRate;    ///< SwitchRate (pps), 0 = no limit
     std::string egressRate; ///< data rate of the link of port 1 (port 0: 10 Gbps)
     uint32_t frames;        ///< frames sent by host 0, one per microsecond
 };
+
+/**
+ * The P4 program of a scenario
+ * \param s the scenario
+ * \return the JSON file, relative to the test folder; the pipeline core runs
+ *         the v1model program
+ */
+std::string
+JsonFile(const Scenario& s)
+{
+    const std::string program = (s.arch == P4SWITCH_ARCH_PIPELINE) ? "v1model" : s.archName;
+    return "p4src/egress_ports/egress_ports_" + program + ".json";
+}
 
 /**
  * Build the switch and its two hosts
@@ -134,11 +150,12 @@ class PipelineDelayTestCase : public TestCase
 
         NS_TEST_ASSERT_MSG_EQ(without.size(), m_scenario.frames, "Frames lost without the delay");
         NS_TEST_ASSERT_MSG_EQ(with.size(), m_scenario.frames, "Frames lost with the delay");
-        if (!m_firstArrival.IsZero())
+        // The test runner may continue after a failed assert: read only frames that arrived
+        if (!m_firstArrival.IsZero() && !without.empty())
         {
             NS_TEST_EXPECT_MSG_EQ(without[0], m_firstArrival, "Wrong arrival without the delay");
         }
-        for (size_t k = 0; k < with.size(); k++)
+        for (size_t k = 0; k < std::min(with.size(), without.size()); k++)
         {
             NS_TEST_EXPECT_MSG_EQ(with[k] - without[k],
                                   m_delay,
@@ -149,10 +166,7 @@ class PipelineDelayTestCase : public TestCase
     /// Host 0 sends the frames; return when they arrive at host 1
     std::vector<Time> Run(Time delay)
     {
-        Network net = Build(m_scenario,
-                            CreateDataDirFilename("p4src/egress_ports/egress_ports_" +
-                                                  m_scenario.archName + ".json"),
-                            delay);
+        Network net = Build(m_scenario, CreateDataDirFilename(JsonFile(m_scenario)), delay);
         std::vector<Time> arrivals;
         net.hosts[1]->TraceConnectWithoutContext("MacRx", MakeBoundCallback(&Record, &arrivals));
         for (uint32_t k = 0; k < m_scenario.frames; k++)
@@ -246,6 +260,12 @@ static class P4PipelineDelayTestSuite : public TestSuite
                                               delay,
                                               first),
                     TestCase::QUICK);
+        AddTestCase(
+            new PipelineDelayTestCase("pipeline: every frame arrives PipelineDelay later",
+                                      {"pipeline", P4SWITCH_ARCH_PIPELINE, false, 0, "10Gbps", 20},
+                                      delay,
+                                      first),
+            TestCase::QUICK);
         AddTestCase(new PipelineDelayTestCase(
                         "v1model: with SwitchRate, the frames keep its spacing",
                         {"v1model", P4SWITCH_ARCH_V1MODEL, false, 100000, "10Gbps", 20},

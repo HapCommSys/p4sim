@@ -158,8 +158,8 @@ P4SwitchNetDevice::GetTypeId()
                           "egress then takes no time. The pipeline takes the next packet at "
                           "once, so the delay does not lower the throughput (see SwitchRate). "
                           "A recirculated packet passes the pipeline again and is delayed "
-                          "again. 0 (the default) means no delay. v1model and PSA; PNA and the "
-                          "pipeline core ignore it. For scale: on Tofino, the ingress block "
+                          "again. 0 (the default) means no delay. v1model, PSA and the pipeline "
+                          "core; PNA ignores it. For scale: on Tofino, the ingress block "
                           "(parser, control, deparser) was measured at 162 to 224 ns on 100G "
                           "ports and 221 to 472 ns on 10G ports, depending on the program "
                           "(Franco et al., Computer Communications 218, 2024).",
