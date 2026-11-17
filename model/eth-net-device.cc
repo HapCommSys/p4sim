@@ -237,7 +237,8 @@ SwitchedEthernetHostDevice::TransmitStart()
 
     // Only this device sends on its slot, which is free here; the channel
     // still refuses a frame when the device has been detached.
-    if (!m_channel->TransmitStart(packet, m_devId))
+    Time txTime;
+    if (!m_channel->TransmitStart(packet, m_devId, &txTime))
     {
         NS_LOG_WARN("TransmitStart: channel refused the frame — drop");
         m_macTxDropTrace(packet);
@@ -251,7 +252,6 @@ SwitchedEthernetHostDevice::TransmitStart()
     }
     m_txBusy = true;
     m_currentPkt = packet;
-    Time txTime = m_channel->GetDataRate().CalculateBytesTxTime(packet->GetSize());
     m_txCompleteEvent =
         Simulator::Schedule(txTime, &SwitchedEthernetHostDevice::TransmitComplete, this);
 }

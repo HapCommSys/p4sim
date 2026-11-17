@@ -174,11 +174,19 @@ class SwitchedEthernetChannel : public Channel
      * while the slot is still serialising a frame (TRANSMITTING_STATE), not
      * while it is merely PROPAGATING.
      *
-     * \param p     Packet to transmit (full Ethernet frame).
-     * \param srcId Slot ID of the transmitting device.
+     * The serialisation time is computed here, for both kinds of sender. The
+     * simulator rounds every event time to its resolution (1 ns by default),
+     * so the channel keeps the exact end of the last frame of each slot: a
+     * frame that follows back to back starts there, and the rounding does not
+     * add up. Each frame ends within half a time step of its exact end.
+     *
+     * \param p      Packet to transmit (full Ethernet frame).
+     * \param srcId  Slot ID of the transmitting device.
+     * \param txTime If not null and the frame is accepted, set to the time from
+     *               now until the frame is serialised: schedule TransmitEnd() then.
      * \return true if the slot was not mid-serialisation and the device is active.
      */
-    bool TransmitStart(Ptr<Packet> p, uint32_t srcId);
+    bool TransmitStart(Ptr<Packet> p, uint32_t srcId, Time* txTime = nullptr);
 
     /**
      * \brief Signal end of serialisation for slot \p srcId.
@@ -254,6 +262,10 @@ class SwitchedEthernetChannel : public Channel
     /// several frames can be in flight at once; GetState() derives
     /// PROPAGATING_STATE from a positive count.
     uint32_t m_propCount[2];
+
+    /// Exact end of the last frame serialised on each slot, in seconds (not
+    /// rounded to the simulator's resolution; see TransmitStart())
+    int64x64_t m_txEnd[2];
 };
 
 } // namespace ns3

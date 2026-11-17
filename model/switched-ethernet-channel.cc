@@ -111,6 +111,8 @@ SwitchedEthernetChannel::SwitchedEthernetChannel()
     m_currentSrc[1] = 0;
     m_propCount[0] = 0;
     m_propCount[1] = 0;
+    m_txEnd[0] = 0;
+    m_txEnd[1] = 0;
     m_deviceList.clear();
 }
 
@@ -220,7 +222,7 @@ SwitchedEthernetChannel::Reattach(Ptr<P4SwitchNetDevice> device)
 // ---------------------------------------------------------------------------
 
 bool
-SwitchedEthernetChannel::TransmitStart(Ptr<Packet> p, uint32_t srcId)
+SwitchedEthernetChannel::TransmitStart(Ptr<Packet> p, uint32_t srcId, Time* txTime)
 {
     NS_LOG_FUNCTION(this << p << srcId);
     NS_LOG_INFO("UID=" << p->GetUid());
@@ -243,6 +245,18 @@ SwitchedEthernetChannel::TransmitStart(Ptr<Packet> p, uint32_t srcId)
     m_currentSrc[srcId] = srcId;
     m_State[srcId] = TRANSMITTING_STATE;
     NS_LOG_LOGIC("Slot " << srcId << " -> TRANSMITTING_STATE");
+
+    // Exact times in seconds. A frame that follows the previous one back to
+    // back (it starts no later than the rounded end of that frame) starts at
+    // that frame's exact end, which may lie up to half a time step before or
+    // after now. After an idle time, a frame starts now.
+    bool backToBack = Time::From(m_txEnd[srcId], Time::S) >= Simulator::Now();
+    int64x64_t start = backToBack ? m_txEnd[srcId] : Simulator::Now().To(Time::S);
+    m_txEnd[srcId] = start + int64x64_t(p->GetSize() * 8) / int64x64_t(m_bps.GetBitRate());
+    if (txTime)
+    {
+        *txTime = Time::From(m_txEnd[srcId], Time::S) - Simulator::Now();
+    }
     return true;
 }
 

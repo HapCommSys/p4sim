@@ -329,6 +329,10 @@ class CustomP2PNetDevice : public NetDevice
      */
     Time m_tInterframeGap;
 
+    /// Exact end of the last frame and its interframe gap, in seconds (not
+    /// rounded to the simulator's resolution; see TransmitStart())
+    int64x64_t m_txEnd{0};
+
     /**
      * The P4P2PChannel to which this CustomP2PNetDevice has been
      * attached.

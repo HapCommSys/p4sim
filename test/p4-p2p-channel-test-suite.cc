@@ -25,7 +25,9 @@
 #include "ns3/p4-p2p-channel.h"
 #include "ns3/net-device-queue-interface.h"
 
+#include <cmath>
 #include <string>
+#include <vector>
 
 using namespace ns3;
 
@@ -132,6 +134,82 @@ PointToPointTest::DoRun (void)
 }
 
 /**
+ * \brief Short frames on a 100 Gbps link keep the exact line rate
+ *
+ * A short frame takes a fraction of a nanosecond more than a whole number of
+ * nanoseconds. The simulator rounds each event time to 1 ns, but back-to-back
+ * frames must still arrive at the exact line rate: the rounding must not add up.
+ */
+class PointToPointExactRateTest : public TestCase
+{
+public:
+  PointToPointExactRateTest () : TestCase ("Short frames on a 100 Gbps link keep the exact line rate")
+  {
+  }
+
+private:
+  void DoRun (void) override
+  {
+    const uint32_t frames = 50;
+    Ptr<Node> a = CreateObject<Node> ();
+    Ptr<Node> b = CreateObject<Node> ();
+    Ptr<CustomP2PNetDevice> devA = CreateObject<CustomP2PNetDevice> ();
+    Ptr<CustomP2PNetDevice> devB = CreateObject<CustomP2PNetDevice> ();
+    Ptr<P4P2PChannel> channel = CreateObject<P4P2PChannel> ();
+    devA->SetAttribute ("DataRate", DataRateValue (DataRate ("100Gbps")));
+    devA->Attach (channel);
+    devA->SetAddress (Mac48Address::Allocate ());
+    devA->SetQueue (CreateObject<DropTailQueue<Packet>> ());
+    devB->Attach (channel);
+    devB->SetAddress (Mac48Address::Allocate ());
+    devB->SetQueue (CreateObject<DropTailQueue<Packet>> ());
+    a->AddDevice (devA);
+    b->AddDevice (devB);
+
+    devA->TraceConnectWithoutContext ("PhyTxBegin",
+                                      MakeCallback (&PointToPointExactRateTest::TxBegin, this));
+    devB->SetReceiveCallback (MakeCallback (&PointToPointExactRateTest::Rx, this));
+    for (uint32_t k = 0; k < frames; k++)
+      {
+        Simulator::Schedule (MicroSeconds (1), &PointToPointExactRateTest::Send, this, devA);
+      }
+    Simulator::Run ();
+    Simulator::Destroy ();
+
+    NS_TEST_ASSERT_MSG_EQ (m_arrivals.size (), frames, "Frames were lost");
+    // The size of a frame on the wire, headers included
+    const double txNs = m_wireBytes * 8.0 / 100e9 * 1e9;
+    for (size_t k = 1; k < m_arrivals.size (); k++)
+      {
+        // Frame k arrives k serialisation times after the first one
+        double error = (m_arrivals[k] - m_arrivals[0]).GetNanoSeconds () - k * txNs;
+        NS_TEST_EXPECT_MSG_LT_OR_EQ (std::abs (error), 1.0,
+                                     "Frame " << k << " is " << error
+                                              << " ns from its exact arrival");
+      }
+  }
+
+  void Send (Ptr<CustomP2PNetDevice> device)
+  {
+    device->Send (Create<Packet> (40), device->GetBroadcast (), 0x800);
+  }
+
+  void TxBegin (Ptr<const Packet> frame)
+  {
+    m_wireBytes = frame->GetSize ();
+  }
+
+  bool Rx (Ptr<NetDevice> dev, Ptr<const Packet> pkt, uint16_t mode, const Address &sender)
+  {
+    m_arrivals.push_back (Simulator::Now ());
+    return true;
+  }
+
+  uint32_t m_wireBytes{0};      //!< size of a frame on the wire
+  std::vector<Time> m_arrivals; //!< arrival times at device B
+};
+
+/**
  * \brief TestSuite for PointToPoint module
  */
 class PointToPointTestSuite : public TestSuite
@@ -146,6 +224,7 @@ public:
 PointToPointTestSuite::PointToPointTestSuite () : TestSuite ("p4-p2p-channel", UNIT)
 {
   AddTestCase (new PointToPointTest, TestCase::QUICK);
+  AddTestCase (new PointToPointExactRateTest, TestCase::QUICK);
 }
 
 static PointToPointTestSuite g_pointToPointTestSuite; //!< The testsuite

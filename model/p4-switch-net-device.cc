@@ -533,16 +533,14 @@ bool
 P4SwitchNetDevice::TransmitOn(uint32_t port, Ptr<Packet> packet, Time* txTime)
 {
     Ptr<SwitchedEthernetChannel> channel = m_portChannels[port];
-    if (!channel->TransmitStart(packet, m_portDeviceIds[port]))
+    // The channel computes the serialisation time from its data rate
+    Time serialisationTime;
+    if (!channel->TransmitStart(packet, m_portDeviceIds[port], &serialisationTime))
     {
         NS_LOG_WARN("TransmitOn: channel busy or device inactive — packet dropped");
         m_macTxDropTrace(packet);
         return false;
     }
-
-    // Compute serialisation delay from the channel's data rate.
-    DataRate bps = channel->GetDataRate();
-    Time serialisationTime = bps.CalculateBytesTxTime(packet->GetSize());
 
     Simulator::Schedule(serialisationTime, &P4SwitchNetDevice::PortTransmitEnd, this, port);
 
