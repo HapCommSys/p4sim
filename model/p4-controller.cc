@@ -1955,6 +1955,123 @@ void P4Controller::GetConfigMd5(uint32_t index) {
   }
 }
 
+// ======== Mirroring Session Functions ========
+
+bool P4Controller::MirroringAdd(uint32_t index, uint32_t sessionId,
+                                uint32_t egressPort) {
+  NS_LOG_FUNCTION(this << index << sessionId << egressPort);
+
+  if (index >= m_connectedSwitches.size()) {
+    NS_LOG_WARN("Invalid switch index " << index);
+    return false;
+  }
+
+  P4CoreV1model *core = m_connectedSwitches[index]->GetV1ModelCore();
+  if (!core) {
+    NS_LOG_ERROR("V1Model core not found for switch " << index);
+    return false;
+  }
+
+  P4SwitchCore::MirroringSessionConfig config{};
+  config.egress_port = egressPort;
+  config.egress_port_valid = true;
+  if (!core->AddMirroringSession(static_cast<int>(sessionId), config)) {
+    NS_LOG_ERROR("Failed to add mirroring session " << sessionId
+                                                    << " on switch " << index);
+    return false;
+  }
+  NS_LOG_INFO("Added mirroring session " << sessionId << " to port "
+                                         << egressPort << " on switch "
+                                         << index);
+  return true;
+}
+
+bool P4Controller::MirroringAddMc(uint32_t index, uint32_t sessionId,
+                                  uint32_t mgid) {
+  NS_LOG_FUNCTION(this << index << sessionId << mgid);
+
+  if (index >= m_connectedSwitches.size()) {
+    NS_LOG_WARN("Invalid switch index " << index);
+    return false;
+  }
+
+  P4CoreV1model *core = m_connectedSwitches[index]->GetV1ModelCore();
+  if (!core) {
+    NS_LOG_ERROR("V1Model core not found for switch " << index);
+    return false;
+  }
+
+  P4SwitchCore::MirroringSessionConfig config{};
+  config.mgid = mgid;
+  config.mgid_valid = true;
+  if (!core->AddMirroringSession(static_cast<int>(sessionId), config)) {
+    NS_LOG_ERROR("Failed to add mirroring session " << sessionId
+                                                    << " on switch " << index);
+    return false;
+  }
+  NS_LOG_INFO("Added mirroring session " << sessionId
+                                         << " to multicast group " << mgid
+                                         << " on switch " << index);
+  return true;
+}
+
+bool P4Controller::MirroringDelete(uint32_t index, uint32_t sessionId) {
+  NS_LOG_FUNCTION(this << index << sessionId);
+
+  if (index >= m_connectedSwitches.size()) {
+    NS_LOG_WARN("Invalid switch index " << index);
+    return false;
+  }
+
+  P4CoreV1model *core = m_connectedSwitches[index]->GetV1ModelCore();
+  if (!core) {
+    NS_LOG_ERROR("V1Model core not found for switch " << index);
+    return false;
+  }
+
+  if (!core->DeleteMirroringSession(static_cast<int>(sessionId))) {
+    NS_LOG_WARN("No mirroring session " << sessionId << " to delete on switch "
+                                        << index);
+    return false;
+  }
+  NS_LOG_INFO("Deleted mirroring session " << sessionId << " on switch "
+                                           << index);
+  return true;
+}
+
+bool P4Controller::MirroringGet(uint32_t index, uint32_t sessionId,
+                                P4SwitchCore::MirroringSessionConfig *config) {
+  NS_LOG_FUNCTION(this << index << sessionId);
+
+  if (index >= m_connectedSwitches.size()) {
+    NS_LOG_WARN("Invalid switch index " << index);
+    return false;
+  }
+
+  P4CoreV1model *core = m_connectedSwitches[index]->GetV1ModelCore();
+  if (!core) {
+    NS_LOG_ERROR("V1Model core not found for switch " << index);
+    return false;
+  }
+
+  P4SwitchCore::MirroringSessionConfig session{};
+  if (!core->GetMirroringSession(static_cast<int>(sessionId), &session)) {
+    NS_LOG_WARN("No mirroring session " << sessionId << " on switch " << index);
+    return false;
+  }
+  NS_LOG_INFO("Mirroring session " << sessionId << " on switch " << index);
+  if (session.egress_port_valid) {
+    NS_LOG_INFO("  Egress port: " << session.egress_port);
+  }
+  if (session.mgid_valid) {
+    NS_LOG_INFO("  Multicast group: " << session.mgid);
+  }
+  if (config) {
+    *config = session;
+  }
+  return true;
+}
+
 void P4Controller::SetP4SwitchViewFlowTablePath(
     size_t index, const std::string &viewFlowTablePath) {}
 

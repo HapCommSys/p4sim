@@ -833,6 +833,13 @@ class P4CoreV1model : public P4SwitchCore
 
   protected:
     /**
+     * @brief Add the "simple_switch" Thrift service, which simple_switch_CLI uses
+     * for its own commands: mirroring_add, set_queue_depth, get_time_elapsed and
+     * the like (defined in p4-core-v1model-thrift.cc)
+     */
+    void AddThriftServices() override;
+
+    /**
      * @brief Maps an egress port to the worker thread index (single-threaded in ns-3).
      */
     struct EgressThreadMapper

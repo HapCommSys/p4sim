@@ -23,7 +23,7 @@ full BMv2 log to `/tmp`.
 | `p4-p2p-channel` | the P4 point-to-point channel | no |
 | `p4-queue` | egress queue: capacity, rate, FIFO, per-port rate, priorities | no |
 | `p4sim` | v1model, PSA and PNA load their program; Thrift ports; `BmLogLevel` | yes |
-| `p4-controller` | flow entries and action profiles, read back from the switch | yes, and `simple_switch_CLI` |
+| `p4-controller` | flow entries, action profiles and mirroring sessions, read back from the switch; the commands of `simple_switch_CLI` for mirroring, queues and time | yes, and `simple_switch_CLI` |
 | `p4-packet` | frames sent into a switch and the frames that leave it, on v1model, PNA and PSA | yes |
 | `p4-egress` | switched-Ethernet ports: a congested port sends back to back at its line rate; a switch with a full egress queue can be destroyed | yes |
 | `p4-switch-rate` | `SwitchRate` limits the whole pipeline, 0 means no limit, a full input buffer drops | yes |
@@ -50,10 +50,20 @@ can change details such as generated names).
 `p4-packet` runs the `.stf` files in [`p4src/forward`](p4src/forward) on a switch
 with three ports, once per architecture: `forward_v1model.p4`, `forward_pna.p4` and
 `forward_psa.p4` behave the same. [`p4src/priority`](p4src/priority) checks the
-priority queues of v1model. The format is a subset of p4c's STF:
+priority queues of v1model, [`p4src/resubmit`](p4src/resubmit) and
+[`p4src/recirculate`](p4src/recirculate) its resubmit and recirculation,
+[`p4src/clone`](p4src/clone) its clones (also to a multicast group), [`p4src/primitives`](p4src/primitives)
+`digest()`, `hash()` with max 0 and `random()` with lo > hi, and [`p4src/lag`](p4src/lag)
+the LAG member that its multicast picks. The format is a subset of p4c's STF:
 
 ```
 # comment
+mirroring_add 5 2                             # clones of mirroring session 5 leave port 2
+mirroring_add_mc 6 1                          # v1model: clones of session 6 go to multicast group 1
+mc_set_lag_membership 3 1 2                   # v1model: LAG 3 has the ports 1 and 2
+mc_mgrp_create 1                              # multicast group 1
+mc_node_create 0 2 | 3                        # node 0 (rid 0): port 2 and LAG 3
+mc_node_associate 1 0                         # node 0 is in group 1
 packet 0 0000000000fe 000000000010 0800 ...   # send this frame into port 0
 expect 1 000000000011 0000000000fe 0800 ...   # this frame leaves port 1
 ```
