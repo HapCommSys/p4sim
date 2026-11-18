@@ -93,9 +93,9 @@ Prerequisites
    script (Ubuntu 24.04 recommended).
 2. Run ``sudo ./set_pkg_config_env.sh`` inside ``contrib/p4sim/`` to
    register the ``bm`` pkg-config package.
-3. Set the environment variable so that examples can find P4 artefacts::
-
-     export P4SIM_DIR="$HOME/workdir/ns3.39/contrib/p4sim"
+3. No environment variable is needed: examples read their P4 artefacts
+   from the p4sim folder of the build. ``P4SIM_DIR``, which earlier
+   versions asked for, is ignored if it names another folder.
 
 See ``doc/vm-env.md`` for the full step-by-step guide.
 
@@ -163,7 +163,7 @@ All example scripts resolve P4 artefact paths (JSON, flow tables,
 topology files) through two helper functions declared in
 ``ns3/format-utils.h``::
 
-  std::string GetP4SimDir();      // $P4SIM_DIR or fallback
+  std::string GetP4SimDir();      // the p4sim folder of the build
   std::string GetP4ExamplePath(); // GetP4SimDir() + "/examples/p4src"
 
 Typical usage in a simulation script::
@@ -212,7 +212,8 @@ Troubleshooting
   ``sudo ./set_pkg_config_env.sh`` and verify with
   ``pkg-config --modversion bm``.
 * If a simulation fails with "file not found" for JSON or flow-table
-  paths, make sure ``P4SIM_DIR`` is exported in your environment.
+  paths, check that the file is in ``contrib/p4sim/examples/p4src/`` of
+  the ns-3 tree that you built.
 * BMv2's bundled spdlog is intentionally excluded; |ns3| uses its own
   logging framework.
 

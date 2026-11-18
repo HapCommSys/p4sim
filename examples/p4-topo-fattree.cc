@@ -92,7 +92,7 @@ main(int argc, char* argv[])
     uint32_t maxBytes = 1000;
     bool enableTracePcap = false;
 
-    // Use P4SIM_DIR environment variable for portable paths
+    // P4 files: examples/p4src in the p4sim folder of this build
     std::string p4SrcDir = GetP4ExamplePath() + "/fat-tree";
     std::string p4JsonPath = p4SrcDir + "/switch.json";
     std::string flowTableDirPath = p4SrcDir + "/";
