@@ -18,18 +18,21 @@ P4sim is open-source software licensed under the Apache License 2.0.
 * **Behavioral accuracy**: the packet processing pipeline is based on [BMv2](https://github.com/p4lang/behavioral-model), ensuring the same reference behavior model used by the broader P4 community.
 * **ns-3 integration**: network topology, traffic generation, and timing are fully managed by ns-3, making it straightforward to configure experiments or compose P4sim with other ns-3 modules.
 * **BMv2 compatibility**: existing P4 programs and flow-table entry scripts written for BMv2 can be used directly in P4sim without modification.
-* **Accurate timing models**: packet scheduling and queuing faithfully reflect realistic network timing behavior.
+* **Timing**: links serialise every frame at their data rate, a congested port sends back to back at its line rate, and the pipeline can have a packet rate (`SwitchRate`) and a latency (`PipelineDelay`). An optional traffic manager with virtual output queues models the fabric of a switch.
 * **High-performance simulation**: designed to handle large-scale network scenarios and high traffic rates in ns-3 simulation environments.
 
 ---
 
 ### Architectural Overview
 
-This repository provides two P4 switch architectures in ns-3. Arch 1 (`main branch`) follows a `bridge-based` design, where each port corresponds to an external NetDevice (e.g., `CSMA` or `P2P`), offering flexibility but limited control over port-level behavior. Arch 2 (`switch_channel branch`) introduces a `switch-centric` design, in which ports are internal components of the `P4SwitchNetDevice` and interconnected via a switched Ethernet channel, enabling fine-grained control, improved modularity, and closer alignment with real-world programmable switch architectures.
+A `P4SwitchNetDevice` runs a P4 program on BMv2 and has two kinds of port, which can be mixed (see [Switch ports](#switch-ports)):
+
+- **Bridge ports** (left in the figure): each port is an ordinary ns-3 device of the switch's node, such as a `CSMA` or a point-to-point device. This is the design of the `main` branch.
+- **Switched-Ethernet ports** (right): each port is a full-duplex `SwitchedEthernetChannel` of the switch itself, so the switch sees when a port has sent a frame and controls its queues and timing.
 
 ![Two architectures](./doc/figures/p4sim_arch.drawio.png)
 
-The branch `switch_channel` now is ongoing development and may contain breaking changes. The `main` branch is stable and recommended for users who want to get started with P4sim immediately.
+Branches: `main` holds the current release (v1.0.0 and later fixes) with bridge ports only. `switch_channel`, this branch, is the development line for the next release: it adds the switched-Ethernet ports, the event-driven egress (v1model, PSA and PNA), the traffic manager, and `PipelineDelay`.
 
 ### Publications
 
@@ -45,7 +48,7 @@ Our implementation builds upon the P4-driven Network Simulator Module described 
 
 ## Installation & Setup
 
-The following steps set up a local environment to run P4sim with **ns-3.39** on **Ubuntu 24.04 LTS**.
+The following steps set up a local environment to run P4sim with **ns-3.39** on **Ubuntu 24.04 LTS**. P4sim is tested with ns-3.39, BMv2 1.15.8 and p4c 1.2.5.19.
 
 > **Note:** The BMv2 and P4 software installation will take **1–2 hours** and consume up to **15 GB** of disk space.
 
@@ -92,6 +95,8 @@ git clone https://github.com/HapCommSys/p4sim.git
 cd p4sim && sudo ./set_pkg_config_env.sh
 ```
 
+The clone gives the `main` branch; for this branch, add `-b switch_channel` to `git clone`.
+
 Configure and build:
 
 ```bash
@@ -112,7 +117,13 @@ P4sim reads P4 artifacts (JSON pipelines, flow tables, topology files) from the 
 ./ns3 run p4-v1model-ipv4-forwarding
 ```
 
-No manual path editing is required — all examples use portable path helpers. A full list of available example names can be found in [`examples/CMakeLists.txt`](examples/CMakeLists.txt).
+No manual path editing is required — all examples use portable path helpers. [doc/examples.md](doc/examples.md) lists all examples.
+
+Run a test suite (see [test/Readme.md](test/Readme.md) for all of them):
+
+```bash
+./test.py -s p4-packet
+```
 
 See the full step-by-step guide (including VM setup) in [doc/vm-env.md](doc/vm-env.md).
 
@@ -140,11 +151,13 @@ The forwarding behaviour is defined by the P4 program and its flow-table configu
 | `P4SwitchArch` | Architecture selector (0 = V1model, 1 = PSA, 2 = PNA, 3 = Pipeline) |
 | `ChannelType` | Kept for main's examples, no effect: the ports are set as described below |
 | `SwitchRate` | Packet rate of the whole P4 pipeline in packets per second; 0 (default) = no limit |
+| `PipelineDelay` | Latency of every packet in the P4 pipeline; 0 (default) = none. v1model, PSA and the pipeline core |
 | `QueueBufferSize` | Capacity of each output queue in packets: per port and priority (v1model, PSA), or per port (PNA) |
+| `EnableVoqFabric` | v1model: use the VOQ + fabric traffic manager instead of the output queues (see [doc/traffic-manager.md](doc/traffic-manager.md)) |
 | `InputBufferSizeLow` | Input buffer size for low-priority (external) packets |
 | `InputBufferSizeHigh` | Input buffer size for high-priority (internal) packets |
-| `EnableTracing` | Enable basic throughput tracing |
-| `EnableSwap` | Enable runtime swapping of the P4 configuration |
+| `EnableTracing` | Enable basic throughput tracing (not tested) |
+| `EnableSwap` | Enable runtime swapping of the P4 configuration (not tested) |
 | `BmLogLevel` | Level of the BMv2 pipeline log in `/tmp/bmv2-<thrift port>-pipeline.log`: `trace` (default) ... `off`. `off` writes no log and speeds up the simulation |
 | `ThriftPort` | Thrift port for the runtime CLI. `0` (default) picks the first free port from `$P4SIM_THRIFT_PORT_BASE` (9090), so simulations can run in parallel |
 
@@ -191,7 +204,7 @@ Selected examples:
 | `p4-pna-ipv4-forwarding` | Same topology, PNA architecture |
 | `p4-basic-example` | 4-host, 4-switch mesh (V1model) |
 | `p4-basic-tunnel` | 3-host tunnel with custom header |
-| `p4-firewall` | Stateful firewall |
+| `p4-firewall` | Stateful TCP firewall |
 | `p4-l3-router` | 3-router line topology, L3 forwarding |
 | `p4-link-monitoring` | In-band link utilisation probes |
 | `p4-spine-leaf-topo` | Spine-leaf with ECMP load balancing |
@@ -204,9 +217,33 @@ In the [paper](https://dl.acm.org/doi/10.1145/3747204.3747210), P4sim is evaluat
 
 ---
 
+## Documentation
+
+| File | Contents |
+|---|---|
+| [doc/vm-env.md](doc/vm-env.md) | Installation, locally or in a virtual machine |
+| [doc/examples.md](doc/examples.md) | All examples and the format of their P4 files |
+| [doc/switch.md](doc/switch.md) | Switched-Ethernet ports and host devices, timing on the wire, host queues |
+| [doc/traffic-manager.md](doc/traffic-manager.md) | The VOQ + fabric traffic manager |
+| [doc/event-driven-tm-scheduler.md](doc/event-driven-tm-scheduler.md) | How the egress sends the next frame when a port is free |
+| [doc/p4sim.rst](doc/p4sim.rst) | The model in the format of the ns-3 documentation |
+| [test/Readme.md](test/Readme.md) | The test suites and how to write a test |
+| [doc/TODO.md](doc/TODO.md) | Open design questions, feature gaps and known bugs |
+
+---
+
 ## Known Limitations
 
-`SwitchRate` models only the throughput of the P4 pipeline, not its per-packet latency: a packet that finds the pipeline idle passes it without delay.
+- `SwitchRate` models only the throughput of the P4 pipeline, not its per-packet latency: a packet that finds the pipeline idle passes it without delay. Use `PipelineDelay` for the latency.
+- Every device stores a frame completely before it forwards it; P4sim does not forward cut-through, and it does not model the stages of a hardware pipeline.
+- ns-3.39 or earlier only, because BMv2 is built with C++17.
+- PNA ignores `PipelineDelay`, has no Thrift service of its own, and does not load its `FlowTablePath`.
+- `P4Controller` works on v1model switches only.
+- `digest()` sends its records to BMv2's notification socket; nothing in the simulation receives them.
+- The pipeline core (`P4SwitchArch` 3) has no output queue: a congested port can lose frames.
+- The Thrift server of a switch runs in its own thread: use the runtime CLIs before and after the simulation, and `P4Controller` during it.
+
+[doc/TODO.md](doc/TODO.md) has the details and the other open items.
 
 ---
 

@@ -1,48 +1,37 @@
-# P4Sim: NS-3-Based P4 Simulation Environment
+# Installing P4sim
 
-## Table of Contents
+This guide installs P4sim with ns-3.39, on an Ubuntu 24.04 machine (recommended) or in
+a virtual machine.
 
-- [Local Deployment (ns-3.39)](#local-deployment-ns339) *(recommended)*
-- [Virtual Machine Setup](#virtual-machine-as-virtual-env)
-  - [ns-3 Version 3.x – 3.35 (waf)](#setup-ns335)
-  - [ns-3 Version 3.36 – 3.39 (CMake)](#setup-ns339) *(recommended)*
-- [Appendix](#appendix)
-- [References](#references)
+P4sim is tested with Ubuntu 24.04 LTS, ns-3.39, BMv2 1.15.8 and p4c 1.2.5.19.
 
----
+> **Note:** Installing BMv2 and the P4 tools takes **1–2 hours** and up to **15 GB** of
+> disk space.
 
-## Installation & Usage Guide
+> **Why ns-3.39?** Starting from ns-3.40, ns-3 requires C++20. The BMv2 library is built
+> with C++17, so P4sim supports ns-3.39 and earlier. We will upgrade once a
+> C++20-compatible BMv2 build is available.
 
-It is recommended to use a **virtual machine** with Vagrant to simplify the installation and ensure compatibility.
-
----
-
-## <a name="local-deployment-ns339"></a> Local Deployment (ns-3.39)
-
-This guide walks you through setting up a local environment to run P4Sim integrated with `ns-3.39` on Ubuntu 24.04. The full setup includes installing the behavioral model (`bmv2`), setting up SSH for remote access, and building the ns-3 project with P4Sim support. This has been tested with **Ubuntu 24.04 LTS Desktop**.
-
-> **Note:** The bmv2 and P4 software installation step will take **1~2 hours** and consume up to **15 GB** of disk space.
-
-> **Why ns-3.39?** Starting from ns-3.40, ns-3 requires C++20. However, the BMv2 library is currently built with C++17. We will upgrade to a newer ns-3 version once a C++20-compatible BMv2 build becomes available.
+- [Install on Ubuntu 24.04](#install-on-ubuntu-2404) *(recommended)*
+- [Install in a virtual machine](#install-in-a-virtual-machine)
+- [Check the installation](#check-the-installation)
 
 ---
 
-### 1. Initialize the Working Directory
+## Install on Ubuntu 24.04
 
-Create a workspace and install basic development tools.
+### 1. Tools
 
 ```bash
 sudo apt update
-mkdir ~/workdir
-cd ~/workdir
 sudo apt install git vim cmake
+mkdir ~/workdir
 ```
 
----
+### 2. BMv2 and the P4 tools
 
-### 2. Install P4 Behavioral Model (bmv2) and Dependencies
-
-This installs all necessary libraries and tools for P4 development via the official [p4lang/tutorials](https://github.com/p4lang/tutorials) repository.
+The install script of [p4lang/tutorials](https://github.com/p4lang/tutorials) installs
+BMv2, p4c and their dependencies:
 
 ```bash
 cd ~
@@ -52,35 +41,31 @@ cd ~/src
 ../tutorials/vm-ubuntu-24.04/install.sh |& tee log.txt
 ```
 
-After installation, verify that `simple_switch` is available:
+Check that BMv2 is installed:
 
 ```bash
-simple_switch
+simple_switch --version
 ```
 
----
-
-### 3. Clone and Build ns-3.39 with P4Sim
-
-#### Step 3.1: Clone ns-3.39
+### 3. ns-3.39 and P4sim
 
 ```bash
 cd ~/workdir
 git clone https://github.com/nsnam/ns-3-dev-git.git ns3.39
 cd ns3.39
 git checkout ns-3.39
-```
 
-#### Step 3.2: Add P4Sim Module
-
-```bash
 cd contrib
 git clone https://github.com/HapCommSys/p4sim.git
 cd p4sim
 sudo ./set_pkg_config_env.sh
 ```
 
-#### Step 3.3: Configure and Build
+The clone gives the `main` branch. For the development line that this guide comes
+from, add `-b switch_channel` to `git clone`.
+
+`set_pkg_config_env.sh` registers BMv2 as the pkg-config package `bm`. Then configure
+and build ns-3:
 
 ```bash
 cd ../..
@@ -88,253 +73,75 @@ cd ../..
 ./ns3 build
 ```
 
-#### Step 3.4: P4 Files Are Found Automatically
-
-P4sim reads P4 artifacts (JSON pipelines, flow tables, topology files) from the p4sim folder of the build, so no setup is needed, and several ns-3 trees can live side by side.
-
-> **Note:** Earlier versions asked you to set `P4SIM_DIR` in `~/.bashrc`. It is no longer needed; you can remove it. If it names another p4sim folder, it is ignored and a notice says so.
-
----
-
-### 4. Run an Example
-
-You can run a built-in example using:
+### 4. Run an example and the tests
 
 ```bash
 ./ns3 run p4-v1model-ipv4-forwarding
+./test.py -s p4-packet
 ```
 
-No manual path editing is required — all examples use portable path helpers.
+[examples.md](examples.md) lists the examples, and
+[test/Readme.md](../test/Readme.md) the test suites.
 
----
+### 5. Where P4sim finds the P4 files
 
-### 5. How P4 Artifact Paths Work
-
-All example scripts use two helper functions declared in `ns3/format-utils.h`:
+P4sim reads P4 files (JSON programs, flow tables, topology files) from the p4sim folder
+of the build, so no setup is needed, and several ns-3 trees can live side by side. The
+examples build their paths with two functions of `ns3/format-utils.h`:
 
 | Function | Returns |
 |---|---|
-| `GetP4SimDir()` | The p4sim folder of the build (see Step 3.4) |
+| `GetP4SimDir()` | The p4sim folder of the build |
 | `GetP4ExamplePath()` | `GetP4SimDir() + "/examples/p4src"` |
-
-#### Recommended usage pattern in your own scripts
 
 ```cpp
 #include "ns3/format-utils.h"
 
-// Build paths relative to the P4Sim examples/p4src directory
 std::string p4SrcDir         = GetP4ExamplePath() + "/p4_basic";
 std::string p4JsonPath       = p4SrcDir + "/p4_basic.json";
 std::string flowTableDirPath = p4SrcDir + "/";
 std::string topoInput        = p4SrcDir + "/topo.txt";
 ```
 
-This pattern keeps simulation scripts **portable** across different machines and user accounts — no hardcoded absolute paths are needed.
+> **Note:** Earlier versions asked you to set `P4SIM_DIR` in `~/.bashrc`. It is no longer
+> needed; you can remove it. If it names another p4sim folder, it is ignored and a notice
+> says so.
 
 ---
 
-### 6. Done
+## Install in a virtual machine
 
-You now have a working ns-3.39 simulator with P4 integration ready for your experiments.
+p4lang/tutorials also has a Vagrant configuration for an Ubuntu 24.04 virtual machine
+with the P4 tools (`vm-ubuntu-24.04/Vagrantfile`). It was tested with the tutorials at
+commit `7273da1c2ac2fd05cea0a9dd0504184b8c955eae` (2025-01-25).
 
----
+You need [Vagrant](https://www.vagrantup.com/) and
+[VirtualBox](https://www.virtualbox.org/).
 
-### Feedback or Issues
+1. Build the virtual machine, named "P4 Tutorial Development":
 
-If you encounter problems during installation, please check the [Appendix](#appendix) for expected outputs and verification steps. For other issues or suggestions, feel free to open an issue or contact the maintainer.
+   ```bash
+   git clone https://github.com/p4lang/tutorials
+   cd tutorials/vm-ubuntu-24.04
+   vagrant up dev
+   ```
 
-**Contact:** mingyu.ma@tu-dresden.de
+2. In the virtual machine, install the P4 tools as in
+   [step 2](#2-bmv2-and-the-p4-tools) (see also the
+   [tutorials' instructions](https://github.com/p4lang/tutorials/tree/7273da1c2ac2fd05cea0a9dd0504184b8c955eae/vm-ubuntu-24.04#introduction)),
+   and check with `simple_switch --version`.
 
----
-
-## <a name="virtual-machine-as-virtual-env"></a> Virtual Machine Setup
-
-`p4sim` integrates an NS-3-based P4 simulation environment with virtual machine configuration files sourced via sparse checkout from the [P4Lang Tutorials repository](https://github.com/p4lang/tutorials/tree/master).
-
-The `vm` directory contains Vagrant configurations and bootstrap scripts for Ubuntu-based virtual machines (Ubuntu 24.04 recommended). These pre-configured environments streamline the setup process, ensuring compatibility and reducing installation issues.
-
-Tested with:
-- P4Lang Tutorials Commit: `7273da1c2ac2fd05cea0a9dd0504184b8c955eae`
-- Date: `2025-01-25`
-
-Prerequisites:
-- Ensure you have `Vagrant` and `VirtualBox` installed before running `vagrant up dev`.
-- The setup script (`set_pkg_config_env.sh`) configures the required environment variables for P4Sim.
-- `Ubuntu 24.04` is the recommended OS for the virtual machine.
+3. Install CMake (`sudo apt install cmake`), then follow
+   [steps 3 to 5](#3-ns-339-and-p4sim).
 
 ---
 
-### <a name="setup-ns335"></a> Setup Instructions for ns-3 version 3.x – 3.35 (Build with `waf`)
+## Check the installation
 
-This has been tested with ns-3 repo tag `ns-3.35`.
-
-#### 1. Build the Virtual Machine
-
-```bash
-# with vm-ubuntu-24.04/Vagrantfile or vm-ubuntu-20.04/Vagrantfile
-vagrant up dev
-
-sudo apt update
-sudo apt install git vim
-
-cd ~
-git clone https://github.com/p4lang/tutorials
-mkdir ~/src
-cd ~/src
-../tutorials/vm-ubuntu-24.04/install.sh |& tee log.txt
-```
-
-See also: [Introduction — build venv of vm-ubuntu-24.04](https://github.com/p4lang/tutorials/tree/7273da1c2ac2fd05cea0a9dd0504184b8c955eae/vm-ubuntu-24.04#introduction). You may need to install the tools manually: [install instructions](https://github.com/p4lang/tutorials/tree/7273da1c2ac2fd05cea0a9dd0504184b8c955eae/vm-ubuntu-24.04#installing-open-source-p4-development-tools-on-the-vm).
-
-This will create a virtual machine named "P4 Tutorial Development". Verify the installation by running `simple_switch` to confirm that `bmv2` is correctly installed.
-
-#### 2. Clone the NS-3 Repository
+BMv2 installs its libraries in `/usr/local/lib` and its headers in
+`/usr/local/include/bm`; P4sim links `libbmall`:
 
 ```bash
-cd
-mkdir workdir
-cd workdir
-git clone https://github.com/nsnam/ns-3-dev-git.git ns3.35
-cd ns3.35
-git checkout ns-3.35
-```
-
-#### 3. Clone & Integrate `p4sim` into NS-3
-
-```bash
-cd /home/p4/workdir/ns3.35/contrib/
-git clone https://github.com/HapCommSys/p4sim.git
-```
-
-#### 4. Set Up the Environment (external libs)
-
-```bash
-cd /home/p4/workdir/ns3.35/contrib/p4sim/
-sudo ./set_pkg_config_env.sh
-```
-
-#### 5. Apply the ns-3 Patch
-
-```bash
-cd ../../  # back to ns-3 root directory
-git apply ./contrib/p4sim/doc/changes.patch
-```
-
-#### 6. Configure & Build NS-3
-
-```bash
-./ns3 configure --enable-examples --enable-tests
-./ns3 build
-```
-
-#### 7. Set the `P4SIM_DIR` Environment Variable & Run
-
-With `waf`, p4sim does not know its folder, so set it:
-
-```bash
-# Add to ~/.bashrc — adjust the path to match your workspace
-echo 'export P4SIM_DIR="$HOME/workdir/ns3.35/contrib/p4sim"' >> ~/.bashrc
-source ~/.bashrc
-
-# Run an example
-./ns3 run "exampleA"
-```
-
-> P4 artifact paths are resolved automatically via `GetP4SimDir()` / `GetP4ExamplePath()`. See [Section 5](#5-how-p4-artifact-paths-work) in the Local Deployment guide for details.
-
----
-
-### <a name="setup-ns339"></a> Setup Instructions for ns-3 version 3.36 – 3.39 (Build with `CMake`) *(recommended)*
-
-This has been tested with ns-3 repo tag `ns-3.39`. The virtual machine builds BMv2 and its libraries with **C++17**, so ns-3 must also be built with **C++17**.
-
-- Include path: `/usr/local/include/bm`
-- Library: `/usr/local/lib/libbmall.so`
-
-#### 1. Build the Virtual Machine
-
-```bash
-# with vm-ubuntu-24.04/Vagrantfile or vm-ubuntu-20.04/Vagrantfile
-vagrant up dev
-
-sudo apt update
-sudo apt install git vim
-
-cd ~
-git clone https://github.com/p4lang/tutorials
-mkdir ~/src
-cd ~/src
-../tutorials/vm-ubuntu-24.04/install.sh |& tee log.txt
-```
-
-See also: [Introduction — build venv of vm-ubuntu-24.04](https://github.com/p4lang/tutorials/tree/7273da1c2ac2fd05cea0a9dd0504184b8c955eae/vm-ubuntu-24.04#introduction). You may need to install the tools manually: [install instructions](https://github.com/p4lang/tutorials/tree/7273da1c2ac2fd05cea0a9dd0504184b8c955eae/vm-ubuntu-24.04#installing-open-source-p4-development-tools-on-the-vm).
-
-This will create a virtual machine named "P4 Tutorial Development". Verify the installation by running `simple_switch` to confirm that `bmv2` is correctly installed.
-
-#### 2. Install CMake
-
-```bash
-sudo apt update
-sudo apt install cmake
-```
-
-#### 3. Clone the NS-3 Repository
-
-```bash
-cd
-mkdir workdir
-cd workdir
-git clone https://github.com/nsnam/ns-3-dev-git.git ns3.39
-cd ns3.39
-git checkout ns-3.39
-```
-
-#### 4. Clone & Integrate `p4sim` into NS-3
-
-```bash
-cd /home/p4/workdir/ns3.39/contrib/
-git clone https://github.com/HapCommSys/p4sim.git
-```
-
-#### 5. Set Up the Environment (external libs)
-
-```bash
-cd /home/p4/workdir/ns3.39/contrib/p4sim/
-sudo ./set_pkg_config_env.sh
-```
-
-#### 6. Configure & Build NS-3
-
-```bash
-# In ns-3 root directory
-./ns3 configure --enable-tests --enable-examples
-./ns3 build
-```
-
-#### 7. Run
-
-```bash
-# Run an example
-./ns3 run "exampleA"
-```
-
-> P4 artifact paths are resolved automatically via `GetP4SimDir()` / `GetP4ExamplePath()`. See [Section 5](#5-how-p4-artifact-paths-work) above for details.
-
----
-
-## <a name="references"></a> References
-
-1. [Add a specific folder with submodule to a repository](https://www.reddit.com/r/git/comments/sme7k4/add_specific_folder_with_submodule_to_a_repository/)
-2. [P4Lang Tutorials repository](https://github.com/p4lang/tutorials/tree/master)
-
----
-
-## <a name="appendix"></a> Appendix
-
-After installing the P4 Behavioral Model (bmv2) and its dependencies, you should see the following:
-
-```bash
-# Libraries
 $ ls /usr/local/lib/ | grep bm
 libbmall.a
 libbmall.la
@@ -342,22 +149,9 @@ libbmall.so
 libbmall.so.0
 libbmall.so.0.0.0
 libbm_grpc_dataplane.a
-libbm_grpc_dataplane.la
-libbm_grpc_dataplane.so
-libbm_grpc_dataplane.so.0
-libbm_grpc_dataplane.so.0.0.0
-libbmp4apps.a
-libbmp4apps.la
-libbmp4apps.so
-libbmp4apps.so.0
-libbmp4apps.so.0.0.0
-libbmpi.a
-libbmpi.la
-libbmpi.so
-libbmpi.so.0
+...
 libbmpi.so.0.0.0
 
-# Include files
 $ ls /usr/local/include/bm
 bm_apps     PI                      PsaSwitch.h                 SimplePreLAG.h             SimpleSwitch.h         standard_types.h
 bm_grpc     pna_nic_constants.h     psa_switch_types.h          simple_pre_lag_types.h     simple_switch_types.h  thrift
@@ -366,7 +160,7 @@ bm_sim      pna_nic_types.h         SimplePre.h                 simple_switch   
 config.h    psa_switch_constants.h  simple_pre_lag_constants.h  simple_switch_constants.h  Standard.h
 ```
 
-After running `sudo ./set_pkg_config_env.sh`, verify the registered packages (P4Sim only requires `bm`):
+After `sudo ./set_pkg_config_env.sh`, pkg-config knows BMv2 (P4sim only needs `bm`):
 
 ```bash
 $ pkg-config --list-all | grep -E "bm|simple_switch|boost_system"
@@ -375,4 +169,13 @@ simple_switch                  simple switch - Behavioral Model Target Simple Sw
 boost_system                   Boost System - Boost System
 ```
 
-> **Note:** The spdlog bundled with BMv2 is intentionally excluded — ns-3 uses its own logging system.
+> **Note:** The spdlog bundled with BMv2 is intentionally excluded — ns-3 uses its own
+> logging system.
+
+---
+
+## Feedback
+
+For problems or suggestions, open an issue on
+[GitHub](https://github.com/HapCommSys/p4sim/issues) or contact the maintainer,
+mingyu.ma@tu-dresden.de.
