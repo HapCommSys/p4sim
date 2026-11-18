@@ -6,7 +6,12 @@
 #include "ns3/test.h"
 
 #include <climits>
+#include <cstdlib>
+#include <filesystem>
+#include <iostream>
+#include <sstream>
 #include <string>
+#include <system_error>
 
 namespace ns3 {
 
@@ -204,6 +209,81 @@ FormatUtilsTestCase::TestIntToBytes ()
 }
 
 /**
+ * @brief GetP4SimDir returns the p4sim folder of this build, whatever P4SIM_DIR
+ * says. A P4SIM_DIR that names another folder is ignored, with one notice on
+ * std::cerr; one that names this folder gives no notice.
+ */
+class P4SimDirTestCase : public TestCase
+{
+public:
+  P4SimDirTestCase ()
+      : TestCase ("GetP4SimDir: the p4sim folder of this build, whatever P4SIM_DIR says")
+  {
+  }
+
+private:
+  /// True if \p a and \p b exist and are the same folder
+  static bool
+  SameFolder (const std::string &a, const std::string &b)
+  {
+    std::error_code ec;
+    return std::filesystem::equivalent (a, b, ec);
+  }
+
+  void
+  DoRun () override
+  {
+    SetDataDir (NS_TEST_SOURCEDIR);
+    const std::filesystem::path p4simDir =
+        std::filesystem::canonical (CreateDataDirFilename (".."));
+    const char *saved = std::getenv ("P4SIM_DIR");
+    const std::string savedValue = (saved != nullptr) ? saved : "";
+
+    std::ostringstream notices;
+    std::streambuf *cerrBuffer = std::cerr.rdbuf (notices.rdbuf ());
+
+    ::unsetenv ("P4SIM_DIR");
+    const std::string withoutVariable = GetP4SimDir ();
+    const std::string flowTable = GetP4ExamplePath () + "/simple_v1model/flowtable_0.txt";
+    // This folder, spelled differently
+    ::setenv ("P4SIM_DIR", (p4simDir / "test" / "..").c_str (), 1);
+    const std::string thisFolder = GetP4SimDir ();
+    const std::string noticesThisFolder = notices.str ();
+    // Another folder, twice
+    ::setenv ("P4SIM_DIR", p4simDir.parent_path ().c_str (), 1);
+    const std::string otherFolder = GetP4SimDir ();
+    GetP4SimDir ();
+
+    std::cerr.rdbuf (cerrBuffer);
+    if (savedValue.empty ())
+      {
+        ::unsetenv ("P4SIM_DIR");
+      }
+    else
+      {
+        ::setenv ("P4SIM_DIR", savedValue.c_str (), 1);
+      }
+
+    NS_TEST_EXPECT_MSG_EQ (SameFolder (withoutVariable, p4simDir), true,
+                           "Without P4SIM_DIR: " << withoutVariable);
+    NS_TEST_EXPECT_MSG_EQ (std::filesystem::exists (flowTable), true, "Not found: " << flowTable);
+    NS_TEST_EXPECT_MSG_EQ (SameFolder (thisFolder, p4simDir), true,
+                           "P4SIM_DIR names this folder: " << thisFolder);
+    NS_TEST_EXPECT_MSG_EQ (noticesThisFolder, "", "A notice although P4SIM_DIR names this folder");
+    NS_TEST_EXPECT_MSG_EQ (SameFolder (otherFolder, p4simDir), true,
+                           "P4SIM_DIR names another folder: " << otherFolder);
+    const std::string all = notices.str ();
+    const std::string notice = "ignoring P4SIM_DIR";
+    uint32_t count = 0;
+    for (size_t pos = all.find (notice); pos != std::string::npos; pos = all.find (notice, pos + 1))
+      {
+        count++;
+      }
+    NS_TEST_EXPECT_MSG_EQ (count, 1, "Not one notice: " << all);
+  }
+};
+
+/**
  * @brief TestSuite for format-utils.h
  */
 class FormatUtilsTestSuite : public TestSuite
@@ -216,6 +296,7 @@ FormatUtilsTestSuite::FormatUtilsTestSuite ()
     : TestSuite ("format-utils", UNIT) // Test suite name and type
 {
   AddTestCase (new FormatUtilsTestCase, TestCase::QUICK);
+  AddTestCase (new P4SimDirTestCase, TestCase::QUICK);
 }
 
 // Register the test suite with NS-3

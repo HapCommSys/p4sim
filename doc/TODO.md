@@ -100,10 +100,6 @@ channel. It has all of main's PRs up to #55 (merged in "phase B", last in #60).
   nothing in the simulation receives them. Proposal: pass learned records to an
   ns-3 trace source that `P4Controller` can subscribe to, so that control-plane
   experiments such as L2 learning can run inside the simulation.
-- **The pipeline core and the drop port.** The pipeline core runs the egress for
-  a packet that the ingress dropped (`mark_to_drop()`), and it ignores a
-  `mark_to_drop()` in the egress, because it sends the `egress_spec` of the
-  ingress. Both branches.
 - **Thrift handlers.** The Thrift server thread runs until the process ends
   (BMv2 cannot stop it): a CLI that connects after its switch was destroyed uses
   a freed core. A CLI that runs during the simulation works from another thread,
