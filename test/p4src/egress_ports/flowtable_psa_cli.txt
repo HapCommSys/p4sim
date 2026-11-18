@@ -1,0 +1,7 @@
+mirroring_add 5 2
+mirroring_add_mc 6 1
+set_queue_depth 1
+set_queue_depth 8 2
+set_queue_rate 100
+set_queue_rate 50 2
+table_set_default IngressImpl.mac_port IngressImpl.to_port 0
