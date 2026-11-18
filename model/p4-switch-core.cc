@@ -56,6 +56,35 @@ NS_LOG_COMPONENT_DEFINE("P4SwitchCore");
 namespace
 {
 
+/**
+ * BMv2 swaps the P4 program only when no packet of the switch holds a PHV
+ * (bm::SwitchWContexts::do_swap() waits for that), but it has no public way to
+ * ask for this count: the PHV source of the switch is a private member. An
+ * explicit template instantiation may name a private member (the usual access
+ * checking does not apply to it, C++ standard [temp.explicit]), so
+ * PhvSourceAccess, instantiated below, defines PhvSource(), which returns a
+ * pointer to that member.
+ */
+using PhvSourceMember = std::unique_ptr<bm::PHVSourceIface> bm::SwitchWContexts::*;
+
+/// Selects PhvSource()
+struct PhvSourceTag
+{
+    friend PhvSourceMember PhvSource(PhvSourceTag);
+};
+
+/// Defines PhvSource() to return \p Member
+template <PhvSourceMember Member>
+struct PhvSourceAccess
+{
+    friend PhvSourceMember PhvSource(PhvSourceTag)
+    {
+        return Member;
+    }
+};
+
+template struct PhvSourceAccess<&bm::SwitchWContexts::phv_source>;
+
 /// Default first port of the automatic Thrift port allocation
 constexpr int P4SIM_DEFAULT_THRIFT_PORT_BASE = 9090;
 /// Number of ports tried by the automatic Thrift port allocation
@@ -277,15 +306,116 @@ P4SwitchCore::P4SwitchCore(P4SwitchNetDevice* netDevice,
 {
     static int switch_id = 1;
     m_p4SwitchId = switch_id++;
+    // The device creates its core when the simulation initializes it
+    m_simulationThread = std::this_thread::get_id();
     NS_LOG_INFO("Initialized P4 Switch with ID: " << m_p4SwitchId);
 }
 
 P4SwitchCore::~P4SwitchCore()
 {
     // A pending ServeIngress() must not run on a destroyed core, nor a pending
-    // ReleaseFromPipeline(). The packets still in the pipeline are freed with it.
+    // ReleaseFromPipeline() or TrySwap(). The packets still in the pipeline and
+    // the frames held for a swap are freed with it.
     Simulator::Cancel(m_ingressEvent);
     Simulator::Cancel(m_pipelineEvent);
+    Simulator::Cancel(m_swapEvent);
+}
+
+bm::RuntimeInterface::ErrorCode
+P4SwitchCore::load_new_config(const std::string& newConfig)
+{
+    bm::RuntimeInterface::ErrorCode rc = bm::SwitchWContexts::load_new_config(newConfig);
+    if (rc == bm::RuntimeInterface::SUCCESS)
+    {
+        m_newConfigLoaded = true;
+    }
+    return rc;
+}
+
+bm::RuntimeInterface::ErrorCode
+P4SwitchCore::swap_configs()
+{
+    if (!m_newConfigLoaded)
+    {
+        // Swapping is disabled, or no program is loaded: BMv2 returns the error
+        return bm::SwitchWContexts::swap_configs();
+    }
+    m_swapPending = true;
+    // The runtime CLI calls from the Thrift server's thread: then the
+    // simulation swaps at the next packet event of this switch.
+    if (std::this_thread::get_id() == m_simulationThread)
+    {
+        TrySwap();
+    }
+    return bm::RuntimeInterface::SUCCESS;
+}
+
+bool
+P4SwitchCore::IsSwapPending() const
+{
+    return m_swapPending;
+}
+
+bool
+P4SwitchCore::HoldDuringSwap(Ptr<Packet> frame,
+                             int inPort,
+                             uint16_t protocol,
+                             const Address& destination)
+{
+    if (!m_swapPending)
+    {
+        return false;
+    }
+    m_heldFrames.push_back({frame, inPort, protocol, destination});
+    CheckPendingSwap();
+    return true;
+}
+
+void
+P4SwitchCore::CheckPendingSwap()
+{
+    // After the current event, which may still own the packet that leaves
+    if (m_swapPending && !m_swapEvent.IsRunning())
+    {
+        m_swapEvent = Simulator::ScheduleNow(&P4SwitchCore::TrySwap, this);
+    }
+}
+
+bool
+P4SwitchCore::HoldsPackets()
+{
+    const std::unique_ptr<bm::PHVSourceIface>& phvSource = this->*PhvSource(PhvSourceTag{});
+    for (bm::cxt_id_t cxt = 0; cxt < get_nb_cxts(); cxt++)
+    {
+        if (phvSource->phvs_in_use(cxt) > 0)
+        {
+            return true;
+        }
+    }
+    return false;
+}
+
+void
+P4SwitchCore::TrySwap()
+{
+    if (!m_swapPending || HoldsPackets())
+    {
+        return; // CheckPendingSwap() tries again when a packet leaves
+    }
+    // No packet left: BMv2 swaps at once
+    m_swapPending = false;
+    m_newConfigLoaded = false;
+    bm::RuntimeInterface::ErrorCode rc = bm::SwitchWContexts::swap_configs();
+    NS_ABORT_MSG_IF(rc != bm::RuntimeInterface::SUCCESS,
+                    "Switch " << m_p4SwitchId << ": the swap failed (BMv2 error " << rc << ")");
+    NS_LOG_INFO("Switch " << m_p4SwitchId << " swapped its P4 program; " << m_heldFrames.size()
+                          << " held frames enter the pipeline");
+    std::deque<HeldFrame> held;
+    held.swap(m_heldFrames);
+    for (HeldFrame& f : held)
+    {
+        ReceivePacket(f.frame, f.inPort, f.protocol, f.destination);
+    }
 }
 
 void
@@ -310,6 +440,7 @@ P4SwitchCore::GetPipelineDelay() const
 void
 P4SwitchCore::Enqueue(uint32_t egress_port, std::unique_ptr<bm::Packet>&& packet)
 {
+    CheckPendingSwap(); // a full egress queue drops the packet
     if (m_pipelineDelay.IsZero())
     {
         EnqueueNow(egress_port, std::move(packet));
@@ -329,6 +460,7 @@ P4SwitchCore::Enqueue(uint32_t egress_port, std::unique_ptr<bm::Packet>&& packet
 void
 P4SwitchCore::ReleaseFromPipeline()
 {
+    CheckPendingSwap(); // a full egress queue drops the packet
     Time now = Simulator::Now();
     while (!m_pipelinePackets.empty() && m_pipelinePackets.front().leaves <= now)
     {
@@ -350,6 +482,7 @@ P4SwitchCore::ReleaseFromPipeline()
 void
 P4SwitchCore::StartIngress()
 {
+    CheckPendingSwap(); // the ingress may drop the packet
     if (m_ingressServiceTime.IsZero())
     {
         // No rate limit: the pipeline takes the packet at once
@@ -376,6 +509,7 @@ P4SwitchCore::StartIngress()
 void
 P4SwitchCore::ServeIngress()
 {
+    CheckPendingSwap(); // the ingress may drop the packet
     if (GetNInputPackets() == 0)
     {
         return;
@@ -542,6 +676,7 @@ P4SwitchCore::GetTimeStamp()
 Ptr<Packet>
 P4SwitchCore::ConvertToNs3Packet(std::unique_ptr<bm::Packet>&& bm_packet)
 {
+    CheckPendingSwap(); // the caller frees the packet once it is sent
     // Create a new ns3::Packet using the data buffer
     char* bm_buf = bm_packet.get()->data();
     size_t len = bm_packet.get()->get_data_size();

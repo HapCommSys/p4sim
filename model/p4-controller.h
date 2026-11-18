@@ -723,15 +723,17 @@ public:
   void Serialize(uint32_t index, std::ostream *out);
 
   /**
-   * @brief Loads a new P4 configuration into the specified switch.
+   * @brief Loads a new P4 program into the specified switch, for SwapConfigs().
+   * The switch needs the EnableSwap attribute.
    * @param index The switch index.
-   * @param newConfig A JSON string representing the new configuration.
+   * @param newConfig The BMv2 JSON of the program, as a string (not a path).
    */
   void LoadNewConfig(uint32_t index, const std::string &newConfig);
 
   /**
-   * @brief Swaps the currently active configuration with the newly loaded one
-   * on the specified switch.
+   * @brief Swaps the specified switch to the program loaded by LoadNewConfig():
+   * at once if the switch holds no packet, otherwise when its last packet has
+   * left; frames that arrive meanwhile wait and then use the new program.
    * @param index The switch index.
    */
   void SwapConfigs(uint32_t index);

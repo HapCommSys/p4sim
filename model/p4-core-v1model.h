@@ -805,15 +805,17 @@ class P4CoreV1model : public P4SwitchCore
     int Serialize(std::ostream* out);
 
     /**
-     * @brief Loads a new runtime configuration from a JSON string.
-     * @param newConfig JSON string containing the new configuration.
+     * @brief Loads a new P4 program for SwapConfigs() (needs EnableSwap).
+     * @param newConfig the BMv2 JSON of the program, as a string (not a path).
      * @return 0 on success, -1 on failure.
      */
     int LoadNewConfig(const std::string& newConfig);
 
     /**
-     * @brief Swaps the currently active configuration with a newly loaded one.
-     * @return 0 on success, -1 on failure.
+     * @brief Swaps to the program loaded by LoadNewConfig(): at once if the
+     * switch holds no packet, otherwise when its last packet has left; frames
+     * that arrive meanwhile wait (see P4SwitchCore::swap_configs()).
+     * @return 0 if the swap is done or waits, -1 on failure.
      */
     int SwapConfigs();
 
