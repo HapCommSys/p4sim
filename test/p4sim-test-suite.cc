@@ -13,9 +13,9 @@
 #include "ns3/test.h"
 
 #include <bm/bm_sim/logger.h>
-#include <chrono>
 #include <cstdlib>
 #include <filesystem>
+#include <map>
 #include <netinet/in.h>
 #include <sys/socket.h>
 #include <unistd.h>
@@ -74,9 +74,31 @@ ListenOnFreePort(int* port)
     return sock;
 }
 
-/// True if BMv2 wrote the pipeline log of Thrift port \p port after \p since; removes it
+/// Size and modification time of each BMv2 pipeline log in /tmp, by path
+using LogFiles = std::map<std::string, std::pair<std::uintmax_t, std::filesystem::file_time_type>>;
+
+/// The BMv2 pipeline logs in /tmp
+LogFiles
+PipelineLogs()
+{
+    namespace fs = std::filesystem;
+    LogFiles logs;
+    std::error_code ec;
+    for (const fs::directory_entry& entry : fs::directory_iterator("/tmp", ec))
+    {
+        std::string name = entry.path().filename().string();
+        if (name.rfind("bmv2-", 0) == 0 && name.find("-pipeline.log") != std::string::npos)
+        {
+            logs[entry.path().string()] = {entry.file_size(ec), entry.last_write_time(ec)};
+        }
+    }
+    return logs;
+}
+
+/// True if BMv2 created or changed the pipeline log of Thrift port \p port since the
+/// logs \p before were listed; removes the log
 bool
-PipelineLogWritten(int port, std::filesystem::file_time_type since)
+PipelineLogWritten(int port, const LogFiles& before)
 {
     namespace fs = std::filesystem;
     bool written = false;
@@ -86,7 +108,9 @@ PipelineLogWritten(int port, std::filesystem::file_time_type since)
         std::error_code ec;
         if (fs::exists(log, ec))
         {
-            written = written || fs::last_write_time(log, ec) >= since;
+            auto old = before.find(log.string());
+            auto now = std::make_pair(fs::file_size(log, ec), fs::last_write_time(log, ec));
+            written = written || old == before.end() || old->second != now;
             fs::remove(log, ec);
         }
     }
@@ -170,8 +194,10 @@ class P4ThriftPortTestCase : public P4TestCase
 /**
  * \ingroup p4sim-tests
  * BmLogLevel: "off" writes no BMv2 pipeline log, "debug" does (loading the JSON
- * logs debug lines). A log file left by an earlier run is not mistaken for a new
- * one: only a file modified during the test counts.
+ * logs debug lines). A log file left by an earlier run, even a second ago, is not
+ * mistaken for a new one: the logs are listed before the switch is created (its
+ * Thrift port, and so its log's name, is known only then), and only a log that is
+ * new or whose size or time changed counts.
  */
 class P4BmLogLevelTestCase : public P4TestCase
 {
@@ -188,11 +214,10 @@ class P4BmLogLevelTestCase : public P4TestCase
         std::string json = CreateDataDirFilename("p4src/simple_v1model/simple_v1model.json");
         for (const std::string level : {"off", "debug"})
         {
-            // One second of slack: file times use a coarser clock than now().
-            auto since = std::filesystem::file_time_type::clock::now() - std::chrono::seconds(1);
+            LogFiles before = PipelineLogs();
             Ptr<P4SwitchNetDevice> sw = CreateSwitch(0, json, level);
             bm::Logger::get()->flush(); // buffered lines reach the file and update its time
-            NS_TEST_EXPECT_MSG_EQ(PipelineLogWritten(sw->GetThriftPort(), since),
+            NS_TEST_EXPECT_MSG_EQ(PipelineLogWritten(sw->GetThriftPort(), before),
                                   (level != "off"),
                                   "Wrong pipeline log for BmLogLevel=" << level);
         }

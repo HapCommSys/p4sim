@@ -88,13 +88,19 @@ RunCli(const std::string& cli, int thriftPort, const std::vector<std::string>& c
  * Deletes mirroring session \p session through the "psa_switch" Thrift service,
  * then gets and deletes it again; returns one line per call. It uses a Thrift
  * client of its own, because psa_switch_CLI's mirroring_delete calls an RPC that
- * the service does not have (BMv2 1.15.8).
+ * the service does not have (BMv2 1.15.8). The client finds the Thrift modules as
+ * psa_switch_CLI does, in the folder that the CLI adds to sys.path, so BMv2's Python
+ * environment does not have to be active.
  */
 std::string
 DeletePsaMirroringSession(int thriftPort, int session)
 {
-    const std::string script = R"(
-import sys
+    const std::string script = R"py(
+import re, shutil, sys
+for line in open(shutil.which("psa_switch_CLI") or "/dev/null"):
+    folder = re.match(r"sys\.path\.append\(.(.+).\)", line.strip())
+    if folder:
+        sys.path.append(folder.group(1))
 from thrift.protocol import TBinaryProtocol, TMultiplexedProtocol
 from thrift.transport import TSocket, TTransport
 from pswitch_runtime import PsaSwitch
@@ -110,7 +116,7 @@ for rpc in [client.mirroring_session_delete, client.mirroring_session_get,
         print(rpc.__name__, "ok")
     except InvalidMirroringOperation as e:
         print(rpc.__name__, "error", e.code)
-)";
+)py";
     return RunCommand("python3 -c '" + script + "' " + std::to_string(thriftPort) + " " +
                       std::to_string(session) + " 2>&1");
 }

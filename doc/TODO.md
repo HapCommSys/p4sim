@@ -103,8 +103,6 @@ channel. It has all of main's PRs up to #55 (merged in "phase B", last in #60).
 - **`main`: `P4CoreV1model::CalculatePacketsPerSecond()`** doubles the counter
   (`m_egressBp += m_egressBp`) and writes to a `static std::ofstream`, which all
   switches of a process share.
-- **The `p4-firewall` example** loads `p4_basic/p4_basic.json` and its flow
-  tables, not the program in `examples/p4src/firewall/`. Both branches.
 - **`main`: resubmit and recirculate** call `HandleIngressPipeline()`
   recursively, one level per pass. `switch_channel` schedules the next pass
   instead; this goes away when `switch_channel` is merged into `main`.
