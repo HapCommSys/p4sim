@@ -166,10 +166,12 @@ P4CoreV1model::~P4CoreV1model()
     // BMv2 pushes a sentinel into each buffer to stop its worker threads. In
     // ns-3 there are no such threads, and a push into a full queue would wait
     // or retry forever. ~P4SwitchCore() cancels a pending ServeIngress().
-    // Cancel the pending per-port dequeue events, which also point to this core.
+    // Cancel the pending per-port events, which also point to this core: a
+    // dequeue, and the end of a transmission that the device refused.
     for (auto& kv : m_portTxState)
     {
         Simulator::Cancel(kv.second.pendingEvent);
+        Simulator::Cancel(kv.second.txCompleteEvent);
     }
 
     NS_LOG_INFO("P4CoreV1model destroyed successfully.");
@@ -498,9 +500,9 @@ P4CoreV1model::EventDrivenEgressDequeue(uint32_t port)
                                               m_destinationList[addr_index]))
         {
             // Dropped by the device: nothing is on the wire, free the port.
-            Simulator::ScheduleNow(&P4CoreV1model::PortTxComplete,
-                                   this,
-                                   static_cast<uint32_t>(out_port));
+            pstate.txCompleteEvent = Simulator::ScheduleNow(&P4CoreV1model::PortTxComplete,
+                                                            this,
+                                                            static_cast<uint32_t>(out_port));
         }
     }
 }
@@ -555,7 +557,7 @@ P4CoreV1model::TryTransmitFromQueueDisc(uint32_t port)
                                           item->GetAddress()))
     {
         // Dropped by the device: nothing is on the wire, free the port.
-        Simulator::ScheduleNow(&P4CoreV1model::PortTxComplete, this, port);
+        pstate.txCompleteEvent = Simulator::ScheduleNow(&P4CoreV1model::PortTxComplete, this, port);
     }
 }
 

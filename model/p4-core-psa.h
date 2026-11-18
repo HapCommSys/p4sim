@@ -175,6 +175,7 @@ class P4CorePsa : public P4SwitchCore
     {
         bool busy{false};
         EventId pendingEvent{};
+        EventId txCompleteEvent{}; ///< PortTxComplete() for a frame the device refused
     };
 
     /// Indexed by egress port number; created on first use.

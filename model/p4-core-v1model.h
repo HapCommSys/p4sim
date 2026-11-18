@@ -886,12 +886,15 @@ class P4CoreV1model : public P4SwitchCore
      *
      * busy is set when a packet has been handed to the NetDevice and cleared
      * when the device reports the end of serialisation via PortTxComplete().
-     * pendingEvent allows cancellation of a stale dequeue timer.
+     * pendingEvent allows cancellation of a stale dequeue timer;
+     * txCompleteEvent is the PortTxComplete() scheduled for a frame that the
+     * device refused, cancelled with the core.
      */
     struct PortTxState
     {
         bool busy{false};
         EventId pendingEvent{};
+        EventId txCompleteEvent{};
     };
 
     std::unordered_map<uint32_t, Ptr<QueueDisc>> m_portQueueDiscs;
