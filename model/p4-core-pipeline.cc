@@ -134,6 +134,13 @@ P4CorePipeline::ReceivePacket(Ptr<Packet> packetIn,
         get_learn_engine()->learn(learn_id, *bm_packet.get());
     }
 
+    // The ingress dropped the packet (mark_to_drop()): no egress, as in simple_switch
+    if (egress_spec == m_dropPort)
+    {
+        NS_LOG_DEBUG("Packet dropped at the end of the ingress");
+        return 0;
+    }
+
     // === Egress
     bm::Pipeline* egress_mau = this->get_pipeline("egress");
     bm::Deparser* deparser = this->get_deparser("deparser");
@@ -145,6 +152,13 @@ P4CorePipeline::ReceivePacket(Ptr<Packet> packetIn,
         .set(bm_packet->get_register(RegisterAccess::PACKET_LENGTH_REG_IDX));
 
     egress_mau->apply(bm_packet.get());
+
+    // The egress dropped the packet (mark_to_drop() sets egress_spec)
+    if (phv->get_field("standard_metadata.egress_spec").get_uint() == m_dropPort)
+    {
+        NS_LOG_DEBUG("Packet dropped at the end of the egress");
+        return 0;
+    }
 
     // === Deparser
     deparser->deparse(bm_packet.get());
