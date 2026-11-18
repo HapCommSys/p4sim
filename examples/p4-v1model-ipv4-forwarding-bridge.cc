@@ -249,7 +249,7 @@ main(int argc, char* argv[])
     int model = 0;          ///< 0 = P4 V1Model switch;  1 = standard NS-3 bridge (baseline).
     bool enablePcap = true; ///< Enable PCAP trace output.
 
-    // Paths resolved via P4SIM_DIR environment variable (portable).
+    // P4 files: examples/p4src in the p4sim folder of this build
     std::string p4SrcDir = GetP4ExamplePath() + "/simple_v1model";
     std::string p4JsonPath = p4SrcDir + "/simple_v1model.json";
     std::string flowTablePath = p4SrcDir + "/flowtable_bridge.txt";

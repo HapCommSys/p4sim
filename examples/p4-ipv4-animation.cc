@@ -46,7 +46,7 @@ main(int argc, char* argv[])
 
     std::string ns3_link_rate = "1000Mbps";
 
-    // Use P4SIM_DIR environment variable for portable paths
+    // P4 files: examples/p4src in the p4sim folder of this build
     // NOTE: original path was test/test_simple which no longer exists.
     // Update the subdirectory below to match your actual P4 program location.
     std::string p4SrcDir = GetP4ExamplePath() + "/simple_v1model";
