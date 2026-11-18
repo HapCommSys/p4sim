@@ -98,20 +98,12 @@ channel. It has all of main's PRs up to #55 (merged in "phase B", last in #60).
   nothing in the simulation receives them. Proposal: pass learned records to an
   ns-3 trace source that `P4Controller` can subscribe to, so that control-plane
   experiments such as L2 learning can run inside the simulation.
-- **The pipeline core and the drop port.** The pipeline core runs the egress for
-  a packet that the ingress dropped (`mark_to_drop()`), and it ignores a
-  `mark_to_drop()` in the egress, because it sends the `egress_spec` of the
-  ingress. Both branches.
 - **Thrift handlers.** The Thrift server thread runs until the process ends
   (BMv2 cannot stop it): a CLI that connects after its switch was destroyed uses
   a freed core. A CLI that runs during the simulation works from another thread,
   without synchronisation. Proposal: a locked registry of live cores that the
   handlers check; document that the CLI is for before and after the simulation,
   and `P4Controller` for changes during it.
-- **The P4 point-to-point device** (`switch_channel`) gives the switch its own
-  port's MAC address as a frame's destination, not the frame's. Programs that
-  forward by IP address are not affected; programs that forward by destination
-  MAC are.
 - **Smaller gaps, to do when a test or user needs them:**
   - byte queue limits on host devices (`TrafficControlHelper::SetQueueLimits()`)
     should work since #42, but are not tested;
