@@ -91,8 +91,9 @@ SwitchedEthernetChannel::GetTypeId()
             .SetParent<Channel>()
             .AddConstructor<SwitchedEthernetChannel>()
             .AddAttribute("DataRate",
-                          "Transmission data rate of the channel.",
-                          DataRateValue(DataRate(0xffffffff)),
+                          "Transmission data rate of the channel. The default, 10 Gbps, "
+                          "is a common Ethernet rate; set the rate of the link you model.",
+                          DataRateValue(DataRate("10Gbps")),
                           MakeDataRateAccessor(&SwitchedEthernetChannel::m_bps),
                           MakeDataRateChecker())
             .AddAttribute("Delay",

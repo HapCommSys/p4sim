@@ -23,7 +23,9 @@
 #include "p4-switch-net-device.h"
 
 #include "ns3/boolean.h"
+#include "ns3/enum.h"
 #include "ns3/ethernet-header.h"
+#include "ns3/link-framing.h"
 #include "ns3/log.h"
 #include "ns3/node.h"
 #include "ns3/p4-bridge-channel.h"
@@ -136,7 +138,8 @@ P4SwitchNetDevice::GetTypeId()
                           MakeUintegerChecker<size_t>())
 
             .AddAttribute("QueueBufferSize",
-                          "Output queue buffer depth (packets).",
+                          "Capacity of each output queue, in packets: per port and "
+                          "priority (v1model, PSA), or per port (PNA).",
                           UintegerValue(128),
                           MakeUintegerAccessor(&P4SwitchNetDevice::m_queueBufferSize),
                           MakeUintegerChecker<size_t>())
@@ -158,8 +161,8 @@ P4SwitchNetDevice::GetTypeId()
                           "egress then takes no time. The pipeline takes the next packet at "
                           "once, so the delay does not lower the throughput (see SwitchRate). "
                           "A recirculated packet passes the pipeline again and is delayed "
-                          "again. 0 (the default) means no delay. v1model and PSA; PNA and the "
-                          "pipeline core ignore it. For scale: on Tofino, the ingress block "
+                          "again. 0 (the default) means no delay. v1model, PSA and the pipeline "
+                          "core; PNA ignores it. For scale: on Tofino, the ingress block "
                           "(parser, control, deparser) was measured at 162 to 224 ns on 100G "
                           "ports and 221 to 472 ns on 10G ports, depending on the program "
                           "(Franco et al., Computer Communications 218, 2024).",
@@ -316,9 +319,10 @@ P4SwitchNetDevice::DoInitialize()
 
     case P4NIC_ARCH_PNA:
         NS_LOG_DEBUG("Initialising PNA NIC");
-        m_pnaNic = std::make_unique<P4PnaNic>(this, m_enableSwap);
+        m_pnaNic = std::make_unique<P4PnaNic>(this, m_enableSwap, m_queueBufferSize);
         ConfigureCore(*m_pnaNic);
         m_pnaNic->InitializeSwitchFromP4Json(m_jsonPath);
+        SetPortTxDoneCallback(MakeCallback(&P4PnaNic::PortTxComplete, m_pnaNic.get()));
         m_pnaNic->start_and_return_();
         break;
 
@@ -750,7 +754,16 @@ P4SwitchNetDevice::SendOnBridgePort(uint32_t port, Ptr<Packet> frame, Time* txTi
     }
     if (txTime)
     {
-        *txTime = GetPortDataRate(port).CalculateBytesTxTime(frame->GetSize());
+        // With the port's framing, if its device has one (the P4 point-to-point
+        // device; ns-3's CSMA device adds its FCS and gap itself)
+        EnumValue framing;
+        LinkFraming::Type type = LinkFraming::NONE;
+        if (m_bridgePorts[port]->GetAttributeFailSafe("Framing", framing))
+        {
+            type = static_cast<LinkFraming::Type>(framing.Get());
+        }
+        *txTime = GetPortDataRate(port).CalculateBytesTxTime(
+            LinkFraming(type).GetWireBytes(frame->GetSize()));
     }
     if (!m_bridgePortTxEnd[port])
     {

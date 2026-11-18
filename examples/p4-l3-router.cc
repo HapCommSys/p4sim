@@ -44,7 +44,7 @@ main(int argc, char* argv[])
     Config::SetDefault("ns3::ArpCache::DeadTimeout", TimeValue(Seconds(0)));
 
     // P4 parameters
-    // Use P4SIM_DIR environment variable for portable paths
+    // P4 files: examples/p4src in the p4sim folder of this build
     std::string p4SrcDir = GetP4ExamplePath() + "/l3_router";
     std::string p4JsonPath = p4SrcDir + "/l3_router.json";
     std::string flowTableDirPath = p4SrcDir + "/";

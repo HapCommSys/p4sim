@@ -10,6 +10,7 @@
  *   expect <port> <hex>   this frame leaves the switch on <port>; '*' matches any nibble
  *   mirroring_add <session> <port>   the clones of this mirroring session leave on <port>
  *   mirroring_add_mc <session> <group>   they go to multicast group <group> (v1model)
+ *   register <name> <index> <value>   after the run, register <name>[<index>] holds <value>
  * Spaces in <hex> are ignored. All frames are sent at the same time, in file order.
  * A test passes if every port sends exactly the frames expected on it, in that
  * order. The switch has three ports, 0 to 2.
@@ -31,6 +32,7 @@
 #include <fstream>
 #include <iomanip>
 #include <sstream>
+#include <tuple>
 
 using namespace ns3;
 
@@ -56,6 +58,15 @@ struct StfMcCommand
     int line;
 };
 
+/// A "register" command of an .stf file: after the run, a register holds a value
+struct StfRegister
+{
+    std::string name;
+    uint32_t index;
+    uint64_t value;
+    int line;
+};
+
 /// True if \p frame matches \p expected, in which '*' matches any nibble
 bool
 Matches(const std::string& expected, const std::string& frame)
@@ -76,17 +87,20 @@ Matches(const std::string& expected, const std::string& frame)
 
 } // namespace
 
-/// Runs p4src/<program>/<stf> on p4src/<program>/<program>_<archName>.json
+/// Runs p4src/<program>/<stf> on p4src/<program>/<program>_<jsonArch>.json;
+/// jsonArch is archName unless given (the pipeline core runs v1model programs)
 class StfTestCase : public TestCase
 {
   public:
     StfTestCase(const std::string& program,
                 const std::string& archName,
                 uint32_t arch,
-                const std::string& stf)
+                const std::string& stf,
+                const std::string& jsonArch = "")
         : TestCase(archName + ": " + stf),
           m_program(program),
           m_archName(archName),
+          m_jsonArch(jsonArch.empty() ? archName : jsonArch),
           m_arch(arch),
           m_stf(stf)
     {
@@ -123,11 +137,13 @@ class StfTestCase : public TestCase
 
     std::string m_program;
     std::string m_archName;
+    std::string m_jsonArch; ///< the JSON is <program>_<jsonArch>.json
     uint32_t m_arch;
     std::string m_stf;
     std::vector<StfMcCommand> m_mcCommands; ///< in file order
     std::vector<StfFrame> m_packets;
     std::vector<StfFrame> m_expects;
+    std::vector<StfRegister> m_registers;                           ///< in file order
     std::vector<std::pair<uint32_t, uint32_t>> m_mirroringSessions; ///< (session, port)
     std::vector<std::pair<uint32_t, uint32_t>> m_mcMirroringSessions; ///< (session, group)
     std::vector<Ptr<SimpleNetDevice>> m_hosts;        ///< one per switch port
@@ -175,6 +191,17 @@ StfTestCase::ReadStf(const std::string& path)
                        ": expected 'mirroring_add_mc <session> <group>'";
             }
             m_mcMirroringSessions.emplace_back(session, group);
+            continue;
+        }
+        if (cmd == "register")
+        {
+            StfRegister reg{"", 0, 0, n};
+            if (!(words >> reg.name >> reg.index >> reg.value) || (words >> word))
+            {
+                return m_stf + " line " + std::to_string(n) +
+                       ": expected 'register <name> <index> <value>'";
+            }
+            m_registers.push_back(reg);
             continue;
         }
         if (cmd == "mc_mgrp_create" || cmd == "mc_node_create" || cmd == "mc_node_associate" ||
@@ -372,7 +399,7 @@ StfTestCase::DoRun()
     sw->SetAttribute("P4SwitchArch", UintegerValue(m_arch));
     sw->SetAttribute(
         "JsonPath",
-        StringValue(CreateDataDirFilename(dir + m_program + "_" + m_archName + ".json")));
+        StringValue(CreateDataDirFilename(dir + m_program + "_" + m_jsonArch + ".json")));
     sw->SetAttribute("FlowTablePath", StringValue(""));
     sw->SetAttribute("BmLogLevel", StringValue("off"));
     switchNode->AddDevice(sw);
@@ -447,31 +474,60 @@ StfTestCase::DoRun()
             }
         }
     }
+
+    for (const StfRegister& reg : m_registers)
+    {
+        bm::Data value;
+        bool read = sw->GetCore()->register_read(0, reg.name, reg.index, &value) ==
+                    bm::Register::RegisterErrorCode::SUCCESS;
+        NS_TEST_EXPECT_MSG_EQ(read,
+                              true,
+                              m_stf << " line " << reg.line << ": cannot read " << reg.name << "["
+                                    << reg.index << "]");
+        if (read)
+        {
+            NS_TEST_EXPECT_MSG_EQ(value.get<uint64_t>(),
+                                  reg.value,
+                                  m_stf << " line " << reg.line << ": " << reg.name << "["
+                                        << reg.index << "]");
+        }
+    }
 }
 
 /// Every architecture runs the same program, p4src/forward, with the same .stf
-/// files; p4src/priority checks the priority queues of v1model, p4src/resubmit
-/// and p4src/recirculate its resubmit and recirculation, p4src/clone its clones
-/// (also to a multicast group), p4src/primitives digest(), hash() with max 0 and
-/// random() with lo > hi, and p4src/lag the LAG member that its multicast picks
+/// files (the pipeline core runs forward_v1model); p4src/drop checks mark_to_drop()
+/// in the ingress and in the egress on v1model and the pipeline core; p4src/priority checks the
+/// priority queues of v1model, p4src/resubmit and p4src/recirculate its resubmit and recirculation,
+/// p4src/clone its clones (also to a multicast group), p4src/primitives digest(), hash() with max 0
+/// and random() with lo > hi, and p4src/lag the LAG member that its multicast picks
 static class P4PacketTestSuite : public TestSuite
 {
   public:
     P4PacketTestSuite()
         : TestSuite("p4-packet", UNIT)
     {
-        const std::vector<std::pair<std::string, uint32_t>> archs = {
-            {"v1model", P4SWITCH_ARCH_V1MODEL},
-            {"pna", P4NIC_ARCH_PNA},
-            {"psa", P4SWITCH_ARCH_PSA},
+        // (test name, architecture, the JSON's architecture)
+        const std::vector<std::tuple<std::string, uint32_t, std::string>> archs = {
+            {"v1model", P4SWITCH_ARCH_V1MODEL, "v1model"},
+            {"pna", P4NIC_ARCH_PNA, "pna"},
+            {"psa", P4SWITCH_ARCH_PSA, "psa"},
+            {"pipeline", P4SWITCH_ARCH_PIPELINE, "v1model"},
         };
-        for (const auto& [name, arch] : archs)
+        for (const auto& [name, arch, json] : archs)
         {
             for (const char* stf : {"ipv4.stf", "drop.stf", "ports.stf"})
             {
-                AddTestCase(new StfTestCase("forward", name, arch, stf), TestCase::QUICK);
+                AddTestCase(new StfTestCase("forward", name, arch, stf, json), TestCase::QUICK);
             }
         }
+        AddTestCase(new StfTestCase("drop", "v1model", P4SWITCH_ARCH_V1MODEL, "mark_to_drop.stf"),
+                    TestCase::QUICK);
+        AddTestCase(new StfTestCase("drop",
+                                    "pipeline",
+                                    P4SWITCH_ARCH_PIPELINE,
+                                    "mark_to_drop.stf",
+                                    "v1model"),
+                    TestCase::QUICK);
         AddTestCase(new StfTestCase("priority", "v1model", P4SWITCH_ARCH_V1MODEL, "priority.stf"),
                     TestCase::QUICK);
         AddTestCase(new StfTestCase("resubmit", "v1model", P4SWITCH_ARCH_V1MODEL, "resubmit.stf"),

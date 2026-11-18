@@ -66,30 +66,13 @@ channel. It has all of main's PRs up to #55 (merged in "phase B", last in #60).
 ## Feature gaps
 
 - **PSA and PNA.**
-  - PNA computes its transmit time itself (rounded down to whole
-    nanoseconds) instead of using the device's transmit-complete signal, as
-    v1model and PSA do.
-  - PNA loses frames on a congested port: host 0 sends 20 frames, one per
-    microsecond, to a 1 Gbps port (8.1 us per frame); only 3 arrive, the
-    second 888 ns late. Found while testing #59; it happens without #59 too.
-  - Three zero-delay `Simulator::ScheduleNow(PortTxComplete)` events are not
-    cancelled when a switch is destroyed (v1model twice, PSA once). They only
-    matter for a switch destroyed in the same instant.
-  - PNA and the pipeline core ignore `PipelineDelay`.
+  - PNA ignores `PipelineDelay`.
   - PSA clones to a multicast group have no test: the `.stf` files of
     `p4-packet` configure multicast on v1model only.
   - There is no `psa_switch` (or PNA) Thrift service, so the target-specific
     commands of `psa_switch_CLI` do not work.
   - `P4Controller` works on v1model switches only.
-- **Link framing on other devices.** Only the switched-Ethernet channel uses
-  `LinkFraming` (its `Framing` attribute). The P4 point-to-point device, and the
-  TM's estimate of when a frame on a bridge port is sent, use the frame's bytes
-  only. ns-3's own CSMA device adds its FCS and a 96-bit gap itself.
-- **The default `DataRate`** of the switched-Ethernet channel is 0xffffffff
-  bit/s (about 4.29 Gbps), as in ns-3's CSMA channel; the examples set it.
 - **`PipelineDelay` follow-ups (#59).**
-  - Test it with recirculation and egress clones; the programs for these
-    came with #60.
   - Separate ingress and egress delays: needs the FIFO after the egress (see
     above).
   - A model per stage (Tofino's ingress and egress share a fixed number of
@@ -101,20 +84,12 @@ channel. It has all of main's PRs up to #55 (merged in "phase B", last in #60).
   nothing in the simulation receives them. Proposal: pass learned records to an
   ns-3 trace source that `P4Controller` can subscribe to, so that control-plane
   experiments such as L2 learning can run inside the simulation.
-- **The pipeline core and the drop port.** The pipeline core runs the egress for
-  a packet that the ingress dropped (`mark_to_drop()`), and it ignores a
-  `mark_to_drop()` in the egress, because it sends the `egress_spec` of the
-  ingress. Both branches.
 - **Thrift handlers.** The Thrift server thread runs until the process ends
   (BMv2 cannot stop it): a CLI that connects after its switch was destroyed uses
   a freed core. A CLI that runs during the simulation works from another thread,
   without synchronisation. Proposal: a locked registry of live cores that the
   handlers check; document that the CLI is for before and after the simulation,
   and `P4Controller` for changes during it.
-- **The P4 point-to-point device** (`switch_channel`) gives the switch its own
-  port's MAC address as a frame's destination, not the frame's. Programs that
-  forward by IP address are not affected; programs that forward by destination
-  MAC are.
 - **Smaller gaps, to do when a test or user needs them:**
   - byte queue limits on host devices (`TrafficControlHelper::SetQueueLimits()`)
     should work since #42, but are not tested;

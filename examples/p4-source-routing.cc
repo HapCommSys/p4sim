@@ -310,7 +310,7 @@ main(int argc, char* argv[])
     std::string linkDelay = "0.01ms";  // Default link delay
     bool enableTracePcap = true;
 
-    // Use P4SIM_DIR environment variable for portable paths
+    // P4 files: examples/p4src in the p4sim folder of this build
     std::string p4SrcDir = GetP4ExamplePath() + "/source_routing";
     std::string p4JsonPath = p4SrcDir + "/source_routing.json";
     std::string topoInput = p4SrcDir + "/topo.txt";

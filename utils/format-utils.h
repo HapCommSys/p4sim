@@ -188,11 +188,12 @@ uint64_t getTickCount(); // Get current time (ms)
 /**
  * @brief Get the P4Sim project root directory path.
  *
- * Reads from the environment variable P4SIM_DIR. If not set, falls back
- * to a path relative to the executable location.
- *
- * Set the environment variable in your shell:
- *   export P4SIM_DIR="/path/to/ns3/contrib/p4sim"
+ * The p4sim folder of this build: CMakeLists.txt passes it to the compiler, so
+ * every ns-3 tree reads its own P4 files. No environment variable is needed.
+ * If P4SIM_DIR names another folder, it is ignored and a notice is printed
+ * once. P4SIM_DIR is used only if that folder no longer exists, or if p4sim was
+ * not built with CMake; without it, the path is derived from the location of
+ * the program.
  *
  * @return The absolute path to the p4sim directory.
  */
