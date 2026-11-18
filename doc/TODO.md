@@ -81,8 +81,6 @@ channel. It has all of main's PRs up to #55 (merged in "phase B", last in #60).
     commands of `psa_switch_CLI` do not work.
   - `P4Controller` works on v1model switches only.
 - **`PipelineDelay` follow-ups (#59).**
-  - Test it with recirculation and egress clones; the programs for these
-    came with #60.
   - Separate ingress and egress delays: needs the FIFO after the egress (see
     above).
   - A model per stage (Tofino's ingress and egress share a fixed number of

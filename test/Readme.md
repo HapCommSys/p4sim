@@ -27,7 +27,7 @@ full BMv2 log to `/tmp`.
 | `p4-packet` | frames sent into a switch and the frames that leave it, on v1model, PNA, PSA and the pipeline core | yes |
 | `p4-egress` | switched-Ethernet ports: a congested port sends back to back at its line rate; a switch with a full egress queue can be destroyed | yes |
 | `p4-switch-rate` | `SwitchRate` limits the whole pipeline, 0 means no limit, a full input buffer drops | yes |
-| `p4-pipeline-delay` | `PipelineDelay` delays every packet by the same time without lowering the throughput (default egress path, VOQ, PSA, with `SwitchRate`, on a congested port); a switch with packets in its pipeline can be destroyed | yes |
+| `p4-pipeline-delay` | `PipelineDelay` delays every packet by the same time without lowering the throughput (default egress path, VOQ, PSA, with `SwitchRate`, on a congested port), once per pass for recirculated frames and clones; a switch with packets in its pipeline can be destroyed | yes |
 | `p4-bridge-port` | CSMA and point-to-point bridge ports next to a switched-Ethernet port | yes |
 | `p4-pna` | a PNA switch forwards, and drops what its program does not send | yes |
 | `p4-traffic-manager` | the VOQ + fabric Traffic Manager | no |
