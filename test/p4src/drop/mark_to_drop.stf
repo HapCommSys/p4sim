@@ -1,0 +1,11 @@
+# mark_to_drop() in the ingress and in the egress (drop_v1model.p4). The ingress
+# drops the frame to 00:00:00:00:00:dd, so the egress does not run for it; the
+# egress drops the frame to 00:00:00:00:00:ee. The frame to 00:00:00:00:00:01
+# leaves port 1.
+
+packet 0 0000000000dd 000000000010 88b5  00000001
+packet 0 0000000000ee 000000000010 88b5  00000002
+packet 0 000000000001 000000000010 88b5  00000003
+expect 1 000000000001 000000000010 88b5  00000003
+# The egress ran for the two frames that the ingress let through
+register MyEgress.egress_frames 0 2
