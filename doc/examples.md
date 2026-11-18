@@ -4,8 +4,8 @@ Run an example from the ns-3 folder:
 
 ```bash
 ./ns3 run p4-v1model-ipv4-forwarding
-./ns3 run "p4-basic-example --ns3::P4SwitchNetDevice::BmLogLevel=off"  # no BMv2 log in /tmp
-./ns3 run "p4-source-routing --PrintHelp"                               # the options of an example
+./ns3 run "p4-basic-example --ns3::P4SwitchNetDevice::BmLogLevel=trace"  # with the BMv2 log in /tmp
+./ns3 run "p4-source-routing --PrintHelp"                                 # the options of an example
 ```
 
 `./test.py` runs every example below as a smoke test, with the arguments in

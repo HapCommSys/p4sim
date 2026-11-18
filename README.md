@@ -149,24 +149,23 @@ The forwarding behaviour is defined by the P4 program and its flow-table configu
 | `JsonPath` | Path to the compiled P4 JSON file |
 | `FlowTablePath` | Path to the flow-table configuration file |
 | `P4SwitchArch` | Architecture selector (0 = V1model, 1 = PSA, 2 = PNA, 3 = Pipeline) |
-| `ChannelType` | Kept for main's examples, no effect: the ports are set as described below |
+| `ChannelType` | Deprecated, no effect: the ports are set as described below. Removed in the next major version |
 | `SwitchRate` | Packet rate of the whole P4 pipeline in packets per second; 0 (default) = no limit |
 | `PipelineDelay` | Latency of every packet in the P4 pipeline; 0 (default) = none. v1model, PSA and the pipeline core |
 | `QueueBufferSize` | Capacity of each output queue in packets: per port and priority (v1model, PSA), or per port (PNA) |
 | `EnableVoqFabric` | v1model: use the VOQ + fabric traffic manager instead of the output queues (see [doc/traffic-manager.md](doc/traffic-manager.md)) |
 | `InputBufferSizeLow` | Input buffer size for low-priority (external) packets |
 | `InputBufferSizeHigh` | Input buffer size for high-priority (internal) packets |
-| `EnableTracing` | Enable basic throughput tracing (not tested) |
+| `EnableTracing` | Deprecated, no effect: trace packets with the trace sources of the devices (`MacTx`, `MacRx`, ...), `PacketSink` or `FlowMonitor`. Removed in the next major version |
 | `EnableSwap` | Enable runtime swapping of the P4 configuration (not tested) |
-| `BmLogLevel` | Level of the BMv2 pipeline log in `/tmp/bmv2-<thrift port>-pipeline.log`: `trace` (default) ... `off`. `off` writes no log and speeds up the simulation |
+| `BmLogLevel` | Level of the BMv2 pipeline log in `/tmp/bmv2-<thrift port>-pipeline.log`: `trace` ... `off`. `off` (default) writes no log; `trace` logs every step of every packet, which helps to debug a P4 program but slows the simulation down |
 | `ThriftPort` | Thrift port for the runtime CLI. `0` (default) picks the first free port from `$P4SIM_THRIFT_PORT_BASE` (9090), so simulations can run in parallel |
 
 > **Notes:**
 > 1. When using a CSMA channel, the P4 program must handle ARP explicitly.
 > 2. Buffer attributes only take effect if the selected architecture models that buffer.
-> 3. `EnableTracing` currently supports basic throughput measurement only.
-> 4. `SwitchRate` limits how fast the P4 pipeline of a switch processes packets, resubmitted and recirculated passes included. The default, 0, means no limit, as in a hardware switch: then only the links limit the traffic. Set it to model a slower switch, such as a software switch: an idle pipeline takes a packet at once, and packets that arrive while it is busy wait in the input buffer (`InputBufferSizeLow`), or are dropped and reported through `MacRxDrop` when it is full. `PipelineDelay` adds a fixed latency to every packet instead (default 0, no latency): the pipeline takes the next packet at once, so the throughput does not change.
-> 5. The flow-table file of a v1model switch runs in `simple_switch_CLI`, and that of a PSA switch in `psa_switch_CLI`. So besides the table commands it can use `mirroring_add`, `mirroring_add_mc`, `set_queue_depth` and `set_queue_rate`, and on v1model also `mirroring_delete`: BMv2 1.15.8's `psa_switch_CLI` stops at `mirroring_delete`, as at any failed mirroring command, and skips the rest of the file.
+> 3. `SwitchRate` limits how fast the P4 pipeline of a switch processes packets, resubmitted and recirculated passes included. The default, 0, means no limit, as in a hardware switch: then only the links limit the traffic. Set it to model a slower switch, such as a software switch: an idle pipeline takes a packet at once, and packets that arrive while it is busy wait in the input buffer (`InputBufferSizeLow`), or are dropped and reported through `MacRxDrop` when it is full. `PipelineDelay` adds a fixed latency to every packet instead (default 0, no latency): the pipeline takes the next packet at once, so the throughput does not change.
+> 4. The flow-table file of a v1model switch runs in `simple_switch_CLI`, and that of a PSA switch in `psa_switch_CLI`. So besides the table commands it can use `mirroring_add`, `mirroring_add_mc`, `set_queue_depth` and `set_queue_rate`, and on v1model also `mirroring_delete`: BMv2 1.15.8's `psa_switch_CLI` stops at `mirroring_delete`, as at any failed mirroring command, and skips the rest of the file.
 
 ### Switch ports
 

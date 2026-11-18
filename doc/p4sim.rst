@@ -133,7 +133,7 @@ Scope and Limitations
   can lose frames.
 * The Thrift server of a switch runs in its own thread.  Use the runtime CLIs
   before and after the simulation, and ``P4Controller`` during it.
-* ``EnableSwap`` and ``EnableTracing`` are not tested.
+* ``EnableSwap`` is not tested.
 
 ``doc/TODO.md`` in the module lists the open items.
 
@@ -255,8 +255,8 @@ Attributes of ``ns3::P4SwitchNetDevice``:
      - false
      - V1model: use the VOQ + fabric traffic manager instead of the output queues
    * - ``BmLogLevel``
-     - trace
-     - Level of the BMv2 pipeline log in ``/tmp/bmv2-<thrift port>-pipeline.log``; ``off`` writes none and is faster
+     - off
+     - Level of the BMv2 pipeline log in ``/tmp/bmv2-<thrift port>-pipeline.log``; ``off`` writes none, ``trace`` logs every packet and is slower
    * - ``ThriftPort``
      - 0
      - Thrift port of the runtime CLI; 0 picks the first free port
@@ -265,13 +265,13 @@ Attributes of ``ns3::P4SwitchNetDevice``:
      - Maximum transmission unit
    * - ``EnableTracing``
      - false
-     - Basic throughput tracing (not tested)
+     - Deprecated, no effect; use the trace sources (see Output)
    * - ``EnableSwap``
      - false
      - Swapping the P4 program at run time (not tested)
    * - ``ChannelType``
      - 0
-     - No effect; kept for older scripts
+     - Deprecated, no effect; kept for older scripts
 
 The data rate and delay of a switched-Ethernet port are attributes of
 ``ns3::SwitchedEthernetChannel`` (``DataRate``, default 10 Gbps; ``Delay``).
@@ -355,17 +355,17 @@ Troubleshooting
 * If a simulation fails with "file not found" for JSON or flow-table
   paths, check that the file is in ``contrib/p4sim/examples/p4src/`` of
   the ns-3 tree that you built.
-* BMv2 writes a full pipeline log for every switch by default; set
-  ``BmLogLevel`` to ``off`` (for example with
-  ``Config::SetDefault("ns3::P4SwitchNetDevice::BmLogLevel", StringValue("off"))``)
-  for long simulations.
+* BMv2 writes no pipeline log by default. To see how a P4 program handles
+  each packet, set ``BmLogLevel`` to ``trace`` (for example with
+  ``--ns3::P4SwitchNetDevice::BmLogLevel=trace``); the log slows long
+  simulations down.
 * BMv2's bundled spdlog is intentionally excluded; |ns3| uses its own
   logging framework.
 
 Validation
 **********
 
-The module has 18 test suites, from unit tests of single classes to packet
+The module has 17 test suites, from unit tests of single classes to packet
 tests that send frames through a switch and check the frames that leave it
 (``p4-packet``, with test files in the format of p4c's STF).  Among them:
 
