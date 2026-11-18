@@ -142,7 +142,7 @@ Attribute            Description
 ``P4SwitchArch``     Architecture selector (0 = V1model, 1 = PSA, 2 = PNA)
 ``ChannelType``      Channel type (0 = CSMA, 1 = point-to-point)
 ``SwitchRate``       Processing rate in packets per second
-``QueueBufferSize``  Total queue buffer size (packets)
+``QueueBufferSize``  Capacity of each output queue (packets)
 ``EnableTracing``    Enable basic throughput tracing
 ==================== ========================================================
 

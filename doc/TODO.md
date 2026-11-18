@@ -66,12 +66,6 @@ channel. It has all of main's PRs up to #55 (merged in "phase B", last in #60).
 ## Feature gaps
 
 - **PSA and PNA.**
-  - PNA computes its transmit time itself (rounded down to whole
-    nanoseconds) instead of using the device's transmit-complete signal, as
-    v1model and PSA do.
-  - PNA loses frames on a congested port: host 0 sends 20 frames, one per
-    microsecond, to a 1 Gbps port (8.1 us per frame); only 3 arrive, the
-    second 888 ns late. Found while testing #59; it happens without #59 too.
   - PNA and the pipeline core ignore `PipelineDelay`.
   - PSA clones and mirroring sessions have no test.
   - There is no `psa_switch` (or PNA) Thrift service, so the target-specific

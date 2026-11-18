@@ -29,7 +29,7 @@ full BMv2 log to `/tmp`.
 | `p4-switch-rate` | `SwitchRate` limits the whole pipeline, 0 means no limit, a full input buffer drops | yes |
 | `p4-pipeline-delay` | `PipelineDelay` delays every packet by the same time without lowering the throughput (default egress path, VOQ, PSA, with `SwitchRate`, on a congested port), once per pass for recirculated frames and clones; a switch with packets in its pipeline can be destroyed | yes |
 | `p4-bridge-port` | CSMA and point-to-point bridge ports next to a switched-Ethernet port | yes |
-| `p4-pna` | a PNA switch forwards, and drops what its program does not send | yes |
+| `p4-pna` | a PNA switch forwards, and drops what its program does not send; a full output queue drops | yes |
 | `p4-traffic-manager` | the VOQ + fabric Traffic Manager | no |
 | `channel-state-test-suite` | the states of the switched-Ethernet channel | no |
 | `switched-ethernet-host` | the transmit queue of a host device; short frames keep the exact line rate on 100 and 400 Gbps links and at the default rate, 10 Gbps | no |

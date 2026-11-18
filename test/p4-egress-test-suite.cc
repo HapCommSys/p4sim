@@ -7,7 +7,7 @@
  * switch. A congested port must then send back to back at its own line rate:
  * every frame arrives, one serialisation time after the previous one. This
  * also holds when two ports with different rates are congested at the same time,
- * for v1model and PSA. A frame takes 3244.8 ns on the 2.5 Gbps link:
+ * for v1model, PSA and PNA. A frame takes 3244.8 ns on the 2.5 Gbps link:
  * each arrival is rounded to the simulator's resolution (1 ns), so it may lie up
  * to 1 ns from its exact time, but the rounding must not add up.
  */
@@ -281,6 +281,7 @@ static class P4EgressTestSuite : public TestSuite
                         TestCase::QUICK);
             AddTestCase(new EgressRateTestCase("psa", P4SWITCH_ARCH_PSA, nPorts),
                         TestCase::QUICK);
+            AddTestCase(new EgressRateTestCase("pna", P4NIC_ARCH_PNA, nPorts), TestCase::QUICK);
         }
         AddTestCase(new EgressTeardownTestCase(), TestCase::QUICK);
         AddTestCase(new EgressRefusedTeardownTestCase("v1model", P4SWITCH_ARCH_V1MODEL, false),

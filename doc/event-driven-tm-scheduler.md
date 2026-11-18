@@ -111,11 +111,14 @@ Traffic Manager's `PortRate`; on the default path it is only logged.
 |------|------|
 | `model/p4-core-v1model.cc` / `.h` | Event-driven scheduler, per-port state |
 | `model/p4-core-psa.cc` / `.h` | The same scheduler for PSA |
+| `model/p4-nic-pna.cc` / `.h` | PNA: a FIFO output queue per port, `ScheduleTxIfNeeded()`, `PortTxComplete()` |
 | `model/p4-switch-net-device.cc` / `.h` | `TransmitOn()`, `PortTransmitEnd()`, `SetPortTxDoneCallback()` |
 | `utils/p4-queue.h` | `NSQueueingLogicPriRL`: `get_next_tp_for_port()`, `pop_back_for_port()` |
 
-v1model and PSA use this path. PNA (`p4-nic-pna`) still schedules its own transmit-complete event
-from the link rate and is not migrated yet.
+v1model and PSA use this path. PNA (`p4-nic-pna`) has no egress pipeline: its main pipeline puts
+each frame into a FIFO output queue of the frame's port (`QueueBufferSize` frames; a frame that
+finds the queue full is dropped). `ScheduleTxIfNeeded(port)` hands the oldest frame to the device
+when the port is free, and the same port-TX-done callback calls `PortTxComplete(port)`.
 
 ---
 

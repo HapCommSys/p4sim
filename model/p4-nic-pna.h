@@ -25,6 +25,7 @@
 #include "ns3/p4-queue.h"
 #include "ns3/p4-switch-core.h"
 
+#include <deque>
 #include <unordered_map>
 
 #undef LOG_INFO
@@ -39,8 +40,14 @@ namespace ns3
 class P4PnaNic : public P4SwitchCore
 {
   public:
-    // by default, swapping is off
-    explicit P4PnaNic(P4SwitchNetDevice* net_device, bool enable_swap = false);
+    /**
+     * @param net_device       the device of the NIC
+     * @param enable_swap      allow swapping the program at run time (off by default)
+     * @param queueBufferSize  capacity of the output queue of each port, in frames
+     */
+    explicit P4PnaNic(P4SwitchNetDevice* net_device,
+                      bool enable_swap = false,
+                      size_t queueBufferSize = 128);
 
     ~P4PnaNic();
 
@@ -71,31 +78,25 @@ class P4PnaNic : public P4SwitchCore
                       uint16_t protocol,
                       const Address& destination) override;
 
-    /**
-     * @brief Calculate schedule time / link-rate from the attached NetDevice.
-     * Called once during construction.
-     */
-    void CalculateScheduleTime();
-
     // ---- Event-driven scheduler ----
 
     /**
-     * @brief Schedule a transmission event for @p port if none is already pending.
+     * @brief Hand the oldest frame in the output queue of @p port to the
+     * device, unless the port is still sending a frame.
      *
-     * Called from main_processing_pipeline() just before the ns-3 packet is
-     * handed to the net device.  If the output port is currently idle the
-     * event fires immediately (delay = 0); otherwise it is deferred until the
-     * current serialisation completes.
+     * Called when main_processing_pipeline() has queued a frame, and from
+     * PortTxComplete().
      *
-     * @param port  Egress port that will carry the packet.
+     * @param port  The egress port.
      */
     void ScheduleTxIfNeeded(uint32_t port);
 
     /**
-     * @brief Callback invoked when the link serialisation of a packet finishes.
+     * @brief The device has sent the frame on @p port, or refused it.
      *
-     * Marks the port free.  If more packets are waiting in input_buffer the
-     * next one is processed immediately via main_processing_pipeline().
+     * The device calls it through the port-TX-done callback (see
+     * P4SwitchNetDevice::SetPortTxDoneCallback()). Marks the port free and
+     * sends the next queued frame.
      *
      * @param port  The egress port whose transmission just completed.
      */
@@ -114,28 +115,33 @@ class P4PnaNic : public P4SwitchCore
 
     // ---- Event-driven scheduler state ----
 
+    /// A frame waiting in the output queue of its port
+    struct QueuedFrame
+    {
+        Ptr<Packet> packet; ///< the frame
+        uint16_t protocol;  ///< its protocol, for SendNs3Packet()
+        int addrIndex;      ///< index of its destination in m_destinationList
+    };
+
     /**
      * @brief Per-port transmission state.
      *
-     * busy         : true while a packet is being serialised on the link.
-     * busyUntil    : simulation time when the link becomes free.
-     * pendingEvent : EventId of an upcoming PortTxComplete callback.
+     * busy            : true from handing a frame to the device until the
+     *                   device reports its end through PortTxComplete().
+     * queue           : the frames waiting for the port, oldest first.
+     * txCompleteEvent : PortTxComplete() for a frame the device refused.
      */
     struct PortTxState
     {
         bool busy{false};
-        Time busyUntil{Time(0)};
-        EventId pendingEvent{};
+        std::deque<QueuedFrame> queue;
+        EventId txCompleteEvent{};
     };
 
     /// Indexed by egress port number; entries created on first use.
     std::unordered_map<uint32_t, PortTxState> m_portTxState;
 
-    /**
-     * @brief Physical link rate used for serialisation-delay modelling (bps).
-     * Read from the first bridge port's DataRate attribute; falls back to 1 Gbps.
-     */
-    uint64_t m_linkRateBps{1000000000ULL}; // default 1 Gbps
+    size_t m_queueBufferSize; ///< capacity of the output queue of each port (frames)
 
     // "loopedback" (current pna.p4) or "recirculated" (older pna.p4)
     std::string m_loopedbackField{"loopedback"};

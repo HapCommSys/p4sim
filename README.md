@@ -140,7 +140,7 @@ The forwarding behaviour is defined by the P4 program and its flow-table configu
 | `P4SwitchArch` | Architecture selector (0 = V1model, 1 = PSA, 2 = PNA, 3 = Pipeline) |
 | `ChannelType` | Kept for main's examples, no effect: the ports are set as described below |
 | `SwitchRate` | Packet rate of the whole P4 pipeline in packets per second; 0 (default) = no limit |
-| `QueueBufferSize` | Total queue buffer size (packets) |
+| `QueueBufferSize` | Capacity of each output queue in packets: per port and priority (v1model, PSA), or per port (PNA) |
 | `InputBufferSizeLow` | Input buffer size for low-priority (external) packets |
 | `InputBufferSizeHigh` | Input buffer size for high-priority (internal) packets |
 | `EnableTracing` | Enable basic throughput tracing |
