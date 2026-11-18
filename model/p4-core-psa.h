@@ -125,6 +125,13 @@ class P4CorePsa : public P4SwitchCore
     int SetAllEgressQueueRates(uint64_t ratePps);
 
   protected:
+    /**
+     * @brief Add the "psa_switch" Thrift service, which psa_switch_CLI uses for
+     * its own commands: mirroring_add, set_queue_depth, get_time_elapsed and the
+     * like (defined in p4-core-psa-thrift.cc)
+     */
+    void AddThriftServices() override;
+
     struct EgressThreadMapper
     {
         explicit EgressThreadMapper(size_t nb_threads)

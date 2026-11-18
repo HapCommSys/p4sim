@@ -69,8 +69,8 @@ channel. It has all of main's PRs up to #55 (merged in "phase B", last in #60).
   - PNA ignores `PipelineDelay`.
   - PSA clones to a multicast group have no test: the `.stf` files of
     `p4-packet` configure multicast on v1model only.
-  - There is no `psa_switch` (or PNA) Thrift service, so the target-specific
-    commands of `psa_switch_CLI` do not work.
+  - PNA has no Thrift service of its own (BMv2's `pna_nic` has one, for the
+    time commands of `pna_nic_CLI`), and it does not load its `FlowTablePath`.
   - `P4Controller` works on v1model switches only.
 - **`PipelineDelay` follow-ups (#59).**
   - Separate ingress and egress delays: needs the FIFO after the egress (see
@@ -115,6 +115,10 @@ channel. It has all of main's PRs up to #55 (merged in "phase B", last in #60).
     C++20 on; the `ns-3.49` README patches the installed header instead.
   - Build BMv2 with optimisation (-O2).
   - Find BMv2 with CMake imported targets instead of the fixed `/usr/local/lib`.
+  - Upstream fix for `psa_switch_CLI` (1.15.8): `mirroring_delete` calls
+    `mirroring_mapping_delete`, which the `psa_switch` service does not have;
+    and the CLI does not import `InvalidMirroringOperation`, so any failed
+    mirroring command raises a `NameError`. Both end the CLI.
 - **The last lost packet of the examples** (PDR 99.911 %) is ns-3's ARP: its
   pending queue holds 3 packets. Not p4sim; the examples could enlarge
   `ArpCache::PendingQueueSize`.

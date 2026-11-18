@@ -40,6 +40,7 @@ def build(bld):
         'model/p4-core-v1model-thrift.cc',
         'model/p4-core-pipeline.cc',
         'model/p4-core-psa.cc',
+        'model/p4-core-psa-thrift.cc',
         'model/p4-nic-pna.cc',
         'model/p4-switch-net-device.cc',
         'model/custom-p2p-net-device.cc',
