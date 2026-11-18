@@ -80,10 +80,6 @@ channel. It has all of main's PRs up to #55 (merged in "phase B", last in #60).
   - There is no `psa_switch` (or PNA) Thrift service, so the target-specific
     commands of `psa_switch_CLI` do not work.
   - `P4Controller` works on v1model switches only.
-- **Link framing on other devices.** Only the switched-Ethernet channel uses
-  `LinkFraming` (its `Framing` attribute). The P4 point-to-point device, and the
-  TM's estimate of when a frame on a bridge port is sent, use the frame's bytes
-  only. ns-3's own CSMA device adds its FCS and a 96-bit gap itself.
 - **`PipelineDelay` follow-ups (#59).**
   - Test it with recirculation and egress clones; the programs for these
     came with #60.

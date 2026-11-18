@@ -84,6 +84,15 @@ sent. The line coding and FEC of the physical layer (8b/10b, 64b/66b, RS-FEC)
 are not added: Ethernet runs the line faster to absorb them, so the data rate is
 the nominal one, on copper and fibre alike.
 
+The P4 point-to-point device (`CustomP2PNetDevice`, installed by
+`P4PointToPointHelper`) has the same `Framing` attribute; set it on both ends of
+the link. A P4 switch uses it also for its estimate of when a frame on such a
+bridge port is sent:
+
+```
+p2p.SetDeviceAttribute("Framing", StringValue("Ethernet"));
+```
+
 ## Queues and traffic control on hosts
 
 A host device sends one frame at a time; the frames handed to it meanwhile wait
