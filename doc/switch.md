@@ -57,7 +57,8 @@ NetDeviceContainer hostDevs = eth.Install(sw, terminals);
 ## Timing on the wire
 
 A frame takes (its bytes × 8 / `DataRate`) on the wire, then `Delay` to reach
-the far end, which gets it whole (store and forward). The channel computes this
+the far end, which gets it whole (store and forward). The defaults are 10 Gbps
+and no delay. The channel computes this
 for both ends and keeps the exact times, so that rounding to the simulator's
 1 ns resolution does not add up over back-to-back frames.
 
@@ -82,6 +83,15 @@ per second. These bytes only take time: the far end receives the frame as it was
 sent. The line coding and FEC of the physical layer (8b/10b, 64b/66b, RS-FEC)
 are not added: Ethernet runs the line faster to absorb them, so the data rate is
 the nominal one, on copper and fibre alike.
+
+The P4 point-to-point device (`CustomP2PNetDevice`, installed by
+`P4PointToPointHelper`) has the same `Framing` attribute; set it on both ends of
+the link. A P4 switch uses it also for its estimate of when a frame on such a
+bridge port is sent:
+
+```
+p2p.SetDeviceAttribute("Framing", StringValue("Ethernet"));
+```
 
 ## Queues and traffic control on hosts
 

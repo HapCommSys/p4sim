@@ -133,8 +133,12 @@ HostTxQueueTestCase::DoRun()
 class HostExactRateTestCase : public TestCase
 {
   public:
+    /// \param rate the DataRate of the channel; empty = its default, 10 Gbps
     HostExactRateTestCase(const std::string& rate)
-        : TestCase("Short frames on a " + rate + " link keep the exact line rate"),
+        : TestCase(rate.empty()
+                       ? std::string("Short frames at the default rate (10 Gbps) keep the exact "
+                                     "line rate")
+                       : "Short frames on a " + rate + " link keep the exact line rate"),
           m_rate(rate)
     {
     }
@@ -145,7 +149,10 @@ class HostExactRateTestCase : public TestCase
         const uint32_t frames = 50;
         const uint32_t payload = 50; // with the Ethernet header a frame has 64 bytes
         Ptr<SwitchedEthernetChannel> channel = CreateObject<SwitchedEthernetChannel>();
-        channel->SetAttribute("DataRate", DataRateValue(DataRate(m_rate)));
+        if (!m_rate.empty())
+        {
+            channel->SetAttribute("DataRate", DataRateValue(DataRate(m_rate)));
+        }
         Ptr<SwitchedEthernetHostDevice> hosts[2];
         for (auto& host : hosts)
         {
@@ -170,8 +177,8 @@ class HostExactRateTestCase : public TestCase
         Simulator::Destroy();
 
         NS_TEST_ASSERT_MSG_EQ(arrivals.size(), frames, "Frames were lost");
-        const double txNs =
-            (payload + 14) * 8.0 / static_cast<double>(DataRate(m_rate).GetBitRate()) * 1e9;
+        const DataRate rate(m_rate.empty() ? "10Gbps" : m_rate);
+        const double txNs = (payload + 14) * 8.0 / static_cast<double>(rate.GetBitRate()) * 1e9;
         for (size_t k = 1; k < arrivals.size(); k++)
         {
             // Frame k arrives k serialisation times after the first one
@@ -183,7 +190,7 @@ class HostExactRateTestCase : public TestCase
         }
     }
 
-    std::string m_rate; ///< the data rate of the link
+    std::string m_rate; ///< the data rate of the link; empty = the default
 };
 
 /// The link of host 0 is detached before a burst, and during the first frame of
@@ -278,6 +285,7 @@ static class SwitchedEthernetHostTestSuite : public TestSuite
         AddTestCase(new HostTxQueueTestCase(0), TestCase::QUICK);
         AddTestCase(new HostTxQueueTestCase(5), TestCase::QUICK);
         AddTestCase(new HostDetachTestCase(), TestCase::QUICK);
+        AddTestCase(new HostExactRateTestCase(""), TestCase::QUICK);
         AddTestCase(new HostExactRateTestCase("100Gbps"), TestCase::QUICK);
         AddTestCase(new HostExactRateTestCase("400Gbps"), TestCase::QUICK);
     }

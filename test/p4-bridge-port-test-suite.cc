@@ -8,8 +8,9 @@
  * link to host 2. Host 0 sends one frame per microsecond, alternately to hosts
  * 1 and 2, so that both bridge ports are congested: each must then send back
  * to back at its own line rate, i.e. every frame arrives one transmission time
- * after the previous one. Then host 1 sends a frame to host 2, through the
- * switch, which checks the reception on a bridge port.
+ * after the previous one. Then host 1 sends a frame to host 2, and host 2 one
+ * to host 1, through the switch: the switch receives on both bridge ports, and
+ * its program forwards by the frames' destination MAC addresses.
  */
 
 #include "ns3/core-module.h"
@@ -81,6 +82,9 @@ class BridgePortTestCase : public TestCase
     /// Host 1 sends one frame to \p dst
     void SendFromHost1(Mac48Address dst);
 
+    /// Host 2 sends one frame to \p dst
+    void SendFromHost2(Mac48Address dst);
+
     std::string m_archName;
     uint32_t m_arch;
     Ptr<SwitchedEthernetHostDevice> m_host0;
@@ -101,6 +105,12 @@ void
 BridgePortTestCase::SendFromHost1(Mac48Address dst)
 {
     m_host1->Send(Create<Packet>(PAYLOAD), dst, 0x88b5);
+}
+
+void
+BridgePortTestCase::SendFromHost2(Mac48Address dst)
+{
+    m_host2->Send(Create<Packet>(PAYLOAD), dst, 0x88b5);
 }
 
 void
@@ -167,6 +177,12 @@ BridgePortTestCase::DoRun()
                         &BridgePortTestCase::SendFromHost1,
                         this,
                         Mac48Address("00:00:00:00:00:02"));
+    // And host 2 one to host 1: it enters on the point-to-point port, and the
+    // program sends it to port 1 only if it sees the frame's destination
+    Simulator::Schedule(MilliSeconds(2),
+                        &BridgePortTestCase::SendFromHost2,
+                        this,
+                        Mac48Address("00:00:00:00:00:01"));
     Simulator::Stop(MilliSeconds(10));
     Simulator::Run();
 
@@ -184,7 +200,7 @@ BridgePortTestCase::DoRun()
         Time gap;
         uint32_t expected;
         bool exact;
-    } ports[] = {{"CSMA port", m_phy1, DataRate("1Gbps"), csmaGap, N_FRAMES / 2, false},
+    } ports[] = {{"CSMA port", m_phy1, DataRate("1Gbps"), csmaGap, N_FRAMES / 2 + 1, false},
                  {"P2P port", m_phy2, DataRate("2.5Gbps"), Time(0), N_FRAMES / 2 + 1, true}};
 
     for (const auto& port : ports)
@@ -212,7 +228,9 @@ BridgePortTestCase::DoRun()
     }
     // Host 1 gets its frames as sent: the payload with one Ethernet header and
     // trailer (MacRx shows the frame before the CSMA device removes them)
-    NS_TEST_EXPECT_MSG_EQ(m_mac1.size(), N_FRAMES / 2, "Host 1 passed up the wrong number of frames");
+    NS_TEST_EXPECT_MSG_EQ(m_mac1.size(),
+                          N_FRAMES / 2 + 1,
+                          "Host 1 passed up the wrong number of frames");
     for (uint32_t size : m_mac1)
     {
         NS_TEST_EXPECT_MSG_EQ(size, PAYLOAD + 14 + 4, "Host 1 got a frame of the wrong size");

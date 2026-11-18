@@ -7,7 +7,7 @@
  * switch. A congested port must then send back to back at its own line rate:
  * every frame arrives, one serialisation time after the previous one. This
  * also holds when two ports with different rates are congested at the same time,
- * for v1model and PSA. A frame takes 3244.8 ns on the 2.5 Gbps link:
+ * for v1model, PSA and PNA. A frame takes 3244.8 ns on the 2.5 Gbps link:
  * each arrival is rounded to the simulator's resolution (1 ns), so it may lie up
  * to 1 ns from its exact time, but the rounding must not add up.
  */
@@ -19,6 +19,7 @@
 #include "ns3/p4-switch-net-device.h"
 #include "ns3/switched-ethernet-channel.h"
 #include "ns3/test.h"
+#include "ns3/traffic-control-module.h"
 
 #include <cmath>
 
@@ -35,6 +36,31 @@ void
 Record(std::vector<Time>* arrivals, Ptr<const Packet> frame)
 {
     arrivals->push_back(Simulator::Now());
+}
+
+/// A switch, and how many frames it dropped
+struct DropState
+{
+    Ptr<P4SwitchNetDevice> sw; ///< the switch, disposed at its first drop
+    uint32_t drops{0};         ///< frames the switch dropped
+};
+
+/// The switch dropped a frame: dispose it in the same instant. The event runs
+/// before the ones that the switch schedules after the drop.
+void
+DisposeOnDrop(DropState* state, Ptr<const Packet> frame)
+{
+    if (state->drops++ == 0)
+    {
+        Simulator::ScheduleNow(&Object::Dispose, state->sw);
+    }
+}
+
+/// Host \p host sends one frame to \p to
+void
+SendFrame(Ptr<SwitchedEthernetHostDevice> host, Mac48Address to)
+{
+    host->Send(Create<Packet>(PAYLOAD), to, 0x88b5);
 }
 
 } // namespace
@@ -178,6 +204,71 @@ class EgressTeardownTestCase : public TestCase
     }
 };
 
+/**
+ * A port that refuses a frame is freed by a PortTxComplete() in the same
+ * instant. A switch destroyed in that instant must cancel this event, which
+ * points to its P4 core. The switch has one port; the program sends a frame for
+ * 00:00:00:00:00:01 to port 1, which does not exist, so the switch refuses it
+ * and drops it, and the test disposes the switch then. Without the
+ * cancellation the event runs on the deleted core: valgrind reports invalid
+ * reads; a plain run may not notice.
+ */
+class EgressRefusedTeardownTestCase : public TestCase
+{
+  public:
+    /**
+     * Constructor
+     * \param archName "v1model" or "psa"
+     * \param arch P4SWITCH_ARCH_*
+     * \param queueDisc whether port 1 has a queue disc (v1model)
+     */
+    EgressRefusedTeardownTestCase(const std::string& archName, uint32_t arch, bool queueDisc)
+        : TestCase(archName + ": a switch can be destroyed when a port" +
+                   (queueDisc ? " with a queue disc" : "") + " refuses a frame"),
+          m_archName(archName),
+          m_arch(arch),
+          m_queueDisc(queueDisc)
+    {
+    }
+
+  private:
+    void DoRun() override
+    {
+        SetDataDir(NS_TEST_SOURCEDIR);
+        Ptr<Node> switchNode = CreateObject<Node>();
+        Ptr<P4SwitchNetDevice> sw = CreateObject<P4SwitchNetDevice>();
+        sw->SetAttribute("P4SwitchArch", UintegerValue(m_arch));
+        sw->SetAttribute("JsonPath",
+                         StringValue(CreateDataDirFilename("p4src/egress_ports/egress_ports_" +
+                                                           m_archName + ".json")));
+        sw->SetAttribute("FlowTablePath", StringValue(""));
+        switchNode->AddDevice(sw);
+        Ptr<SwitchedEthernetChannel> channel = CreateObject<SwitchedEthernetChannel>();
+        sw->Attach(channel);
+        Ptr<Node> hostNode = CreateObject<Node>();
+        Ptr<SwitchedEthernetHostDevice> host = CreateObject<SwitchedEthernetHostDevice>();
+        host->SetAddress(Mac48Address("00:00:00:00:00:10"));
+        hostNode->AddDevice(host);
+        host->Attach(channel);
+        sw->Initialize();
+        if (m_queueDisc)
+        {
+            sw->GetV1ModelCore()->SetPortQueueDisc(1, CreateObject<FifoQueueDisc>());
+        }
+
+        DropState state{sw};
+        sw->TraceConnectWithoutContext("MacTxDrop", MakeBoundCallback(&DisposeOnDrop, &state));
+        Simulator::Schedule(MicroSeconds(1), &SendFrame, host, Mac48Address("00:00:00:00:00:01"));
+        Simulator::Run();
+        Simulator::Destroy();
+        NS_TEST_EXPECT_MSG_EQ(state.drops, 1, "The switch did not refuse the frame");
+    }
+
+    std::string m_archName; ///< "v1model" or "psa"
+    uint32_t m_arch;        ///< P4SWITCH_ARCH_*
+    bool m_queueDisc;       ///< whether port 1 has a queue disc
+};
+
 static class P4EgressTestSuite : public TestSuite
 {
   public:
@@ -190,7 +281,14 @@ static class P4EgressTestSuite : public TestSuite
                         TestCase::QUICK);
             AddTestCase(new EgressRateTestCase("psa", P4SWITCH_ARCH_PSA, nPorts),
                         TestCase::QUICK);
+            AddTestCase(new EgressRateTestCase("pna", P4NIC_ARCH_PNA, nPorts), TestCase::QUICK);
         }
         AddTestCase(new EgressTeardownTestCase(), TestCase::QUICK);
+        AddTestCase(new EgressRefusedTeardownTestCase("v1model", P4SWITCH_ARCH_V1MODEL, false),
+                    TestCase::QUICK);
+        AddTestCase(new EgressRefusedTeardownTestCase("v1model", P4SWITCH_ARCH_V1MODEL, true),
+                    TestCase::QUICK);
+        AddTestCase(new EgressRefusedTeardownTestCase("psa", P4SWITCH_ARCH_PSA, false),
+                    TestCase::QUICK);
     }
 } g_p4EgressTestSuite;

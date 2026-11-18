@@ -30,10 +30,11 @@ NS_LOG_COMPONENT_DEFINE("P4CorePna");
 namespace ns3
 {
 
-P4PnaNic::P4PnaNic(P4SwitchNetDevice* net_device, bool enable_swap)
+P4PnaNic::P4PnaNic(P4SwitchNetDevice* net_device, bool enable_swap, size_t queueBufferSize)
     : P4SwitchCore(net_device, enable_swap, false),
       m_packetId(0),
-      input_buffer(1024)
+      input_buffer(1024),
+      m_queueBufferSize(queueBufferSize)
 {
     // configure for the switch pna
     m_thriftCommand = "";             // default thrift command for pna
@@ -59,17 +60,16 @@ P4PnaNic::P4PnaNic(P4SwitchNetDevice* net_device, bool enable_swap)
     force_arith_header("pna_main_output_metadata");
 
     import_pna_primitives(); // register send_to_port, drop_packet
-    CalculateScheduleTime();
 }
 
 P4PnaNic::~P4PnaNic()
 {
     // BMv2 pushes a sentinel to stop the ingress thread. ns-3 has no such
     // thread, and the push would wait forever on a full buffer.
-    // Cancel the pending transmit-complete events, which point to this NIC.
+    // Cancel the PortTxComplete() for a refused frame, which points to this NIC.
     for (auto& kv : m_portTxState)
     {
-        Simulator::Cancel(kv.second.pendingEvent);
+        Simulator::Cancel(kv.second.txCompleteEvent);
     }
 }
 
@@ -121,32 +121,19 @@ P4PnaNic::main_processing_pipeline()
         return false;
     }
 
-    int pkt_bytes = static_cast<int>(bm_packet->get_data_size());
-
-    // ---- Model link serialisation delay ----
-    uint64_t tx_ns = (m_linkRateBps > 0)
-                         ? (static_cast<uint64_t>(pkt_bytes) * 8ULL * 1000000000ULL / m_linkRateBps)
-                         : 0ULL;
-    Time txDelay = NanoSeconds(tx_ns);
-
-    auto& pstate = m_portTxState[static_cast<uint32_t>(out_port)];
-    pstate.busy = true;
-    pstate.busyUntil = Simulator::Now() + txDelay;
-
-    NS_LOG_DEBUG("PNA port " << out_port << ": transmitting " << pkt_bytes
-                             << " B, tx delay = " << tx_ns << " ns");
-
+    // Queue the frame for its port. The device sends one frame at a time and
+    // reports the end of each one through PortTxComplete().
+    auto port = static_cast<uint32_t>(out_port);
+    auto& pstate = m_portTxState[port];
+    if (pstate.queue.size() >= m_queueBufferSize)
+    {
+        NS_LOG_WARN("PNA port " << port << ": output queue full, packet dropped");
+        return false;
+    }
     uint16_t protocol = RegisterAccess::get_ns_protocol(bm_packet.get());
     int addr_index = RegisterAccess::get_ns_address(bm_packet.get());
-    Ptr<Packet> ns_packet = this->ConvertToNs3Packet(std::move(bm_packet));
-    m_switchNetDevice->SendNs3Packet(ns_packet, out_port, protocol, m_destinationList[addr_index]);
-
-    // Schedule PortTxComplete to fire after the serialisation delay.
-    pstate.pendingEvent = Simulator::Schedule(txDelay,
-                                              &P4PnaNic::PortTxComplete,
-                                              this,
-                                              static_cast<uint32_t>(out_port));
-
+    pstate.queue.push_back({this->ConvertToNs3Packet(std::move(bm_packet)), protocol, addr_index});
+    ScheduleTxIfNeeded(port);
     return true;
 }
 
@@ -180,8 +167,8 @@ P4PnaNic::ReceivePacket(Ptr<Packet> packetIn,
 
     input_buffer.push_front(std::move(bm_packet));
 
-    // Event-driven: process the packet immediately if the pipeline is free,
-    // otherwise it will be picked up by PortTxComplete when the link is idle.
+    // The pipeline processes the packet at once; the frame then waits in the
+    // output queue of its port (see ScheduleTxIfNeeded()).
     main_processing_pipeline();
     return 0;
 }
@@ -214,8 +201,7 @@ P4PnaNic::start_and_return_()
         NS_FATAL_ERROR("PNA JSON defines neither 'loopedback' nor 'recirculated' in "
                        "pna_main_parser_input_metadata / pna_main_input_metadata");
     }
-    NS_LOG_DEBUG("PNA NIC ID " << m_p4SwitchId << ": event-driven scheduler active"
-                               << " (link rate = " << m_linkRateBps << " bps)");
+    NS_LOG_DEBUG("PNA NIC ID " << m_p4SwitchId << ": event-driven scheduler active");
 }
 
 void
@@ -253,54 +239,37 @@ P4PnaNic::EnqueueNow(uint32_t egress_port, std::unique_ptr<bm::Packet>&& packet)
 // ---------------------------------------------------------------------------
 
 void
-P4PnaNic::CalculateScheduleTime()
-{
-    // Try to read the physical link rate from port 0 so that
-    // serialisation delay is modelled accurately.  Falls back to 1 Gbps.
-    if (m_switchNetDevice && m_switchNetDevice->GetNPorts() > 0)
-    {
-        uint64_t rate = m_switchNetDevice->GetPortDataRate(0).GetBitRate();
-        if (rate > 0)
-        {
-            m_linkRateBps = rate;
-            NS_LOG_INFO("PNA NIC ID " << m_p4SwitchId
-                                      << ": link rate from port 0 = " << m_linkRateBps << " bps");
-        }
-        else
-        {
-            NS_LOG_DEBUG("PNA NIC ID " << m_p4SwitchId << ": no data rate on port 0; using 1 Gbps");
-        }
-    }
-}
-
-void
 P4PnaNic::ScheduleTxIfNeeded(uint32_t port)
 {
-    // Currently a no-op placeholder kept for symmetry with v1model/PSA.
-    // main_processing_pipeline() is called directly from ReceivePacket() and
-    // from PortTxComplete(), so no additional dequeue event is required.
-    (void)port;
+    NS_LOG_FUNCTION(this << port);
+
+    auto& pstate = m_portTxState[port];
+    if (pstate.busy || pstate.queue.empty())
+    {
+        return; // PortTxComplete() sends the next frame
+    }
+    QueuedFrame frame = std::move(pstate.queue.front());
+    pstate.queue.pop_front();
+    pstate.busy = true;
+
+    NS_LOG_DEBUG("PNA port " << port << ": transmitting " << frame.packet->GetSize() << " B, "
+                             << pstate.queue.size() << " frames queued");
+    if (!m_switchNetDevice->SendNs3Packet(frame.packet,
+                                          static_cast<int>(port),
+                                          frame.protocol,
+                                          m_destinationList[frame.addrIndex]))
+    {
+        // Dropped by the device: nothing is on the wire, free the port.
+        pstate.txCompleteEvent = Simulator::ScheduleNow(&P4PnaNic::PortTxComplete, this, port);
+    }
 }
 
 void
 P4PnaNic::PortTxComplete(uint32_t port)
 {
     NS_LOG_FUNCTION(this << port);
-
-    auto& pstate = m_portTxState[port];
-    pstate.busy = false;
-    pstate.pendingEvent = EventId();
-
-    // If more packets are waiting in the input buffer, process the next one.
-    if (input_buffer.size() > 0)
-    {
-        NS_LOG_DEBUG("PNA port " << port << ": PortTxComplete – more packets in buffer");
-        main_processing_pipeline();
-    }
-    else
-    {
-        NS_LOG_DEBUG("PNA port " << port << ": PortTxComplete – input buffer empty, port idle");
-    }
+    m_portTxState[port].busy = false;
+    ScheduleTxIfNeeded(port);
 }
 
 } // namespace ns3
