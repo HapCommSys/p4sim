@@ -26,10 +26,12 @@
 #include <cmath>
 #include <cstdlib>
 #include <cstring>
+#include <filesystem>
 #include <iomanip>
 #include <iostream>
 #include <sstream>
 #include <stdexcept>
+#include <system_error>
 #include <vector>
 
 namespace ns3
@@ -389,15 +391,32 @@ getTickCount()
 std::string
 GetP4SimDir()
 {
-    const char* envDir = std::getenv("P4SIM_DIR");
-    if (envDir != nullptr && std::string(envDir).length() > 0)
+    const char* env = std::getenv("P4SIM_DIR");
+    const std::string envDir = (env != nullptr) ? env : "";
+#ifdef P4SIM_SOURCE_DIR
+    // The p4sim folder of this build (CMakeLists.txt passes it to the compiler).
+    // It wins over P4SIM_DIR, which is often set in ~/.bashrc and then names
+    // the same folder for every ns-3 tree.
+    const std::string buildDir = P4SIM_SOURCE_DIR;
+    std::error_code ec;
+    if (std::filesystem::is_directory(buildDir, ec))
     {
-        return std::string(envDir);
+        static bool noticeShown = false;
+        if (!envDir.empty() && !noticeShown && !std::filesystem::equivalent(envDir, buildDir, ec))
+        {
+            noticeShown = true;
+            std::cerr << "p4sim: ignoring P4SIM_DIR=" << envDir << "; the P4 files are read from "
+                      << buildDir << ", the p4sim folder of this build" << std::endl;
+        }
+        return buildDir;
     }
-
-    // Fallback: derive from executable location
-    // Executable is typically in: <ns3-root>/build/contrib/p4sim/examples/
-    // We need: <ns3-root>/contrib/p4sim/
+#endif
+    if (!envDir.empty())
+    {
+        return envDir;
+    }
+    // Derive the folder from the location of the program: an example is in
+    // <ns3-root>/build/contrib/p4sim/examples/
     std::string exePath = SystemPath::FindSelfDirectory();
     return SystemPath::Append(exePath, "../../../../contrib/p4sim");
 }

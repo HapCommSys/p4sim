@@ -88,17 +88,11 @@ cd ../..
 ./ns3 build
 ```
 
-#### Step 3.4: Set the `P4SIM_DIR` Environment Variable
+#### Step 3.4: P4 Files Are Found Automatically
 
-All P4Sim example scripts resolve P4 artifact paths (JSON, flow tables, topology files) via the `P4SIM_DIR` environment variable. Add it to your `~/.bashrc` so it is available in every session:
+P4sim reads P4 artifacts (JSON pipelines, flow tables, topology files) from the p4sim folder of the build, so no setup is needed, and several ns-3 trees can live side by side.
 
-```bash
-# Add to ~/.bashrc — adjust the path to match your ns-3 workspace
-echo 'export P4SIM_DIR="$HOME/workdir/ns3.39/contrib/p4sim"' >> ~/.bashrc
-source ~/.bashrc
-```
-
-> **Tip:** If `P4SIM_DIR` is not set, the helper functions fall back to a path derived from the executable location, but setting the variable explicitly is recommended for reliability.
+> **Note:** Earlier versions asked you to set `P4SIM_DIR` in `~/.bashrc`. It is no longer needed; you can remove it. If it names another p4sim folder, it is ignored and a notice says so.
 
 ---
 
@@ -120,7 +114,7 @@ All example scripts use two helper functions declared in `ns3/format-utils.h`:
 
 | Function | Returns |
 |---|---|
-| `GetP4SimDir()` | Value of `$P4SIM_DIR` (or a fallback derived from the executable path) |
+| `GetP4SimDir()` | The p4sim folder of the build (see Step 3.4) |
 | `GetP4ExamplePath()` | `GetP4SimDir() + "/examples/p4src"` |
 
 #### Recommended usage pattern in your own scripts
@@ -235,6 +229,8 @@ git apply ./contrib/p4sim/doc/changes.patch
 
 #### 7. Set the `P4SIM_DIR` Environment Variable & Run
 
+With `waf`, p4sim does not know its folder, so set it:
+
 ```bash
 # Add to ~/.bashrc — adjust the path to match your workspace
 echo 'export P4SIM_DIR="$HOME/workdir/ns3.35/contrib/p4sim"' >> ~/.bashrc
@@ -315,13 +311,9 @@ sudo ./set_pkg_config_env.sh
 ./ns3 build
 ```
 
-#### 7. Set the `P4SIM_DIR` Environment Variable & Run
+#### 7. Run
 
 ```bash
-# Add to ~/.bashrc — adjust the path to match your workspace
-echo 'export P4SIM_DIR="$HOME/workdir/ns3.39/contrib/p4sim"' >> ~/.bashrc
-source ~/.bashrc
-
 # Run an example
 ./ns3 run "exampleA"
 ```
