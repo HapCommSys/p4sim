@@ -888,8 +888,32 @@ CustomP2PNetDevice::Receive(Ptr<Packet> packet)
         //
         Ptr<Packet> originalPacket = packet->Copy();
 
-        // EthernetHeader eeh_hd;
-        // bool hasEthernet = originalPacket->PeekHeader(eeh_hd);
+        // The addresses for the callbacks. A frame that still has its Ethernet
+        // header (on a switch port always) brings its own: a P4 switch must see
+        // the frame's destination, not this port's address. A frame rebuilt from
+        // the custom header has none; it is from the remote device, to this one.
+        Address from = GetRemote();
+        Address to = GetAddress();
+        NetDevice::PacketType packetType = NetDevice::PACKET_HOST;
+        EthernetHeader eth;
+        if (!m_NeedProcessHeader && packet->PeekHeader(eth))
+        {
+            Mac48Address dst = eth.GetDestination();
+            from = eth.GetSource();
+            to = dst;
+            if (dst.IsBroadcast())
+            {
+                packetType = NetDevice::PACKET_BROADCAST;
+            }
+            else if (dst.IsGroup())
+            {
+                packetType = NetDevice::PACKET_MULTICAST;
+            }
+            else if (dst != m_address)
+            {
+                packetType = NetDevice::PACKET_OTHERHOST;
+            }
+        }
 
         // std::cout << "***Netdevice: Receive: before remove the custom header " << std::endl;
         // originalPacket->Print (std::cout);
@@ -925,12 +949,7 @@ CustomP2PNetDevice::Receive(Ptr<Packet> packet)
         if (!m_promiscCallback.IsNull())
         {
             m_macPromiscRxTrace(originalPacket);
-            m_promiscCallback(this,
-                              packet,
-                              protocol,
-                              GetRemote(),
-                              GetAddress(),
-                              NetDevice::PACKET_HOST);
+            m_promiscCallback(this, packet, protocol, from, to, packetType);
         }
 
         m_macRxTrace(originalPacket);

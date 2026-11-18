@@ -275,7 +275,7 @@ main(int argc, char* argv[])
     uint32_t switchRate = 100000;      // egress rate (pps) of the switches on the path
     bool enableTracePcap = false;
 
-    // Use P4SIM_DIR environment variable for portable paths
+    // P4 files: examples/p4src in the p4sim folder of this build
     std::string p4SrcDir = GetP4ExamplePath() + "/load_balance";
     std::string p4JsonPath = p4SrcDir + "/load_balance.json";
     std::string flowTableDirPath = p4SrcDir + "/";

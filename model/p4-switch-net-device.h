@@ -240,6 +240,13 @@ class P4SwitchNetDevice : public NetDevice
     P4CoreV1model* GetV1ModelCore() const;
 
     /**
+     * \brief The P4 core of this device, of any architecture. Its BMv2 runtime
+     *        interface reads tables, registers and counters (register_read(), ...).
+     * \return the core, or nullptr if it is not created yet (or already released)
+     */
+    P4SwitchCore* GetCore() const;
+
+    /**
      * \brief Get the Thrift port of the P4 core of this switch
      * \return the port, or 0 if the core is not created yet (or already released)
      */
@@ -365,12 +372,6 @@ class P4SwitchNetDevice : public NetDevice
      * \param core the P4 core created by DoInitialize()
      */
     void ConfigureCore(P4SwitchCore& core) const;
-
-    /**
-     * \brief The P4 core of this device
-     * \return the core, or nullptr if it is not created yet (or already released)
-     */
-    P4SwitchCore* GetCore() const;
 
     /**
      * \brief Feed \p frame, a full Ethernet frame received on \p inPort, into
