@@ -157,7 +157,7 @@ The forwarding behaviour is defined by the P4 program and its flow-table configu
 | `InputBufferSizeLow` | Input buffer size for low-priority (external) packets |
 | `InputBufferSizeHigh` | Input buffer size for high-priority (internal) packets |
 | `EnableTracing` | Deprecated, no effect: trace packets with the trace sources of the devices (`MacTx`, `MacRx`, ...), `PacketSink` or `FlowMonitor`. Removed in the next major version |
-| `EnableSwap` | Enable runtime swapping of the P4 configuration (not tested) |
+| `EnableSwap` | Allow swapping the P4 program at run time (`load_new_config` and `swap_configs` of the runtime CLI, or `P4Controller::LoadNewConfig()` and `SwapConfigs()`). The switch swaps once it holds no packet; frames that arrive meanwhile wait, then use the new program |
 | `BmLogLevel` | Level of the BMv2 pipeline log in `/tmp/bmv2-<thrift port>-pipeline.log`: `trace` ... `off`. `off` (default) writes no log; `trace` logs every step of every packet, which helps to debug a P4 program but slows the simulation down |
 | `ThriftPort` | Thrift port for the runtime CLI. `0` (default) picks the first free port from `$P4SIM_THRIFT_PORT_BASE` (9090), so simulations can run in parallel |
 

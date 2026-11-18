@@ -133,7 +133,6 @@ Scope and Limitations
   can lose frames.
 * The Thrift server of a switch runs in its own thread.  Use the runtime CLIs
   before and after the simulation, and ``P4Controller`` during it.
-* ``EnableSwap`` is not tested.
 
 ``doc/TODO.md`` in the module lists the open items.
 
@@ -268,7 +267,7 @@ Attributes of ``ns3::P4SwitchNetDevice``:
      - Deprecated, no effect; use the trace sources (see Output)
    * - ``EnableSwap``
      - false
-     - Swapping the P4 program at run time (not tested)
+     - Swapping the P4 program at run time; the swap waits until the switch holds no packet
    * - ``ChannelType``
      - 0
      - Deprecated, no effect; kept for older scripts
@@ -365,7 +364,7 @@ Troubleshooting
 Validation
 **********
 
-The module has 17 test suites, from unit tests of single classes to packet
+The module has 18 test suites, from unit tests of single classes to packet
 tests that send frames through a switch and check the frames that leave it
 (``p4-packet``, with test files in the format of p4c's STF).  Among them:
 
