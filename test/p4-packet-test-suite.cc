@@ -539,6 +539,9 @@ static class P4PacketTestSuite : public TestSuite
                     TestCase::QUICK);
         AddTestCase(new StfTestCase("clone", "v1model", P4SWITCH_ARCH_V1MODEL, "clone_mc.stf"),
                     TestCase::QUICK);
+        // PSA clones and mirroring sessions
+        AddTestCase(new StfTestCase("clone", "psa", P4SWITCH_ARCH_PSA, "clone_psa.stf"),
+                    TestCase::QUICK);
         AddTestCase(
             new StfTestCase("primitives", "v1model", P4SWITCH_ARCH_V1MODEL, "primitives.stf"),
             TestCase::QUICK);
