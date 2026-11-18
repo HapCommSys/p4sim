@@ -100,16 +100,11 @@ cd ../..
 ./ns3 build
 ```
 
-### Step 4: Set the `P4SIM_DIR` Environment Variable
+### Step 4: P4 Files Are Found Automatically
 
-P4sim resolves P4 artifact paths (JSON pipelines, flow tables, topology files) via the `P4SIM_DIR` environment variable. Add it to your shell profile:
+P4sim reads P4 artifacts (JSON pipelines, flow tables, topology files) from the p4sim folder of the build, so no setup is needed, and several ns-3 trees can live side by side.
 
-```bash
-echo 'export P4SIM_DIR="$HOME/workdir/ns3.39/contrib/p4sim"' >> ~/.bashrc
-source ~/.bashrc
-```
-
-> **Tip:** If `P4SIM_DIR` is not set, P4sim falls back to a path derived from the executable location, but setting it explicitly is recommended for reliability.
+> **Note:** Earlier versions asked you to set `P4SIM_DIR` in `~/.bashrc`. It is no longer needed; you can remove it. If it names another p4sim folder, it is ignored and a notice says so.
 
 ### Step 5: Run an Example
 
@@ -145,7 +140,7 @@ The forwarding behaviour is defined by the P4 program and its flow-table configu
 | `P4SwitchArch` | Architecture selector (0 = V1model, 1 = PSA, 2 = PNA, 3 = Pipeline) |
 | `ChannelType` | Kept for main's examples, no effect: the ports are set as described below |
 | `SwitchRate` | Packet rate of the whole P4 pipeline in packets per second; 0 (default) = no limit |
-| `QueueBufferSize` | Total queue buffer size (packets) |
+| `QueueBufferSize` | Capacity of each output queue in packets: per port and priority (v1model, PSA), or per port (PNA) |
 | `InputBufferSizeLow` | Input buffer size for low-priority (external) packets |
 | `InputBufferSizeHigh` | Input buffer size for high-priority (internal) packets |
 | `EnableTracing` | Enable basic throughput tracing |
