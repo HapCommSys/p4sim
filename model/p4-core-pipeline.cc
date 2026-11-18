@@ -71,8 +71,8 @@ struct bmv2_hash_v1model_pipeline
 REGISTER_HASH(hash_ex_v1model_pipeline);
 REGISTER_HASH(bmv2_hash_v1model_pipeline);
 
-P4CorePipeline::P4CorePipeline(P4SwitchNetDevice* netDevice, bool enableSwap, bool enableTracing)
-    : P4SwitchCore(netDevice, enableSwap, enableTracing),
+P4CorePipeline::P4CorePipeline(P4SwitchNetDevice* netDevice, bool enableSwap)
+    : P4SwitchCore(netDevice, enableSwap),
       m_packetId(0)
 {
     // configure for the switch v1model

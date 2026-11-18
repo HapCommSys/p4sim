@@ -7,12 +7,10 @@ From the ns-3 root, with `./ns3 configure --enable-tests --enable-examples`:
 ```bash
 ./test.py -s p4sim                               # one suite
 ./ns3 run "test-runner --suite=p4sim --verbose"  # one suite, with each test case
-./ns3 run "p4-basic-example --ns3::P4SwitchNetDevice::BmLogLevel=off"  # one example
+./ns3 run p4-basic-example                       # one example
 ```
 
-No environment variable is needed, and suites can run in parallel. `./test.py -e`
-runs an example without the arguments in `examples-to-run.py`, so it writes the
-full BMv2 log to `/tmp`.
+No environment variable is needed, and suites can run in parallel.
 
 ## Suites
 
@@ -22,7 +20,7 @@ full BMv2 log to `/tmp`.
 | `p4-topology-reader` | reading a topology file | no |
 | `p4-p2p-channel` | the P4 point-to-point channel; short frames on a 100 Gbps link keep the exact line rate | no |
 | `p4-queue` | egress queue: capacity, rate, FIFO, per-port rate, priorities | no |
-| `p4sim` | v1model, PSA and PNA load their program; Thrift ports; `BmLogLevel` | yes |
+| `p4sim` | v1model, PSA and PNA load their program; Thrift ports; `BmLogLevel` and its default, `off`; the deprecated attributes `ChannelType` and `EnableTracing` are still accepted | yes |
 | `p4-controller` | flow entries, action profiles and mirroring sessions, read back from the switch; the commands of `simple_switch_CLI` and `psa_switch_CLI` for mirroring, queues and time | yes, `simple_switch_CLI` and `psa_switch_CLI` |
 | `p4-packet` | frames sent into a switch and the frames that leave it, on v1model, PNA, PSA and the pipeline core | yes |
 | `p4-egress` | switched-Ethernet ports: a congested port sends back to back at its line rate; a switch with a full egress queue, or one whose port just refused a frame, can be destroyed | yes |
@@ -34,7 +32,6 @@ full BMv2 log to `/tmp`.
 | `channel-state-test-suite` | the states of the switched-Ethernet channel | no |
 | `switched-ethernet-host` | the transmit queue of a host device; short frames keep the exact line rate on 100 and 400 Gbps links and at the default rate, 10 Gbps | no |
 | `link-framing` | Ethernet framing (preamble, FCS, padding, interframe gap) on the switched-Ethernet channel and the P4 point-to-point device; between two hosts, through a switch, and in a switch's estimate for a point-to-point bridge port | yes |
-| `p4-switch-queue-item-test-suite` | the items in the queue discs of the switch ports | no |
 
 [`examples-to-run.py`](examples-to-run.py) lists the examples that `test.py` runs
 as smoke tests: each must exit with 0. It keeps the examples from breaking unnoticed.
@@ -83,7 +80,8 @@ program goes in its own directory as `<dir>/<dir>_<arch>.p4`.
 ## Writing a test
 
 - Find data with `SetDataDir(NS_TEST_SOURCEDIR)` and `CreateDataDirFilename()`.
-- Set `BmLogLevel` to `off`; the BMv2 log is written for every packet.
+- Leave `BmLogLevel` at `off` (the default); at `trace` the BMv2 log is written
+  for every packet.
 - Leave `ThriftPort` at 0. A switch reserves a free port starting at
   `$P4SIM_THRIFT_PORT_BASE` (9090) with a lock on `/tmp/p4sim-thrift-<port>.lock`,
   so parallel runs never share a port.

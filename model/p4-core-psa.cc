@@ -74,12 +74,11 @@ REGISTER_HASH(bmv2_hash_psa);
 
 P4CorePsa::P4CorePsa(P4SwitchNetDevice* net_device,
                      bool enable_swap,
-                     bool enable_tracing,
                      uint64_t packet_rate,
                      size_t input_buffer_size,
                      size_t queue_buffer_size,
                      size_t nb_queues_per_port)
-    : P4SwitchCore(net_device, enable_swap, enable_tracing),
+    : P4SwitchCore(net_device, enable_swap),
       m_packetId(0),
       m_switchRate(packet_rate),
       m_nbQueuesPerPort(nb_queues_per_port),

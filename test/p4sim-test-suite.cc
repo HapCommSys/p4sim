@@ -3,8 +3,9 @@
 
 /*
  * Switch set-up: every architecture loads its P4 program, Thrift ports never
- * collide, and BmLogLevel controls the BMv2 pipeline log. The switches have no
- * ports and no flow table, so no Thrift server starts and no packet is sent.
+ * collide, BmLogLevel controls the BMv2 pipeline log (off by default), and the
+ * deprecated attributes are still accepted. The switches have no ports and no
+ * flow table, so no Thrift server starts and no packet is sent.
  */
 
 #include "ns3/core-module.h"
@@ -169,6 +170,73 @@ class P4ThriftPortTestCase : public P4TestCase
 
 /**
  * \ingroup p4sim-tests
+ * A switch whose BmLogLevel is not set turns the BMv2 log off, so it writes no
+ * pipeline log. The BMv2 logger is shared by all switches; the test first sets it
+ * to debug, as a switch with BmLogLevel=debug would.
+ */
+class P4BmLogLevelDefaultTestCase : public P4TestCase
+{
+  public:
+    P4BmLogLevelDefaultTestCase()
+        : P4TestCase("BmLogLevel is off by default")
+    {
+    }
+
+  private:
+    void DoRun() override
+    {
+        SetDataDir(NS_TEST_SOURCEDIR);
+        bm::Logger::set_log_level(bm::Logger::LogLevel::DEBUG);
+        Ptr<Node> node = CreateObject<Node>();
+        Ptr<P4SwitchNetDevice> sw = CreateObject<P4SwitchNetDevice>();
+        sw->SetAttribute(
+            "JsonPath",
+            StringValue(CreateDataDirFilename("p4src/simple_v1model/simple_v1model.json")));
+        sw->SetAttribute("FlowTablePath", StringValue(""));
+        node->AddDevice(sw);
+        sw->Initialize();
+        NS_TEST_EXPECT_MSG_EQ(bm::Logger::get()->level(),
+                              spdlog::level::off,
+                              "The default BmLogLevel does not turn the BMv2 log off");
+    }
+};
+
+/**
+ * \ingroup p4sim-tests
+ * ChannelType and EnableTracing have no effect and are deprecated: a script that
+ * still sets them runs, and ns-3 warns about them.
+ */
+class P4DeprecatedAttributesTestCase : public P4TestCase
+{
+  public:
+    P4DeprecatedAttributesTestCase()
+        : P4TestCase("ChannelType and EnableTracing are deprecated but accepted")
+    {
+    }
+
+  private:
+    void DoRun() override
+    {
+        Ptr<P4SwitchNetDevice> sw = CreateObject<P4SwitchNetDevice>();
+        sw->SetAttribute("ChannelType", UintegerValue(P4CHANNELP2P));
+        sw->SetAttribute("EnableTracing", BooleanValue(true));
+        TypeId tid = P4SwitchNetDevice::GetTypeId();
+        for (const std::string name : {"ChannelType", "EnableTracing"})
+        {
+            bool deprecated = false;
+            for (std::size_t i = 0; i < tid.GetAttributeN(); i++)
+            {
+                TypeId::AttributeInformation info = tid.GetAttribute(i);
+                deprecated =
+                    deprecated || (info.name == name && info.supportLevel == TypeId::DEPRECATED);
+            }
+            NS_TEST_EXPECT_MSG_EQ(deprecated, true, name << " is not deprecated");
+        }
+    }
+};
+
+/**
+ * \ingroup p4sim-tests
  * BmLogLevel: "off" writes no BMv2 pipeline log, "debug" does (loading the JSON
  * logs debug lines). A log file left by an earlier run is not mistaken for a new
  * one: only a file modified during the test counts.
@@ -218,6 +286,8 @@ class P4simTestSuite : public TestSuite
                     TestCase::QUICK);
         AddTestCase(new P4ThriftPortTestCase, TestCase::QUICK);
         AddTestCase(new P4BmLogLevelTestCase, TestCase::QUICK);
+        AddTestCase(new P4BmLogLevelDefaultTestCase, TestCase::QUICK);
+        AddTestCase(new P4DeprecatedAttributesTestCase, TestCase::QUICK);
     }
 };
 

@@ -47,7 +47,7 @@ namespace ns3
 #define P4NIC_ARCH_PNA 2
 #define P4SWITCH_ARCH_PIPELINE 3
 
-// Values of the "ChannelType" attribute, kept for main's examples (it has no effect)
+// Values of the deprecated "ChannelType" attribute (it has no effect)
 #define P4CHANNELCSMA 0
 #define P4CHANNELP2P 1
 
@@ -402,7 +402,7 @@ class P4SwitchNetDevice : public NetDevice
     // -----------------------------------------------------------------------
     // P4 switch configuration
     // -----------------------------------------------------------------------
-    bool m_enableTracing;
+    bool m_enableTracing; //!< Deprecated "EnableTracing" attribute (no effect)
     bool m_enableSwap;
     uint32_t m_switchArch;
 
@@ -418,7 +418,7 @@ class P4SwitchNetDevice : public NetDevice
     std::unique_ptr<P4PnaNic> m_pnaNic;             //!< PNA NIC core
     std::unique_ptr<P4CorePipeline> m_p4Pipeline;   //!< Pipeline core
 
-    uint32_t m_channelType{P4CHANNELCSMA}; //!< "ChannelType" attribute (no effect)
+    uint32_t m_channelType{P4CHANNELCSMA}; //!< Deprecated "ChannelType" attribute (no effect)
 
     // -----------------------------------------------------------------------
     // Queue / rate configuration

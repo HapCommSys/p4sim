@@ -40,9 +40,8 @@ class P4CorePipeline : public P4SwitchCore
      * @brief Construct a new P4 Core Pipeline object
      * @param netDevice P4 Switch Net Device
      * @param enableSwap enable swapping in run time
-     * @param enableTracing enable tracing
      */
-    P4CorePipeline(P4SwitchNetDevice* netDevice, bool enableSwap, bool enableTracing);
+    P4CorePipeline(P4SwitchNetDevice* netDevice, bool enableSwap);
 
     /**
      * @brief Destroy the P4 Core Pipeline object
