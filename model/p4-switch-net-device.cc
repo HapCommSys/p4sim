@@ -23,7 +23,9 @@
 #include "p4-switch-net-device.h"
 
 #include "ns3/boolean.h"
+#include "ns3/enum.h"
 #include "ns3/ethernet-header.h"
+#include "ns3/link-framing.h"
 #include "ns3/log.h"
 #include "ns3/node.h"
 #include "ns3/p4-bridge-channel.h"
@@ -750,7 +752,16 @@ P4SwitchNetDevice::SendOnBridgePort(uint32_t port, Ptr<Packet> frame, Time* txTi
     }
     if (txTime)
     {
-        *txTime = GetPortDataRate(port).CalculateBytesTxTime(frame->GetSize());
+        // With the port's framing, if its device has one (the P4 point-to-point
+        // device; ns-3's CSMA device adds its FCS and gap itself)
+        EnumValue framing;
+        LinkFraming::Type type = LinkFraming::NONE;
+        if (m_bridgePorts[port]->GetAttributeFailSafe("Framing", framing))
+        {
+            type = static_cast<LinkFraming::Type>(framing.Get());
+        }
+        *txTime = GetPortDataRate(port).CalculateBytesTxTime(
+            LinkFraming(type).GetWireBytes(frame->GetSize()));
     }
     if (!m_bridgePortTxEnd[port])
     {
