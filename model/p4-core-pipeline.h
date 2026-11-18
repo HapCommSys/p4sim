@@ -99,7 +99,8 @@ class P4CorePipeline : public P4SwitchCore
     void HandleIngressPipeline() override;
 
     /**
-     * @brief [override, dummy] Put a packet into the egress queues
+     * @brief [override] Send a processed packet to its port. The core has no
+     * egress queues; Enqueue() calls this once the pipeline delay is over.
      */
     void EnqueueNow(uint32_t egress_port, std::unique_ptr<bm::Packet>&& packet) override;
 

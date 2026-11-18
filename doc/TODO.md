@@ -66,7 +66,7 @@ channel. It has all of main's PRs up to #55 (merged in "phase B", last in #60).
 ## Feature gaps
 
 - **PSA and PNA.**
-  - PNA and the pipeline core ignore `PipelineDelay`.
+  - PNA ignores `PipelineDelay`.
   - PSA clones and mirroring sessions have no test.
   - There is no `psa_switch` (or PNA) Thrift service, so the target-specific
     commands of `psa_switch_CLI` do not work.
