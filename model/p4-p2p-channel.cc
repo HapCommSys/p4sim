@@ -1,3 +1,9 @@
+/*
+ * Copyright (c) 2025 TU Dresden
+ * Based on ns-3's PointToPointChannel, Copyright (c) 2007, 2008 University of Washington
+ * SPDX-License-Identifier: GPL-2.0-only
+ */
+
 #include "ns3/log.h"
 #include "ns3/p4-p2p-channel.h"
 #include "ns3/packet.h"

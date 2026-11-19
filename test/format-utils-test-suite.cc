@@ -1,3 +1,8 @@
+/*
+ * Copyright (c) 2025 TU Dresden
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 /* -*- Mode:C++; c-file-style:"gnu"; indent-tabs-mode:nil; -*- */
 
 #include "ns3/format-utils.h"

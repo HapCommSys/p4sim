@@ -1,3 +1,9 @@
+/*
+ * Copyright (c) 2025 TU Dresden
+ * SPDX-License-Identifier: Apache-2.0
+ * Based on P4Simulator (https://github.com/kphf1995cm/P4Simulator), Apache-2.0.
+ */
+
 #include "build-flowtable-helper.h"
 
 #include "ns3/log.h"

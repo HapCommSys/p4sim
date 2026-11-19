@@ -1,3 +1,8 @@
+/*
+ * Copyright (c) 2025 TU Dresden
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 #include "ns3/test.h"
 #include "ns3/log.h"
 #include "ns3/p4-topology-reader-helper.h"
