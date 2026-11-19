@@ -23,8 +23,17 @@
  * The P4 program implements a stateful firewall for TCP on switch 0: hosts 0 and 1
  * (host 4 and host 5 below) are inside, hosts 2 and 3 outside. A connection that
  * a host inside opens is let through in both directions; a connection that a host
- * outside opens is dropped. The example checks both with a TCP flow each way and
- * exits with 1 if the firewall does not behave so.
+ * outside opens is dropped. The example checks both with a TCP flow each way: the
+ * first must deliver at least 90% of the bytes its client sent, the second none.
+ * It exits with 1 otherwise.
+ *
+ * Limits of the program: only TCP is filtered, UDP and ICMP pass in both directions,
+ * and traffic that stays inside or outside does not pass the firewall. Switch 0
+ * remembers a connection in two Bloom filters of 4096 bits that are never cleared:
+ * packets of a closed connection are still let in, and after n connections from
+ * inside, a connection from outside gets through by mistake with a probability of
+ * about (1 - e^(-n/4096))^2, 5% for n = 1000. The flow tables hold the port numbers
+ * and MAC addresses of this topology; they must be rewritten when topo.txt changes.
  *
  *          ┌──────────┐              ┌──────────┐
  *          │ Switch 2 \\            /│ Switch 3 │
@@ -110,6 +119,12 @@ ConvertMacToHex(Address macAddr)
     return hexStream.str();
 }
 
+/// Adds the size of \p packet, which an application sent, to \p bytes
+void
+CountSentBytes(uint64_t* bytes, Ptr<const Packet> packet)
+{
+    *bytes += packet->GetSize();
+}
 
 int
 main(int argc, char* argv[])
@@ -235,6 +250,7 @@ main(int argc, char* argv[])
         unsigned int server; //!< host that receives the data
         uint16_t port;       //!< TCP port of the server
         Ptr<PacketSink> sink;
+        uint64_t sent = 0; //!< bytes that the client handed to its socket
     };
 
     std::vector<Flow> flows = {{"inside -> outside (host 0 -> host 3)", 0, 3, 9093, nullptr},
@@ -257,6 +273,8 @@ main(int argc, char* argv[])
         ApplicationContainer app = onOff.Install(terminals.Get(flow.client));
         app.Start(Seconds(client_start_time));
         app.Stop(Seconds(client_stop_time));
+        app.Get(0)->TraceConnectWithoutContext("Tx",
+                                               MakeBoundCallback(&CountSentBytes, &flow.sent));
     }
 
     if (enableTracePcap)
@@ -270,14 +288,21 @@ main(int argc, char* argv[])
     Simulator::Stop(Seconds(global_stop_time));
     Simulator::Run();
 
-    // The connection opened from inside gets through, the one opened from outside does not
-    uint64_t allowedBytes = flows[0].sink->GetTotalRx();
-    uint64_t blockedBytes = flows[1].sink->GetTotalRx();
-    bool pass = allowedBytes > 0 && blockedBytes == 0;
+    // The connection opened from inside carries what its client sent (at least 90%, so the
+    // firewall must also let the acknowledgements in, not only the handshake); the one
+    // opened from outside carries nothing
+    const Flow& allowed = flows[0];
+    const Flow& blocked = flows[1];
+    uint64_t allowedBytes = allowed.sink->GetTotalRx();
+    uint64_t blockedBytes = blocked.sink->GetTotalRx();
+    bool allowedPass = allowed.sent > 0 && allowedBytes * 10 >= allowed.sent * 9;
+    bool blockedPass = blockedBytes == 0;
+    bool pass = allowedPass && blockedPass;
     std::cout << "Firewall on switch 0 (hosts 0 and 1 inside, hosts 2 and 3 outside):\n"
-              << "  [" << (allowedBytes > 0 ? "PASS" : "FAIL") << "] " << flows[0].name << ": "
-              << allowedBytes << " bytes received, the connection is allowed\n"
-              << "  [" << (blockedBytes == 0 ? "PASS" : "FAIL") << "] " << flows[1].name << ": "
+              << "  [" << (allowedPass ? "PASS" : "FAIL") << "] " << allowed.name << ": "
+              << allowedBytes << " of " << allowed.sent
+              << " bytes received, the connection is allowed\n"
+              << "  [" << (blockedPass ? "PASS" : "FAIL") << "] " << blocked.name << ": "
               << blockedBytes << " bytes received, the connection is blocked" << std::endl;
     Simulator::Destroy();
 
