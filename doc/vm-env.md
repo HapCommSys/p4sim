@@ -139,38 +139,15 @@ You need [Vagrant](https://www.vagrantup.com/) and
 ## Check the installation
 
 BMv2 installs its libraries in `/usr/local/lib` and its headers in
-`/usr/local/include/bm`; P4sim links `libbmall`:
+`/usr/local/include/bm`. P4sim links `libbmall` and finds BMv2 through the
+pkg-config package `bm`, which `sudo ./set_pkg_config_env.sh` registers:
 
 ```bash
-$ ls /usr/local/lib/ | grep bm
-libbmall.a
-libbmall.la
-libbmall.so
-libbmall.so.0
-libbmall.so.0.0.0
-libbm_grpc_dataplane.a
-...
-libbmpi.so.0.0.0
-
-$ ls /usr/local/include/bm
-bm_apps     PI                      PsaSwitch.h                 SimplePreLAG.h             SimpleSwitch.h         standard_types.h
-bm_grpc     pna_nic_constants.h     psa_switch_types.h          simple_pre_lag_types.h     simple_switch_types.h  thrift
-bm_runtime  PnaNic.h                simple_pre_constants.h      simple_pre_types.h         spdlog
-bm_sim      pna_nic_types.h         SimplePre.h                 simple_switch              standard_constants.h
-config.h    psa_switch_constants.h  simple_pre_lag_constants.h  simple_switch_constants.h  Standard.h
+ls /usr/local/lib/libbmall.so /usr/local/include/bm/bm_sim
+pkg-config --list-all | grep -E "^bm "
 ```
 
-After `sudo ./set_pkg_config_env.sh`, pkg-config knows BMv2 (P4sim only needs `bm`):
-
-```bash
-$ pkg-config --list-all | grep -E "bm|simple_switch|boost_system"
-bm                             BMv2 - Behavioral Model
-simple_switch                  simple switch - Behavioral Model Target Simple Switch
-boost_system                   Boost System - Boost System
-```
-
-> **Note:** The spdlog bundled with BMv2 is intentionally excluded — ns-3 uses its own
-> logging system.
+If `./ns3 configure` does not find `bm`, run `set_pkg_config_env.sh` again.
 
 ---
 

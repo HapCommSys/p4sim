@@ -102,8 +102,7 @@ The main classes are:
   ``P4CoreV1model``, ``P4CorePsa``, ``P4PnaNic`` and ``P4CorePipeline``;
   ``SwitchedEthernetChannel`` and ``SwitchedEthernetHostDevice``;
   ``CustomP2PNetDevice``, ``P4P2PChannel`` and ``P4BridgeChannel``;
-  ``LinkFraming``; ``CustomHeader``; ``P4Controller``; ``P4TopologyReader``;
-  ``P4SwitchQueueItem``.
+  ``LinkFraming``; ``CustomHeader``; ``P4Controller``; ``P4TopologyReader``.
 * **Helpers** -- ``P4Helper``, ``SwitchedEthernetHelper``,
   ``P4PointToPointHelper``, ``P4TopologyReaderHelper``,
   ``BuildNetworkFromTopology()`` (``p4-net-builder.h``), ``BuildFlowtableHelper``.
@@ -259,15 +258,15 @@ Attributes of ``ns3::P4SwitchNetDevice``:
    * - ``ThriftPort``
      - 0
      - Thrift port of the runtime CLI; 0 picks the first free port
+   * - ``EnableSwap``
+     - false
+     - Swapping the P4 program at run time; the swap waits until the switch holds no packet
    * - ``Mtu``
      - 1500
      - Maximum transmission unit
    * - ``EnableTracing``
      - false
      - Deprecated, no effect; use the trace sources (see Output)
-   * - ``EnableSwap``
-     - false
-     - Swapping the P4 program at run time; the swap waits until the switch holds no packet
    * - ``ChannelType``
      - 0
      - Deprecated, no effect; kept for older scripts
@@ -333,6 +332,8 @@ Run any built-in example with::
      - Four hosts and four switches (p4lang tutorial ``basic``)
    * - ``p4-basic-controller``
      - Flow entries changed by ``P4Controller`` during the simulation
+   * - ``p4-basic-tunnel``
+     - A tunnel with a custom header
    * - ``p4-firewall``
      - A stateful TCP firewall (p4lang tutorial ``firewall``)
    * - ``p4-spine-leaf-topo``
@@ -358,15 +359,14 @@ Troubleshooting
   each packet, set ``BmLogLevel`` to ``trace`` (for example with
   ``--ns3::P4SwitchNetDevice::BmLogLevel=trace``); the log slows long
   simulations down.
-* BMv2's bundled spdlog is intentionally excluded; |ns3| uses its own
-  logging framework.
 
 Validation
 **********
 
-The module has 18 test suites, from unit tests of single classes to packet
-tests that send frames through a switch and check the frames that leave it
-(``p4-packet``, with test files in the format of p4c's STF).  Among them:
+The module has 18 test suites with 113 test cases, from unit tests of
+single classes to packet tests that send frames through a switch and check the
+frames that leave it (``p4-packet``, with test files in the format of p4c's
+STF).  Among them:
 
 * ``p4-packet`` -- forwarding on every architecture; drops, priorities,
   resubmit, recirculation, clones, multicast and LAG.
@@ -374,6 +374,7 @@ tests that send frames through a switch and check the frames that leave it
   ``link-framing`` -- the timing of ports, pipeline and links.
 * ``p4-traffic-manager`` -- the VOQ + fabric traffic manager.
 * ``p4-controller`` -- ``P4Controller`` and the runtime CLIs.
+* ``p4-config-swap`` -- swapping the P4 program at run time.
 
 ``test/Readme.md`` describes every suite and how to run them, for example::
 

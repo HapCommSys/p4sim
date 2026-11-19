@@ -9,17 +9,16 @@
   <img src="https://img.shields.io/badge/Program%20Google%20Summer%20of%20Code-2025-fbbc05?style=flat&logo=data%3Aimage%2Fpng%3Bbase64%2CiVBORw0KGgoAAAANSUhEUgAAAGQAAABkCAMAAABHPGVmAAAALVBMVEVHcEz7vQD7vQD8vQD7vQD8vQD7vQD8vQD8vQD7vQD7vQD8vQD7vQD7vQD7vQAgxtLpAAAADnRSTlMAZvVQ6QrVPhl6oSmHvzL6LQUAAASGSURBVHjatdnZdusgDAVQELMY%2Fv9zb2%2Bwc%2BIKDzQLvTXB3gYBFqmaDVeKU4sCBlFyy43WqLjlBpR1BpR1BpR1xjoFxmIFBpSVBpSVBpSVBpSVBpQ1xvdK1oPgblhfOWltjNaJq7ddYT2IfImYJqMDrENUChGDZn%2FWQ%2FMHxBcD4BMyBc5XCHkNQTq60vfIgXAx5xByju6T8V8itsT3%2FUPi6r39Ce8rp%2FCWYrHfIDXs95FZJs%2FvTob6Z4T2buQE4eikvHeG%2FoZY7TpRfDsNWzrjtP0L4s12NYhh%2BO1ZjJ9HfOjdYGo3QZx7YvwEAgOPdx3eQJlArMFA3wXSZ%2BwMQvplJGoPY6sqNU0gxcGYUVx5jtSIx3oS6HysTxEbMMDPAmkM9iFSXnPXt8nwuQ%2FYI8TH%2F425TQe7%2FnBPEH2bECI6T4t%2Bgvh4N1istR50FJdeIX1Ek%2FqJdGGQOWmAa4u7rn18vuuIzUq52gbxvpiSuzIau%2BuO9FUUfTvvCjcoQ4MMltRnEOqF0pdD%2FwiBZWxoqGCn8r2VGKIUCHOoTyHK2g7y1bsJRRqNe3%2FlXv5GbNhWEWXxbsf1UITRF4kYcM4KiI%2FbeFIevNNq7P2EIg0bVL%2BfqCcyYV2rbDdExWSPjUPPGBRh9JTowTscW0Dqf%2BwLXGmPthgKKMJo1f1OSQ29hf1Mbdlmg5NFV1H7KoICA3mruIQ4vl4TTFhvuAlxxrdb1J55KMJoBatEPCv6mr3sJzK%2F9RQKDAx49Ji5ctSLwsxAxgyuiduOAeVtIG14zppPKtAka9lcMZz71IHyNoAcCpvIx6UfxGLleCim3ggUpe0dQhe7I86mWvQERZmCIocryAqPsdYOSQlVIjCgyMRbLSaXxi3GD4LEw4AipzCyyvS5a5ThMpJTGAYUuQljhiWL53R11FN5BxhQsK0UWbE747E7evGV2FaEAUWmDave0H4LQxg6nErl1IEBBRdmOzjkBPpdqFB%2BpUtUGb0tDKloZP44hQLthQoDwXYiXlowpMJIymExdARL8SViYzymhGEMFR%2FR3cOyNoRCpQcZFu1s6AsNhlQuSiJP%2B1Kk90dNRHW9BYyhwlszhNgdb05CjmGcKDb3DotAoYIYV9wWxjDSZcHNmN%2Fj0KpPm3R7dMjq7HlrSokvjIqjww3SEhb4XJDpg3CLvM9%2BPG%2FMHOcaOwzYRFScNe8QHJb9nOEDhvkGwV48eZC3BgfzWwSHZaXthKEVMvkMaQnKhKESzSCkJ37uQqlJ7RmCIcbr%2By5qUEjiIwQK3q4yZKHqYDxEUIo4U6%2BNahxKr0kEZwv8HC%2BDqo69UaI2ieBAujN2RNhOoPybQjBr9oNSKNXSoQ%2B2luCUQuk1iSCIg9oiZl24Vv8TtXLROaotAtO3%2F9ooWSFcjDnH6BQio2SZQSRz%2FpsPfsifQ2RY1tmNBM3oxQRCbRjkOZn%2FEACT2J%2B1vkZiGESyG1SZS%2FqJ1wTogE1hEFHNh9yNCbvvREwqCwwoawwoKw0oKw0oKw0oKw0oKw0oKw0oMFYqMFYqMFYqMBYq88Y%2FxB7wiOJRvWkAAAAASUVORK5CYII%3D" height="20"/></a>
 </p>
 
-P4sim is a high-performance simulation framework that brings P4-programmable data plane processing into the [ns-3 network simulator](https://www.nsnam.org/). It enables researchers and developers to model, execute, and evaluate P4 programs within realistic end-to-end network simulations, tightly coupling a P4-driven packet processing engine with ns-3's flexible network modeling for fine-grained analysis of programmable networks at scale.
+P4sim runs P4 programs in the [ns-3 network simulator](https://www.nsnam.org/): switches execute their P4 program on the BMv2 behavioral model, while ns-3 provides the topology, the traffic and the time. This lets you evaluate programmable networks in end-to-end simulations.
 
 P4sim is open-source software licensed under the Apache License 2.0.
 
 ### Key Features
 
-* **Behavioral accuracy**: the packet processing pipeline is based on [BMv2](https://github.com/p4lang/behavioral-model), ensuring the same reference behavior model used by the broader P4 community.
-* **ns-3 integration**: network topology, traffic generation, and timing are fully managed by ns-3, making it straightforward to configure experiments or compose P4sim with other ns-3 modules.
-* **BMv2 compatibility**: existing P4 programs and flow-table entry scripts written for BMv2 can be used directly in P4sim without modification.
+* **BMv2 behaviour**: the pipeline is [BMv2](https://github.com/p4lang/behavioral-model), the reference model of the P4 community. P4 programs and flow-table files written for BMv2 run unchanged.
+* **ns-3 integration**: topology, traffic and timing come from ns-3, so P4sim combines with the other ns-3 modules.
 * **Timing**: links serialise every frame at their data rate, a congested port sends back to back at its line rate, and the pipeline can have a packet rate (`SwitchRate`) and a latency (`PipelineDelay`). An optional traffic manager with virtual output queues models the fabric of a switch.
-* **High-performance simulation**: designed to handle large-scale network scenarios and high traffic rates in ns-3 simulation environments.
+* **Scale**: built for large networks and high traffic rates.
 
 ---
 
@@ -105,27 +104,18 @@ cd ../..
 ./ns3 build
 ```
 
-### Step 4: P4 Files Are Found Automatically
-
-P4sim reads P4 artifacts (JSON pipelines, flow tables, topology files) from the p4sim folder of the build, so no setup is needed, and several ns-3 trees can live side by side.
-
-> **Note:** Earlier versions asked you to set `P4SIM_DIR` in `~/.bashrc`. It is no longer needed; you can remove it. If it names another p4sim folder, it is ignored and a notice says so.
-
-### Step 5: Run an Example
+### Step 4: Run an Example and a Test Suite
 
 ```bash
 ./ns3 run p4-v1model-ipv4-forwarding
-```
-
-No manual path editing is required — all examples use portable path helpers. [doc/examples.md](doc/examples.md) lists all examples.
-
-Run a test suite (see [test/Readme.md](test/Readme.md) for all of them):
-
-```bash
 ./test.py -s p4-packet
 ```
 
-See the full step-by-step guide (including VM setup) in [doc/vm-env.md](doc/vm-env.md).
+[doc/examples.md](doc/examples.md) lists the examples and [test/Readme.md](test/Readme.md) the test suites. [doc/vm-env.md](doc/vm-env.md) has the same steps, the setup in a virtual machine, and checks of the installation.
+
+P4sim reads the P4 files (programs, flow tables, topologies) from the p4sim folder of the build, so no path needs to be set, and several ns-3 trees can live side by side.
+
+> **Note:** Earlier versions asked you to set `P4SIM_DIR` in `~/.bashrc`. It is no longer needed; you can remove it. If it names another p4sim folder, it is ignored and a notice says so.
 
 ---
 
@@ -142,30 +132,28 @@ See the full step-by-step guide (including VM setup) in [doc/vm-env.md](doc/vm-e
 
 ## Switch Parameters
 
-The forwarding behaviour is defined by the P4 program and its flow-table configuration. The following ns-3 attributes on `ns3::P4SwitchNetDevice` control simulation-level settings:
+The P4 program and its flow tables define the forwarding. These attributes of `ns3::P4SwitchNetDevice` set up the switch in the simulation ([doc/p4sim.rst](doc/p4sim.rst) has their defaults):
 
 | Attribute | Description |
 |---|---|
-| `JsonPath` | Path to the compiled P4 JSON file |
-| `FlowTablePath` | Path to the flow-table configuration file |
-| `P4SwitchArch` | Architecture selector (0 = V1model, 1 = PSA, 2 = PNA, 3 = Pipeline) |
-| `ChannelType` | Deprecated, no effect: the ports are set as described below. Removed in the next major version |
-| `SwitchRate` | Packet rate of the whole P4 pipeline in packets per second; 0 (default) = no limit |
+| `JsonPath` | Path to the compiled P4 program (JSON) |
+| `FlowTablePath` | Path to the flow-table file |
+| `P4SwitchArch` | Architecture: 0 V1model, 1 PSA, 2 PNA, 3 Pipeline |
+| `SwitchRate` | Packet rate of the whole P4 pipeline, in packets per second; 0 (default) = no limit |
 | `PipelineDelay` | Latency of every packet in the P4 pipeline; 0 (default) = none. v1model, PSA and the pipeline core |
-| `QueueBufferSize` | Capacity of each output queue in packets: per port and priority (v1model, PSA), or per port (PNA) |
-| `EnableVoqFabric` | v1model: use the VOQ + fabric traffic manager instead of the output queues (see [doc/traffic-manager.md](doc/traffic-manager.md)) |
-| `InputBufferSizeLow` | Input buffer size for low-priority (external) packets |
-| `InputBufferSizeHigh` | Input buffer size for high-priority (internal) packets |
-| `EnableTracing` | Deprecated, no effect: trace packets with the trace sources of the devices (`MacTx`, `MacRx`, ...), `PacketSink` or `FlowMonitor`. Removed in the next major version |
-| `EnableSwap` | Allow swapping the P4 program at run time (`load_new_config` and `swap_configs` of the runtime CLI, or `P4Controller::LoadNewConfig()` and `SwapConfigs()`). The switch swaps once it holds no packet; frames that arrive meanwhile wait, then use the new program |
-| `BmLogLevel` | Level of the BMv2 pipeline log in `/tmp/bmv2-<thrift port>-pipeline.log`: `trace` ... `off`. `off` (default) writes no log; `trace` logs every step of every packet, which helps to debug a P4 program but slows the simulation down |
-| `ThriftPort` | Thrift port for the runtime CLI. `0` (default) picks the first free port from `$P4SIM_THRIFT_PORT_BASE` (9090), so simulations can run in parallel |
+| `InputBufferSizeLow` | Input buffer for the packets received on the ports, in packets |
+| `InputBufferSizeHigh` | v1model: input buffer for resubmitted and recirculated packets, served first |
+| `QueueBufferSize` | Each output queue, in packets: per port and priority (v1model, PSA), or per port (PNA) |
+| `EnableVoqFabric` | v1model: use the VOQ + fabric traffic manager instead of the output queues ([doc/traffic-manager.md](doc/traffic-manager.md)) |
+| `EnableSwap` | Allow swapping the P4 program at run time (`load_new_config` and `swap_configs` of the runtime CLI, or `P4Controller`). The swap waits until the switch holds no packet; frames that arrive meanwhile wait and use the new program |
+| `BmLogLevel` | Level of the BMv2 pipeline log in `/tmp/bmv2-<thrift port>-pipeline.log`, `trace` to `off`. `off` (default) writes none; `trace` logs every step of every packet, which helps to debug a P4 program but slows the simulation down |
+| `ThriftPort` | Thrift port of the runtime CLI. 0 (default) picks the first free port from `$P4SIM_THRIFT_PORT_BASE` (9090), so simulations can run in parallel |
+| `ChannelType`, `EnableTracing` | Deprecated, no effect; removed in the next major version. Trace packets with the trace sources of the devices (`MacTx`, `MacRx`, ...), `PacketSink` or `FlowMonitor` |
 
 > **Notes:**
-> 1. When using a CSMA channel, the P4 program must handle ARP explicitly.
-> 2. Buffer attributes only take effect if the selected architecture models that buffer.
-> 3. `SwitchRate` limits how fast the P4 pipeline of a switch processes packets, resubmitted and recirculated passes included. The default, 0, means no limit, as in a hardware switch: then only the links limit the traffic. Set it to model a slower switch, such as a software switch: an idle pipeline takes a packet at once, and packets that arrive while it is busy wait in the input buffer (`InputBufferSizeLow`), or are dropped and reported through `MacRxDrop` when it is full. `PipelineDelay` adds a fixed latency to every packet instead (default 0, no latency): the pipeline takes the next packet at once, so the throughput does not change.
-> 4. The flow-table file of a v1model switch runs in `simple_switch_CLI`, and that of a PSA switch in `psa_switch_CLI`. So besides the table commands it can use `mirroring_add`, `mirroring_add_mc`, `set_queue_depth` and `set_queue_rate`, and on v1model also `mirroring_delete`: BMv2 1.15.8's `psa_switch_CLI` stops at `mirroring_delete`, as at any failed mirroring command, and skips the rest of the file.
+> 1. The P4 program sees every frame, ARP included, and must forward it.
+> 2. `SwitchRate` models a slower switch, such as a software switch: an idle pipeline takes a packet at once, and packets that arrive while it is busy wait in the input buffer, or are dropped (`MacRxDrop`) when it is full. Resubmitted and recirculated passes count too. With the default, 0, only the links limit the traffic, as in a hardware switch. `PipelineDelay` adds a fixed latency instead and does not change the throughput.
+> 3. The flow-table file runs in `simple_switch_CLI` (v1model) or `psa_switch_CLI` (PSA). Besides the table commands it can use `mirroring_add`, `mirroring_add_mc`, `set_queue_depth` and `set_queue_rate`, and on v1model `mirroring_delete`: BMv2 1.15.8's `psa_switch_CLI` stops at `mirroring_delete`, as at any failed mirroring command, and skips the rest of the file.
 
 ### Switch ports
 
@@ -178,41 +166,32 @@ A switch has two kinds of port, which can be mixed. The port number is the order
 
 ## P4sim Development Workflow
 
-Using P4sim typically involves the following steps:
-
-1. **Develop the P4 program** — implement your packet processing logic in P4 (headers, parsers, match-action tables, control flow).
-2. **Compile the P4 program** — use `p4c` to generate the corresponding JSON pipeline description.
-3. **Create an ns-3 simulation script** — write a simulation script (e.g. in `scratch/` or `examples/`) and assign P4-enabled switches to the desired nodes.
-4. **Configure the control plane** — populate match-action tables and implement any required control-plane logic before or during the simulation.
-5. **Run and observe** — execute the simulation and collect performance metrics such as throughput, latency, and packet traces.
+1. **Write the P4 program** (headers, parser, tables, controls).
+2. **Compile it** with `p4c` into a JSON file for BMv2.
+3. **Write an ns-3 script** (in `scratch/` or `examples/`) that installs P4 switches on nodes.
+4. **Fill the tables**: with a flow-table file at start-up, or with `P4Controller` during the simulation.
+5. **Run it** and measure throughput, latency, or packet traces.
 
 ---
 
 ## Examples
 
-See the full list and descriptions in [doc/examples.md](doc/examples.md).
+[doc/examples.md](doc/examples.md) describes all 23 examples. A selection:
 
-Selected examples:
-
-| Script | Description |
+| Example | Description |
 |---|---|
-| `p4-v1model-ipv4-forwarding` | 2-host, 1-switch IPv4 forwarding (V1model) |
-| `p4-v1model-ipv4-forwarding-bridge` | The same over point-to-point or CSMA links (bridge ports) |
-| `p4-voq-fabric-throughput` | Throughput of the VOQ + fabric Traffic Manager (`EnableVoqFabric`) |
-| `p4-psa-ipv4-forwarding` | Same topology, PSA architecture |
-| `p4-pna-ipv4-forwarding` | Same topology, PNA architecture |
-| `p4-basic-example` | 4-host, 4-switch mesh (V1model) |
-| `p4-basic-tunnel` | 3-host tunnel with custom header |
-| `p4-firewall` | Stateful TCP firewall |
-| `p4-l3-router` | 3-router line topology, L3 forwarding |
-| `p4-link-monitoring` | In-band link utilisation probes |
-| `p4-spine-leaf-topo` | Spine-leaf with ECMP load balancing |
-| `p4-topo-fattree` | Auto-generated fat-tree topology |
-| `p4-queue-test` | QoS-aware queuing |
-| `p4-source-routing` | Source routing with custom headers |
-| `p4-basic-controller` | Runtime controller flow-table updates |
+| `p4-v1model-ipv4-forwarding` | Two hosts and a switch with IPv4 forwarding (v1model) |
+| `p4-v1model-ipv4-forwarding-bridge` | The same over point-to-point or CSMA bridge ports |
+| `p4-psa-ipv4-forwarding`, `p4-pna-ipv4-forwarding` | The same with PSA and PNA |
+| `p4-basic-example` | Four hosts and four switches (p4lang tutorial `basic`) |
+| `p4-basic-controller` | Flow entries changed by `P4Controller` during the simulation |
+| `p4-basic-tunnel` | A tunnel with a custom header |
+| `p4-firewall` | A stateful TCP firewall |
+| `p4-spine-leaf-topo` | A spine-leaf network with ECMP load balancing |
+| `p4-topo-fattree` | A generated k-ary fat tree with its flow tables |
+| `p4-voq-fabric-throughput` | Throughput of the VOQ + fabric traffic manager |
 
-In the [paper](https://dl.acm.org/doi/10.1145/3747204.3747210), P4sim is evaluated using representative networking scenarios demonstrating its capability to model basic tunneling (custom header encapsulation/decapsulation) and load balancing (distributing traffic across multiple network paths using P4 pipelines).
+The [paper](https://dl.acm.org/doi/10.1145/3747204.3747210) evaluates P4sim with tunnelling (a custom header) and load balancing over several paths.
 
 ---
 
