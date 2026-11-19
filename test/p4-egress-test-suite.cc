@@ -19,7 +19,6 @@
 #include "ns3/p4-switch-net-device.h"
 #include "ns3/switched-ethernet-channel.h"
 #include "ns3/test.h"
-#include "ns3/traffic-control-module.h"
 
 #include <cmath>
 
@@ -220,14 +219,11 @@ class EgressRefusedTeardownTestCase : public TestCase
      * Constructor
      * \param archName "v1model" or "psa"
      * \param arch P4SWITCH_ARCH_*
-     * \param queueDisc whether port 1 has a queue disc (v1model)
      */
-    EgressRefusedTeardownTestCase(const std::string& archName, uint32_t arch, bool queueDisc)
-        : TestCase(archName + ": a switch can be destroyed when a port" +
-                   (queueDisc ? " with a queue disc" : "") + " refuses a frame"),
+    EgressRefusedTeardownTestCase(const std::string& archName, uint32_t arch)
+        : TestCase(archName + ": a switch can be destroyed when a port refuses a frame"),
           m_archName(archName),
-          m_arch(arch),
-          m_queueDisc(queueDisc)
+          m_arch(arch)
     {
     }
 
@@ -251,10 +247,6 @@ class EgressRefusedTeardownTestCase : public TestCase
         hostNode->AddDevice(host);
         host->Attach(channel);
         sw->Initialize();
-        if (m_queueDisc)
-        {
-            sw->GetV1ModelCore()->SetPortQueueDisc(1, CreateObject<FifoQueueDisc>());
-        }
 
         DropState state{sw};
         sw->TraceConnectWithoutContext("MacTxDrop", MakeBoundCallback(&DisposeOnDrop, &state));
@@ -266,7 +258,6 @@ class EgressRefusedTeardownTestCase : public TestCase
 
     std::string m_archName; ///< "v1model" or "psa"
     uint32_t m_arch;        ///< P4SWITCH_ARCH_*
-    bool m_queueDisc;       ///< whether port 1 has a queue disc
 };
 
 static class P4EgressTestSuite : public TestSuite
@@ -284,11 +275,8 @@ static class P4EgressTestSuite : public TestSuite
             AddTestCase(new EgressRateTestCase("pna", P4NIC_ARCH_PNA, nPorts), TestCase::QUICK);
         }
         AddTestCase(new EgressTeardownTestCase(), TestCase::QUICK);
-        AddTestCase(new EgressRefusedTeardownTestCase("v1model", P4SWITCH_ARCH_V1MODEL, false),
+        AddTestCase(new EgressRefusedTeardownTestCase("v1model", P4SWITCH_ARCH_V1MODEL),
                     TestCase::QUICK);
-        AddTestCase(new EgressRefusedTeardownTestCase("v1model", P4SWITCH_ARCH_V1MODEL, true),
-                    TestCase::QUICK);
-        AddTestCase(new EgressRefusedTeardownTestCase("psa", P4SWITCH_ARCH_PSA, false),
-                    TestCase::QUICK);
+        AddTestCase(new EgressRefusedTeardownTestCase("psa", P4SWITCH_ARCH_PSA), TestCase::QUICK);
     }
 } g_p4EgressTestSuite;

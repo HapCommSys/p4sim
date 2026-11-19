@@ -36,7 +36,6 @@ class P4CorePsa : public P4SwitchCore
     P4CorePsa(
         P4SwitchNetDevice* net_device,
         bool enable_swap,
-        bool enable_tracing,
         uint64_t packet_rate,
         size_t input_buffer_size,
         size_t queue_buffer_size,
@@ -151,7 +150,6 @@ class P4CorePsa : public P4SwitchCore
     static constexpr uint32_t PSA_PORT_RECIRCULATE = 0xfffffffa;
     static constexpr size_t nb_egress_threads = 1u; // 4u default
     uint64_t m_packetId;
-    bool m_enableTracing;
     uint64_t m_switchRate; //!< Packet rate of the whole pipeline (pps), 0 = no limit
     size_t m_nbQueuesPerPort;
     size_t m_inputBufferSize; //!< Capacity of input_buffer (packets)

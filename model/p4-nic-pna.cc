@@ -31,7 +31,7 @@ namespace ns3
 {
 
 P4PnaNic::P4PnaNic(P4SwitchNetDevice* net_device, bool enable_swap, size_t queueBufferSize)
-    : P4SwitchCore(net_device, enable_swap, false),
+    : P4SwitchCore(net_device, enable_swap),
       m_packetId(0),
       input_buffer(1024),
       m_queueBufferSize(queueBufferSize)

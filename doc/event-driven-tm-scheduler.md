@@ -72,13 +72,11 @@ calls `PortTxComplete()` itself at once, so that the port is not left marked bus
 2. Calls `pop_back_for_port(port)` for one rate-eligible packet. If there is none, it reschedules
    itself at the next eligible time.
 3. Runs the egress pipeline (MAU, deparser, clone, recirculate).
-4. Marks the port busy and calls `SendNs3Packet()`. If the port has a QueueDisc, it enqueues the
-   packet there instead and calls `TryTransmitFromQueueDisc()`.
+4. Marks the port busy and calls `SendNs3Packet()`.
 
 **`PortTxComplete(port)`**, the port is free again:
 - Clears `busy`.
-- Sends the next packet of the port's QueueDisc, if the port has one with packets in it.
-- Otherwise calls `ScheduleEgressIfNeeded(port)` if the port's egress queues are not empty.
+- Calls `ScheduleEgressIfNeeded(port)` if the port's egress queues are not empty.
 
 ### Per-Port State
 

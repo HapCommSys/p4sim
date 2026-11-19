@@ -46,13 +46,11 @@ class P4SwitchCore : public bm::Switch
      * @brief Construct a new P4SwitchCore object
      * @param netDevice the P4 switch net device
      * @param enableSwap enable swap
-     * @param enableTracing enable tracing
      * @param thriftCommand thrift command string
      * @param dropPort the drop port (default: SSWITCH_DROP_PORT)
      */
     P4SwitchCore(P4SwitchNetDevice* netDevice,
                  bool enableSwap,
-                 bool enableTracing,
                  uint32_t dropPort = SSWITCH_DROP_PORT);
 
     ~P4SwitchCore();
@@ -66,8 +64,8 @@ class P4SwitchCore : public bm::Switch
 
     /**
      * @brief Set the BMv2 log level used by InitializeSwitchFromP4Json()
-     * @param level one of "trace" (default), "debug", "info", "notice", "warn",
-     *        "error", "critical", "alert", "emerg" or "off". With "off", no
+     * @param level one of "trace", "debug", "info", "notice", "warn", "error",
+     *        "critical", "alert", "emerg" or "off" (default). With "off", no
      *        pipeline log file is written.
      * @note The BMv2 logger is shared by all switches of a process, so the level
      *       of the switch initialized last applies to all of them.
@@ -324,7 +322,6 @@ class P4SwitchCore : public bm::Switch
 
     int m_p4SwitchId;                          //!< ID of the switch
     P4SwitchNetDevice* m_switchNetDevice;      //!< Pointer to the switch net device
-    bool m_enableTracing;                      //!< Enable tracing
     bool m_enableQueueingMetadata{false};      //!< Enable queueing metadata
     uint32_t m_dropPort;                       //!< Port to drop packets
     std::string m_thriftCommand;               //!< Thrift command
@@ -336,7 +333,7 @@ class P4SwitchCore : public bm::Switch
     class MirroringSessions;            //!< Mirroring sessions for clone .etc
     int m_thriftPort{0};                //!< Thrift port of the switch (allocated at init)
     uint16_t m_requestedThriftPort{0};  //!< Requested Thrift port, 0 = automatic
-    std::string m_bmLogLevel{"trace"};  //!< BMv2 log level
+    std::string m_bmLogLevel{"off"};    //!< BMv2 log level
     size_t m_nbQueuesPerPort;           //!< Number of queues per port (default 8)
     uint64_t m_packetId{0};             //!< Packet ID
     uint64_t m_startTimestamp;          //!< Start time of the switch

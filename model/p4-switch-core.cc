@@ -265,11 +265,9 @@ class P4SwitchCore::MirroringSessions
 // P4SwitchCore.cpp
 P4SwitchCore::P4SwitchCore(P4SwitchNetDevice* netDevice,
                            bool enableSwap,
-                           bool enableTracing,
                            uint32_t dropPort)
     : bm::Switch(enableSwap),
       m_switchNetDevice(netDevice),
-      m_enableTracing(enableTracing),
       m_dropPort(dropPort),
       m_pre(new bm::McSimplePreLAG()),
       m_startTimestamp(Simulator::Now().GetNanoSeconds()),
