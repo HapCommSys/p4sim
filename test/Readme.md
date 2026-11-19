@@ -8,6 +8,7 @@ From the ns-3 root, with `./ns3 configure --enable-tests --enable-examples`:
 ./test.py -s p4sim                               # one suite
 ./ns3 run "test-runner --suite=p4sim --verbose"  # one suite, with each test case
 ./ns3 run p4-basic-example                       # one example
+contrib/p4sim/test/run-tests.sh                  # every suite and example, with a summary
 ```
 
 No environment variable is needed, and suites can run in parallel.

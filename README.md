@@ -49,6 +49,8 @@ The following steps set up a local environment to run P4sim with **ns-3.39** on 
 
 > **Note:** The BMv2 and P4 software installation will take **1–2 hours** and consume up to **15 GB** of disk space.
 
+> **Docker:** `docker build -t p4sim .` in this repository builds P4sim with the tested versions in about 25 minutes, without installing anything on the host; see [doc/docker.md](doc/docker.md).
+
 > **Why ns-3.39 or earlier?** Starting from ns-3.40, ns-3 requires C++20. However, BMv2 is currently built with C++17. P4sim therefore supports ns-3.39 and earlier versions. We plan to upgrade once a C++20-compatible BMv2 build becomes available.
 
 ### Step 1: Initialize the Working Directory
@@ -198,6 +200,7 @@ The [paper](https://dl.acm.org/doi/10.1145/3747204.3747210) evaluates P4sim with
 | File | Contents |
 |---|---|
 | [doc/vm-env.md](doc/vm-env.md) | Installation, locally or in a virtual machine |
+| [doc/docker.md](doc/docker.md) | Building and running P4sim in Docker |
 | [doc/examples.md](doc/examples.md) | All examples and the format of their P4 files |
 | [doc/switch.md](doc/switch.md) | Switched-Ethernet ports and host devices, timing on the wire, host queues |
 | [doc/traffic-manager.md](doc/traffic-manager.md) | The VOQ + fabric traffic manager |
