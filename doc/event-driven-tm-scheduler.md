@@ -1,51 +1,30 @@
 # Event-Driven Egress Scheduler
 
-## Background
-
-The ns-3 P4 switch follows the standard programmable-switch pipeline:
-
 ```
 Ingress Pipeline → egress queues → Egress Pipeline → Output Port
 ```
 
-This document describes the default egress path. With `EnableVoqFabric`, packets go to the
-Traffic Manager instead; see [traffic-manager.md](traffic-manager.md).
+This document describes the default egress path of v1model and PSA, and the
+output queues of PNA. With `EnableVoqFabric`, a v1model switch sends its packets
+through the traffic manager instead; see [traffic-manager.md](traffic-manager.md).
 
-The egress queues (`NSQueueingLogicPriRL`) are per port and per priority, and each queue can have
-a rate limit (pps): a packet may only be dequeued once the time since the previous dequeue
-satisfies the queue's rate. As in BMv2, the queues have no rate limit unless one is set with
-`SetEgressQueueRate()` and the like; `SwitchRate` limits the ingress pipeline instead (see the
-README).
+The egress queues (`NSQueueingLogicPriRL`) are per port and per priority. As in
+BMv2, a queue has no rate limit unless one is set (`set_queue_rate`,
+`SetEgressQueueRate()`); then a packet leaves only when the time since the
+previous one satisfies the rate. `SwitchRate` limits the ingress instead.
 
----
+## Events
 
-## Problem: Polling-Based Scheduler
+A port is served only when something changes, so no event runs while the queues
+are empty (an earlier version polled the queues with a timer):
 
-The original implementation used a **periodic polling timer** started in `start_and_return_()`.
-At each tick it called `HandleEgressPipeline()` to scan queues.
+1. **A packet is enqueued**: `Enqueue()` calls `ScheduleEgressIfNeeded(port)`.
+2. **A port has sent its frame**: `P4SwitchNetDevice` calls `PortTxComplete(port)`.
 
-| Issue | Description |
-|-------|-------------|
-| Wasted events | Timer fires even when queues are empty, generating O(ports × queues) useless events per tick. |
-| Implicit delay | The polling interval conflated rate shaping, pipeline delay, and link serialisation. |
-| No port model | Packets could be dequeued faster than the underlying link speed. |
-
----
-
-## Solution: Event-Driven Scheduler
-
-Scheduling events are created **only by relevant state changes**:
-
-1. **A packet is enqueued** → `Enqueue()` calls `ScheduleEgressIfNeeded(port)`.
-2. **A port finishes transmitting** → `P4SwitchNetDevice` calls `PortTxComplete(port)`.
-
-No timer runs while the queues are empty.
-
-### Transmit-complete chain
-
-`P4SwitchNetDevice` puts each frame on the port's `SwitchedEthernetChannel` and schedules the end
-of the transmission one serialisation time later (the frame size at the channel's `DataRate`).
-Then it releases the channel and calls the port-TX-done callback that `DoInitialize()` registers:
+`P4SwitchNetDevice` puts each frame on the port's channel and ends the
+transmission one serialisation time later (the frame size at the channel's
+`DataRate`). Then it calls the port-TX-done callback that `DoInitialize()`
+registers:
 
 ```
 P4SwitchNetDevice::SendNs3Packet(port) → TransmitOn(port)    [channel: TransmitStart]
@@ -56,29 +35,28 @@ P4SwitchNetDevice::PortTransmitEnd(port)                     [channel: TransmitE
     → ScheduleEgressIfNeeded(port)
 ```
 
-When the device does not send a frame (the drop port, an invalid port, a busy channel), the core
-calls `PortTxComplete()` itself at once, so that the port is not left marked busy.
+When the device does not send a frame (the drop port, an invalid port, a busy
+channel), the core calls `PortTxComplete()` itself at once, so that the port is
+not left busy.
 
-### Key Functions
+## Functions
 
 **`ScheduleEgressIfNeeded(port)`**, called from `Enqueue()` and `PortTxComplete()`:
-- If the port is **busy**, it returns; `PortTxComplete()` will retry.
-- It cancels a pending dequeue event of this port, asks `get_next_tp_for_port(port)` for the
-  earliest time a packet of this port may leave, and schedules `EventDrivenEgressDequeue(port)`
-  for then.
+returns if the port is busy. Otherwise it cancels a pending dequeue of this port,
+asks `get_next_tp_for_port(port)` for the earliest time a packet of this port may
+leave, and schedules `EventDrivenEgressDequeue(port)` for then.
 
-**`EventDrivenEgressDequeue(port)`**, the core dequeue function:
+**`EventDrivenEgressDequeue(port)`**:
 1. Returns if the port or its channel is busy; `PortTxComplete()` will retry.
-2. Calls `pop_back_for_port(port)` for one rate-eligible packet. If there is none, it reschedules
-   itself at the next eligible time.
+2. Takes one rate-eligible packet with `pop_back_for_port(port)`. If there is
+   none, it reschedules itself at the next eligible time.
 3. Runs the egress pipeline (MAU, deparser, clone, recirculate).
 4. Marks the port busy and calls `SendNs3Packet()`.
 
-**`PortTxComplete(port)`**, the port is free again:
-- Clears `busy`.
-- Calls `ScheduleEgressIfNeeded(port)` if the port's egress queues are not empty.
+**`PortTxComplete(port)`**: clears `busy`, and calls `ScheduleEgressIfNeeded(port)`
+if the port's queues are not empty.
 
-### Per-Port State
+The state of a port:
 
 ```cpp
 struct PortTxState {
@@ -88,70 +66,44 @@ struct PortTxState {
 std::unordered_map<uint32_t, PortTxState> m_portTxState;
 ```
 
-`m_linkRateBps` is read from port 0's channel when the switch starts. The VOQ path uses it as the
-Traffic Manager's `PortRate`; on the default path it is only logged.
+`m_linkRateBps` is read from port 0's channel when the switch starts. The VOQ
+path uses it as the traffic manager's `PortRate`; the default path only logs it.
 
----
+## Properties
 
-## Comparison
+- **One frame per port on the wire.** `busy` is set before `SendNs3Packet()` and
+  cleared only in `PortTxComplete()`; both scheduling functions return while it
+  is set.
+- **Delays.** The ingress and egress pipelines take no simulated time
+  themselves. `PipelineDelay` delays every packet once, before it reaches the
+  egress queues (again for each recirculated pass). The other delays come from
+  `SwitchRate`, the queue rates, the serialisation on the port's channel and the
+  channel's propagation delay.
+- **Clones and recirculation.** Egress clones go through `Enqueue()`, like any
+  packet. A recirculated packet goes back to the ingress input buffer
+  (`AdmitToIngress()`), and `PortTxComplete()` releases the port at once.
+- **Queue rates.** `push_front()` stamps each packet with
+  `send = max(now, prev_send + 1/rate)`, and `pop_back_for_port()` takes a packet
+  only when `send <= now`: a leaky bucket without bursts.
+- **Priorities.** A packet of P4 priority *p* goes into queue *p*, and
+  `pop_back_for_port()` serves the queues from `N-1` down to `0`, so priority 7
+  goes first, as in BMv2's `simple_switch`. `enq_qdepth` and `deq_qdepth` count
+  the packets of the packet's own priority queue, and `qid` is that queue.
+  Strict priority: a queue that is never empty starves the lower ones.
 
-| Property | Polling | Event-driven v1 | Event-driven (current) |
-|----------|---------|-----------------|------------------------|
-| Idle events | O(1/tick)/port | Zero | Zero |
-| Serialisation delay | None | Self-scheduled (`bits/rate`), double-counted | Scheduled once by `P4SwitchNetDevice` from the channel's rate |
-| `PortTxComplete` trigger | N/A | `Simulator::Schedule` in the core | Port-TX-done callback from `P4SwitchNetDevice::PortTransmitEnd()` |
+## PNA
 
----
+PNA has no egress pipeline: its main pipeline puts each frame into a FIFO queue
+of the frame's port (`QueueBufferSize` frames; a frame that finds the queue full
+is dropped). `ScheduleTxIfNeeded(port)` hands the oldest frame to the device when
+the port is free, and the same port-TX-done callback calls `PortTxComplete(port)`.
 
 ## Files
 
 | File | Role |
 |------|------|
-| `model/p4-core-v1model.cc` / `.h` | Event-driven scheduler, per-port state |
-| `model/p4-core-psa.cc` / `.h` | The same scheduler for PSA |
-| `model/p4-nic-pna.cc` / `.h` | PNA: a FIFO output queue per port, `ScheduleTxIfNeeded()`, `PortTxComplete()` |
+| `model/p4-core-v1model.cc` / `.h` | Scheduler and port state of v1model |
+| `model/p4-core-psa.cc` / `.h` | The same for PSA |
+| `model/p4-nic-pna.cc` / `.h` | PNA: `ScheduleTxIfNeeded()`, `PortTxComplete()` |
 | `model/p4-switch-net-device.cc` / `.h` | `TransmitOn()`, `PortTransmitEnd()`, `SetPortTxDoneCallback()` |
 | `utils/p4-queue.h` | `NSQueueingLogicPriRL`: `get_next_tp_for_port()`, `pop_back_for_port()` |
-
-v1model and PSA use this path. PNA (`p4-nic-pna`) has no egress pipeline: its main pipeline puts
-each frame into a FIFO output queue of the frame's port (`QueueBufferSize` frames; a frame that
-finds the queue full is dropped). `ScheduleTxIfNeeded(port)` hands the oldest frame to the device
-when the port is free, and the same port-TX-done callback calls `PortTxComplete(port)`.
-
----
-
-## Design Notes
-
-**At-most-one-frame-in-flight guarantee:**
-`pstate.busy` is set before `SendNs3Packet` and cleared only in `PortTxComplete`. Guards in
-both `ScheduleEgressIfNeeded` and `EventDrivenEgressDequeue` return immediately if the port
-is busy. Single-threaded ns-3 ensures no race conditions.
-
-**Pipeline processing delay:**
-Ingress and egress pipeline processing take no simulated time, as usual in ns-3. The delays come
-from `SwitchRate` (how many packets per second the ingress pipeline takes), the queue rates (via
-`QueueInfoPri::pkt_delay_time`), the serialisation on the port's channel, and the channel's
-propagation delay.
-
-**Clone and recirculate:**
-Egress clones call `Enqueue()` → `ScheduleEgressIfNeeded()`, the same path as any normal
-packet. Recirculated packets go back to the ingress input buffer (`AdmitToIngress()`);
-`PortTxComplete()` is called at once to release the port.
-
-**Idle behaviour:**
-`PortTxComplete` only calls `ScheduleEgressIfNeeded` if the queue is non-empty.
-`ScheduleEgressIfNeeded` is only called from `Enqueue` and `PortTxComplete`. When all
-queues are empty, there are **zero** pending egress scheduler events.
-
-**Queue rate enforcement:**
-At enqueue time, `push_front()` stamps each packet with
-`send = max(now, prev_send + 1/rate)`. `pop_back_for_port()` gates on `send <= now`.
-This is a strict leaky-bucket model; no burst beyond one packet at the configured rate
-is possible.
-
-**Priority scheduling:**
-`Enqueue()` puts a packet of P4 priority *p* into queue *p*, and `pop_back_for_port()` scans the
-queues from `N-1` down to `0` and takes the first eligible packet. So priority 7 is served first,
-as in BMv2's `simple_switch` (main's #37). `enq_qdepth` and `deq_qdepth` count the packets of the
-packet's own priority queue, and `qid` is that queue. Scheduling is strict priority: a queue that
-is never empty starves the queues served after it.

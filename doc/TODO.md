@@ -7,7 +7,8 @@ resolves an item removes it from this file.
 
 Branches: `main` is the released line. `switch_channel` is the development line
 with the event-driven egress, the traffic manager (TM) and the switched-Ethernet
-channel. It has all of main's PRs up to #55 (merged in "phase B", last in #60).
+channel. It has all of main's PRs: those up to #55 from "phase B" (last in #60),
+and #65 as #66.
 
 ## Design questions
 
