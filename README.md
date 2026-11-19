@@ -238,4 +238,4 @@ xdg-open build/doxygen/html/index.html
 ## Maintainers & Contributors
 
 - **Maintainers**: [Mingyu Ma](mailto:mingyu.ma@tu-dresden.de)
-- **Contributors**: Thanks to [GSoC 2025](https://summerofcode.withgoogle.com/) with [Davide](mailto:d.scano89@gmail.com) support and contributor [Vineet](https://github.com/Vineet1101).
+- **Contributors**: Thanks to [GSoC 2025 & 2026](https://summerofcode.withgoogle.com/) with [Davide](mailto:d.scano89@gmail.com) support and contributor [Vineet](https://github.com/Vineet1101).
