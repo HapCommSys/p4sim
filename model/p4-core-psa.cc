@@ -359,6 +359,7 @@ void
 P4CorePsa::PortTxComplete(uint32_t port)
 {
     NS_LOG_FUNCTION(this << port);
+    CheckPendingSwap(); // also called for a packet that the egress dropped
     auto& pstate = m_portTxState[port];
     pstate.busy = false;
 

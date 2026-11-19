@@ -72,7 +72,10 @@ P4SwitchNetDevice::GetTypeId()
                           "MacRx, ...), PacketSink or FlowMonitor.")
 
             .AddAttribute("EnableSwap",
-                          "Enable live P4-program hot-swap.",
+                          "Allow swapping the P4 program at run time: load_new_config and "
+                          "swap_configs of the runtime CLI, or P4Controller::LoadNewConfig() "
+                          "and SwapConfigs(). The switch swaps once it holds no packet; frames "
+                          "that arrive meanwhile wait and then use the new program.",
                           BooleanValue(false),
                           MakeBooleanAccessor(&P4SwitchNetDevice::m_enableSwap),
                           MakeBooleanChecker())
@@ -466,6 +469,13 @@ P4SwitchNetDevice::DeliverToCore(Ptr<Packet> frame,
     m_promiscSnifferTrace(frame);
     m_snifferTrace(frame);
     m_macRxTrace(frame);
+
+    // While a swap of the P4 program waits for the switch to empty, the frame
+    // waits too (see P4SwitchCore::swap_configs())
+    if (GetCore()->HoldDuringSwap(frame, inPort, protocol, dst))
+    {
+        return;
+    }
 
     // Feed the full Ethernet frame into the P4 pipeline.
     switch (m_switchArch)

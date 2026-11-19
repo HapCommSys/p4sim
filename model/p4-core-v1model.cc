@@ -482,6 +482,7 @@ void
 P4CoreV1model::PortTxComplete(uint32_t port)
 {
     NS_LOG_FUNCTION(this << port);
+    CheckPendingSwap(); // also called for a packet that the egress dropped
 
     auto& pstate = m_portTxState[port];
     pstate.busy = false;
@@ -2397,6 +2398,7 @@ P4CoreV1model::ScheduleTmNotifyTxDone(uint32_t outPort, Time delay, TmTxOutcome 
 void
 P4CoreV1model::TmNotifyTxDone(uint32_t outPort, TmTxOutcome outcome)
 {
+    CheckPendingSwap(); // also called for a packet that the egress dropped
     m_pendingTxDone.erase(outPort);
     if (m_trafficManager)
     {
