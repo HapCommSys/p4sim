@@ -24,12 +24,14 @@
 #include "ns3/nstime.h"
 #include "ns3/p4-switch-net-device.h"
 
+#include <atomic>
 #include <bm/bm_sim/packet.h>
 #include <bm/bm_sim/simple_pre_lag.h>
 #include <bm/bm_sim/switch.h>
 #include <deque>
 #include <map>
 #include <memory>
+#include <thread>
 #include <vector>
 
 #define SSWITCH_DROP_PORT 511
@@ -46,13 +48,11 @@ class P4SwitchCore : public bm::Switch
      * @brief Construct a new P4SwitchCore object
      * @param netDevice the P4 switch net device
      * @param enableSwap enable swap
-     * @param enableTracing enable tracing
      * @param thriftCommand thrift command string
      * @param dropPort the drop port (default: SSWITCH_DROP_PORT)
      */
     P4SwitchCore(P4SwitchNetDevice* netDevice,
                  bool enableSwap,
-                 bool enableTracing,
                  uint32_t dropPort = SSWITCH_DROP_PORT);
 
     ~P4SwitchCore();
@@ -66,8 +66,8 @@ class P4SwitchCore : public bm::Switch
 
     /**
      * @brief Set the BMv2 log level used by InitializeSwitchFromP4Json()
-     * @param level one of "trace" (default), "debug", "info", "notice", "warn",
-     *        "error", "critical", "alert", "emerg" or "off". With "off", no
+     * @param level one of "trace", "debug", "info", "notice", "warn", "error",
+     *        "critical", "alert", "emerg" or "off" (default). With "off", no
      *        pipeline log file is written.
      * @note The BMv2 logger is shared by all switches of a process, so the level
      *       of the switch initialized last applies to all of them.
@@ -199,6 +199,51 @@ class P4SwitchCore : public bm::Switch
     void reset_target_state_() override;
 
     /**
+     * @brief Load a new P4 program for a later swap_configs() (BMv2 runtime API;
+     *        also behind the runtime CLI and P4Controller::LoadNewConfig())
+     * @param newConfig the BMv2 JSON of the program
+     * @return SUCCESS, or the BMv2 error (CONFIG_SWAP_DISABLED without EnableSwap)
+     */
+    bm::RuntimeInterface::ErrorCode load_new_config(const std::string& newConfig) override;
+
+    /**
+     * @brief Swap to the program loaded by load_new_config() (BMv2 runtime API;
+     *        also behind the runtime CLI and P4Controller::SwapConfigs())
+     *
+     * BMv2 swaps only when the switch holds no packet, and its swap_configs()
+     * waits for that, which in a simulation would wait forever. So the switch
+     * swaps at once if it holds no packet, and otherwise when its last packet
+     * has left. Until then the packets in the switch go on with the old program,
+     * and the frames that arrive wait; after the swap they enter the pipeline in
+     * their order, with the new program. simple_switch also takes no new packet
+     * during a swap. A swap asked for by the runtime CLI, from the Thrift server's
+     * thread, takes place in the simulation, at the next packet event of the switch.
+     *
+     * @return SUCCESS if the swap is done or waits, otherwise the BMv2 error
+     *         (CONFIG_SWAP_DISABLED, NO_ONGOING_SWAP)
+     */
+    bm::RuntimeInterface::ErrorCode swap_configs() override;
+
+    /**
+     * @brief Whether a swap waits for the switch to empty (see swap_configs())
+     * @return true while it waits
+     */
+    bool IsSwapPending() const;
+
+    /**
+     * @brief Keep a frame that arrives while a swap waits (see swap_configs())
+     * @param frame the frame
+     * @param inPort the port where it arrived
+     * @param protocol its protocol
+     * @param destination its destination address
+     * @return true if the frame was kept: it enters the pipeline after the swap
+     */
+    bool HoldDuringSwap(Ptr<Packet> frame,
+                        int inPort,
+                        uint16_t protocol,
+                        const Address& destination);
+
+    /**
      * @brief Configuration for a mirroring session
      * @details The configuration includes the egress port and the multicast group ID. The egress
      * port is the port where the cloned packet is sent to. The multicast group ID is the ID of the
@@ -307,6 +352,13 @@ class P4SwitchCore : public bm::Switch
     virtual bool HandleEgressPipeline(size_t workerId) = 0;
 
     /**
+     * @brief If a swap waits (see swap_configs()), check after the current event
+     *        whether the switch still holds a packet, and swap if not. Call it
+     *        where a packet may leave the switch: sent, dropped or done.
+     */
+    void CheckPendingSwap();
+
+    /**
      * @brief Retrieves the index of the given destination address.
      *
      * This function checks if the specified destination address already exists
@@ -324,7 +376,6 @@ class P4SwitchCore : public bm::Switch
 
     int m_p4SwitchId;                          //!< ID of the switch
     P4SwitchNetDevice* m_switchNetDevice;      //!< Pointer to the switch net device
-    bool m_enableTracing;                      //!< Enable tracing
     bool m_enableQueueingMetadata{false};      //!< Enable queueing metadata
     uint32_t m_dropPort;                       //!< Port to drop packets
     std::string m_thriftCommand;               //!< Thrift command
@@ -336,7 +387,7 @@ class P4SwitchCore : public bm::Switch
     class MirroringSessions;            //!< Mirroring sessions for clone .etc
     int m_thriftPort{0};                //!< Thrift port of the switch (allocated at init)
     uint16_t m_requestedThriftPort{0};  //!< Requested Thrift port, 0 = automatic
-    std::string m_bmLogLevel{"trace"};  //!< BMv2 log level
+    std::string m_bmLogLevel{"off"};    //!< BMv2 log level
     size_t m_nbQueuesPerPort;           //!< Number of queues per port (default 8)
     uint64_t m_packetId{0};             //!< Packet ID
     uint64_t m_startTimestamp;          //!< Start time of the switch
@@ -370,6 +421,27 @@ class P4SwitchCore : public bm::Switch
     Time m_pipelineDelay;                         //!< see SetPipelineDelay(); 0 = none
     std::deque<PipelinePacket> m_pipelinePackets; //!< the packets in the pipeline, oldest first
     EventId m_pipelineEvent;                      //!< the pending ReleaseFromPipeline()
+
+    /// Whether a packet of this switch exists, as BMv2 counts them for a swap
+    bool HoldsPackets();
+
+    /// Do the waiting swap if the switch holds no packet, then let in the held frames
+    void TrySwap();
+
+    /// A frame that arrived while a swap waited
+    struct HeldFrame
+    {
+        Ptr<Packet> frame;   //!< the frame
+        int inPort;          //!< the port where it arrived
+        uint16_t protocol;   //!< its protocol
+        Address destination; //!< its destination address
+    };
+
+    std::atomic<bool> m_newConfigLoaded{false}; //!< load_new_config() succeeded, no swap since
+    std::atomic<bool> m_swapPending{false};     //!< swap_configs() waits for the switch to empty
+    std::thread::id m_simulationThread;         //!< the thread that runs the simulation
+    std::deque<HeldFrame> m_heldFrames;         //!< frames that arrived while a swap waited
+    EventId m_swapEvent;                        //!< the pending TrySwap()
 };
 
 } // namespace ns3

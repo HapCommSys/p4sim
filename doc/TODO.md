@@ -14,15 +14,15 @@ channel. It has all of main's PRs up to #55 (merged in "phase B", last in #60).
 ### Where does a congested switch hold its backlog?
 - **Today (`switch_channel`).** Packets wait in the TM queues between the
   ingress and the egress (`egress_buffer`, or the VOQs). A port takes the next
-  packet from the TM only when it is idle. After the egress, #22 added a per-port
-  ns-3 `QueueDisc` (`P4CoreV1model::SetPortQueueDisc()`). Because the port takes
-  one packet at a time, that queue disc probably never holds more than one
-  packet, so its scheduling and AQM have no effect. This is from reading the
-  code and still needs a test.
+  packet from the TM only when it is idle, and sends it as soon as the egress is
+  done with it. #22 had added a per-port ns-3 `QueueDisc` after the egress
+  (`P4CoreV1model::SetPortQueueDisc()`); it was removed before the release.
+  Because the port takes one packet at a time, it never held more than one
+  packet (from reading the code), so its scheduling and AQM had no effect.
 - **Preferred design.** The backlog builds up in the TM queue between the
   ingress and the egress, where scheduling and AQM belong. After the egress
   comes only a transfer buffer: a plain FIFO that stands for the hardware port
-  queue. The #22 queue disc would become that FIFO, with a configurable depth.
+  queue, with a configurable depth. It is added when a model needs it.
 - **Literature check (November 2026), Tofino and Tofino 2.** We have not
   measured this on hardware; these are published sources.
   - The backlog of an oversubscribed port sits in the TM's shared buffer
@@ -103,8 +103,6 @@ channel. It has all of main's PRs up to #55 (merged in "phase B", last in #60).
 - **`main`: `P4CoreV1model::CalculatePacketsPerSecond()`** doubles the counter
   (`m_egressBp += m_egressBp`) and writes to a `static std::ofstream`, which all
   switches of a process share.
-- **The `p4-firewall` example** loads `p4_basic/p4_basic.json` and its flow
-  tables, not the program in `examples/p4src/firewall/`. Both branches.
 - **`main`: resubmit and recirculate** call `HandleIngressPipeline()`
   recursively, one level per pass. `switch_channel` schedules the next pass
   instead; this goes away when `switch_channel` is merged into `main`.

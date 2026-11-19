@@ -91,7 +91,6 @@ build_lib(
         model/p4-core-psa-thrift.cc
         model/p4-nic-pna.cc
         model/p4-switch-net-device.cc
-        model/p4-switch-queue-item.cc
         helper/p4-helper.cc
         helper/switched-ethernet-helper.cc
         helper/build-flowtable-helper.cc
@@ -121,7 +120,6 @@ build_lib(
         model/p4-core-psa.h
         model/p4-nic-pna.h
         model/p4-switch-net-device.h
-        model/p4-switch-queue-item.h
         helper/p4-helper.h
         helper/switched-ethernet-helper.h
         helper/build-flowtable-helper.h
@@ -145,7 +143,6 @@ build_lib(
         ${libbridge}
         ${third_party_libs}
     TEST_SOURCES # equivalent to module_test.source
-        test/p4-switch-queue-item-test-suite.cc
         test/p4-traffic-manager-test-suite.cc
         test/channel-state-test-suite.cc
         test/p4-egress-test-suite.cc
@@ -153,6 +150,7 @@ build_lib(
         test/p4-pna-test-suite.cc
         test/p4-switch-rate-test-suite.cc
         test/p4-pipeline-delay-test-suite.cc
+        test/p4-config-swap-test-suite.cc
         test/switched-ethernet-host-test-suite.cc
         test/switched-ethernet-tc-test-suite.cc
         test/link-framing-test-suite.cc

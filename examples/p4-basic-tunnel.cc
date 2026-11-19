@@ -263,9 +263,7 @@ main(int argc, char* argv[])
     // Bridge or P4 switch configuration
     P4Helper p4SwitchHelper;
     p4SwitchHelper.SetDeviceAttribute("JsonPath", StringValue(p4JsonPath));
-    // p4SwitchHelper.SetDeviceAttribute("ChannelType", UintegerValue(0));
     p4SwitchHelper.SetDeviceAttribute("P4SwitchArch", UintegerValue(0));
-    p4SwitchHelper.SetDeviceAttribute("ChannelType", UintegerValue(1));
     p4SwitchHelper.SetDeviceAttribute("SwitchRate", UintegerValue(1000));
 
     for (unsigned int i = 0; i < switchNum; i++)

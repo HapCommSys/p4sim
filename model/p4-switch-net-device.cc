@@ -61,13 +61,21 @@ P4SwitchNetDevice::GetTypeId()
             .AddConstructor<P4SwitchNetDevice>()
 
             .AddAttribute("EnableTracing",
-                          "Enable per-packet tracing inside the P4 pipeline.",
+                          "No effect. To trace packets, use the trace sources of the "
+                          "devices (MacTx, MacRx, ...), PacketSink or FlowMonitor.",
                           BooleanValue(false),
                           MakeBooleanAccessor(&P4SwitchNetDevice::m_enableTracing),
-                          MakeBooleanChecker())
+                          MakeBooleanChecker(),
+                          TypeId::DEPRECATED,
+                          "it has no effect and will be removed in the next major version. "
+                          "To trace packets, use the trace sources of the devices (MacTx, "
+                          "MacRx, ...), PacketSink or FlowMonitor.")
 
             .AddAttribute("EnableSwap",
-                          "Enable live P4-program hot-swap.",
+                          "Allow swapping the P4 program at run time: load_new_config and "
+                          "swap_configs of the runtime CLI, or P4Controller::LoadNewConfig() "
+                          "and SwapConfigs(). The switch swaps once it holds no packet; frames "
+                          "that arrive meanwhile wait and then use the new program.",
                           BooleanValue(false),
                           MakeBooleanAccessor(&P4SwitchNetDevice::m_enableSwap),
                           MakeBooleanChecker())
@@ -79,11 +87,13 @@ P4SwitchNetDevice::GetTypeId()
                           MakeUintegerChecker<uint32_t>())
 
             .AddAttribute("ChannelType",
-                          "Kept for main's examples, no effect: the ports are set by "
-                          "Attach() and AddBridgePort().",
+                          "No effect: the ports are set by Attach() and AddBridgePort().",
                           UintegerValue(P4CHANNELCSMA),
                           MakeUintegerAccessor(&P4SwitchNetDevice::m_channelType),
-                          MakeUintegerChecker<uint32_t>())
+                          MakeUintegerChecker<uint32_t>(),
+                          TypeId::DEPRECATED,
+                          "it has no effect and will be removed in the next major version. "
+                          "The ports are set by Attach() and AddBridgePort().")
 
             .AddAttribute("JsonPath",
                           "Path to the compiled P4 JSON file. "
@@ -104,11 +114,12 @@ P4SwitchNetDevice::GetTypeId()
                 "BmLogLevel",
                 "Level of the BMv2 pipeline log written to "
                 "/tmp/bmv2-<thrift port>-pipeline.log: trace, debug, info, notice, "
-                "warn, error, critical, alert, emerg or off. With off, no log file "
-                "is written, which also speeds up the simulation. The BMv2 logger "
-                "is shared by all switches of a simulation, so use the same level "
-                "for all of them (e.g. with Config::SetDefault).",
-                StringValue("trace"),
+                "warn, error, critical, alert, emerg or off. With off (the default), "
+                "no log file is written; trace logs every step of every packet, "
+                "which helps to debug a P4 program but slows the simulation down. "
+                "The BMv2 logger is shared by all switches of a simulation, so use "
+                "the same level for all of them (e.g. with Config::SetDefault).",
+                StringValue("off"),
                 MakeStringAccessor(&P4SwitchNetDevice::m_bmLogLevel),
                 MakeStringChecker())
 
@@ -240,7 +251,7 @@ P4SwitchNetDevice::P4SwitchNetDevice()
     : m_enableTracing(false),
       m_enableSwap(false),
       m_switchArch(P4SWITCH_ARCH_V1MODEL),
-      m_bmLogLevel("trace"),
+      m_bmLogLevel("off"),
       m_thriftPort(0),
       m_v1modelSwitch(nullptr),
       m_psaSwitch(nullptr),
@@ -289,7 +300,6 @@ P4SwitchNetDevice::DoInitialize()
         NS_LOG_DEBUG("Initialising V1model pipeline");
         m_v1modelSwitch = std::make_unique<P4CoreV1model>(this,
                                                           m_enableSwap,
-                                                          m_enableTracing,
                                                           m_switchRate,
                                                           m_InputBufferSizeLow,
                                                           m_InputBufferSizeHigh,
@@ -306,7 +316,6 @@ P4SwitchNetDevice::DoInitialize()
         NS_LOG_DEBUG("Initialising PSA pipeline");
         m_psaSwitch = std::make_unique<P4CorePsa>(this,
                                                   m_enableSwap,
-                                                  m_enableTracing,
                                                   m_switchRate,
                                                   m_InputBufferSizeLow,
                                                   m_queueBufferSize);
@@ -328,7 +337,7 @@ P4SwitchNetDevice::DoInitialize()
 
     case P4SWITCH_ARCH_PIPELINE:
         NS_LOG_DEBUG("Initialising pipeline core");
-        m_p4Pipeline = std::make_unique<P4CorePipeline>(this, m_enableSwap, m_enableTracing);
+        m_p4Pipeline = std::make_unique<P4CorePipeline>(this, m_enableSwap);
         ConfigureCore(*m_p4Pipeline);
         m_p4Pipeline->InitializeSwitchFromP4Json(m_jsonPath);
         m_p4Pipeline->LoadFlowTableToSwitch(m_flowTablePath);
@@ -460,6 +469,13 @@ P4SwitchNetDevice::DeliverToCore(Ptr<Packet> frame,
     m_promiscSnifferTrace(frame);
     m_snifferTrace(frame);
     m_macRxTrace(frame);
+
+    // While a swap of the P4 program waits for the switch to empty, the frame
+    // waits too (see P4SwitchCore::swap_configs())
+    if (GetCore()->HoldDuringSwap(frame, inPort, protocol, dst))
+    {
+        return;
+    }
 
     // Feed the full Ethernet frame into the P4 pipeline.
     switch (m_switchArch)

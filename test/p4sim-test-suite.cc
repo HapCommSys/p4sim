@@ -3,8 +3,9 @@
 
 /*
  * Switch set-up: every architecture loads its P4 program, Thrift ports never
- * collide, and BmLogLevel controls the BMv2 pipeline log. The switches have no
- * ports and no flow table, so no Thrift server starts and no packet is sent.
+ * collide, BmLogLevel controls the BMv2 pipeline log (off by default), and the
+ * deprecated attributes are still accepted. The switches have no ports and no
+ * flow table, so no Thrift server starts and no packet is sent.
  */
 
 #include "ns3/core-module.h"
@@ -13,9 +14,9 @@
 #include "ns3/test.h"
 
 #include <bm/bm_sim/logger.h>
-#include <chrono>
 #include <cstdlib>
 #include <filesystem>
+#include <map>
 #include <netinet/in.h>
 #include <sys/socket.h>
 #include <unistd.h>
@@ -74,9 +75,31 @@ ListenOnFreePort(int* port)
     return sock;
 }
 
-/// True if BMv2 wrote the pipeline log of Thrift port \p port after \p since; removes it
+/// Size and modification time of each BMv2 pipeline log in /tmp, by path
+using LogFiles = std::map<std::string, std::pair<std::uintmax_t, std::filesystem::file_time_type>>;
+
+/// The BMv2 pipeline logs in /tmp
+LogFiles
+PipelineLogs()
+{
+    namespace fs = std::filesystem;
+    LogFiles logs;
+    std::error_code ec;
+    for (const fs::directory_entry& entry : fs::directory_iterator("/tmp", ec))
+    {
+        std::string name = entry.path().filename().string();
+        if (name.rfind("bmv2-", 0) == 0 && name.find("-pipeline.log") != std::string::npos)
+        {
+            logs[entry.path().string()] = {entry.file_size(ec), entry.last_write_time(ec)};
+        }
+    }
+    return logs;
+}
+
+/// True if BMv2 created or changed the pipeline log of Thrift port \p port since the
+/// logs \p before were listed; removes the log
 bool
-PipelineLogWritten(int port, std::filesystem::file_time_type since)
+PipelineLogWritten(int port, const LogFiles& before)
 {
     namespace fs = std::filesystem;
     bool written = false;
@@ -86,7 +109,9 @@ PipelineLogWritten(int port, std::filesystem::file_time_type since)
         std::error_code ec;
         if (fs::exists(log, ec))
         {
-            written = written || fs::last_write_time(log, ec) >= since;
+            auto old = before.find(log.string());
+            auto now = std::make_pair(fs::file_size(log, ec), fs::last_write_time(log, ec));
+            written = written || old == before.end() || old->second != now;
             fs::remove(log, ec);
         }
     }
@@ -169,9 +194,78 @@ class P4ThriftPortTestCase : public P4TestCase
 
 /**
  * \ingroup p4sim-tests
+ * A switch whose BmLogLevel is not set turns the BMv2 log off, so it writes no
+ * pipeline log. The BMv2 logger is shared by all switches; the test first sets it
+ * to debug, as a switch with BmLogLevel=debug would.
+ */
+class P4BmLogLevelDefaultTestCase : public P4TestCase
+{
+  public:
+    P4BmLogLevelDefaultTestCase()
+        : P4TestCase("BmLogLevel is off by default")
+    {
+    }
+
+  private:
+    void DoRun() override
+    {
+        SetDataDir(NS_TEST_SOURCEDIR);
+        bm::Logger::set_log_level(bm::Logger::LogLevel::DEBUG);
+        Ptr<Node> node = CreateObject<Node>();
+        Ptr<P4SwitchNetDevice> sw = CreateObject<P4SwitchNetDevice>();
+        sw->SetAttribute(
+            "JsonPath",
+            StringValue(CreateDataDirFilename("p4src/simple_v1model/simple_v1model.json")));
+        sw->SetAttribute("FlowTablePath", StringValue(""));
+        node->AddDevice(sw);
+        sw->Initialize();
+        NS_TEST_EXPECT_MSG_EQ(bm::Logger::get()->level(),
+                              spdlog::level::off,
+                              "The default BmLogLevel does not turn the BMv2 log off");
+    }
+};
+
+/**
+ * \ingroup p4sim-tests
+ * ChannelType and EnableTracing have no effect and are deprecated: a script that
+ * still sets them runs, and ns-3 warns about them.
+ */
+class P4DeprecatedAttributesTestCase : public P4TestCase
+{
+  public:
+    P4DeprecatedAttributesTestCase()
+        : P4TestCase("ChannelType and EnableTracing are deprecated but accepted")
+    {
+    }
+
+  private:
+    void DoRun() override
+    {
+        Ptr<P4SwitchNetDevice> sw = CreateObject<P4SwitchNetDevice>();
+        sw->SetAttribute("ChannelType", UintegerValue(P4CHANNELP2P));
+        sw->SetAttribute("EnableTracing", BooleanValue(true));
+        TypeId tid = P4SwitchNetDevice::GetTypeId();
+        for (const std::string name : {"ChannelType", "EnableTracing"})
+        {
+            bool deprecated = false;
+            for (std::size_t i = 0; i < tid.GetAttributeN(); i++)
+            {
+                TypeId::AttributeInformation info = tid.GetAttribute(i);
+                deprecated =
+                    deprecated || (info.name == name && info.supportLevel == TypeId::DEPRECATED);
+            }
+            NS_TEST_EXPECT_MSG_EQ(deprecated, true, name << " is not deprecated");
+        }
+    }
+};
+
+/**
+ * \ingroup p4sim-tests
  * BmLogLevel: "off" writes no BMv2 pipeline log, "debug" does (loading the JSON
- * logs debug lines). A log file left by an earlier run is not mistaken for a new
- * one: only a file modified during the test counts.
+ * logs debug lines). A log file left by an earlier run, even a second ago, is not
+ * mistaken for a new one: the logs are listed before the switch is created (its
+ * Thrift port, and so its log's name, is known only then), and only a log that is
+ * new or whose size or time changed counts.
  */
 class P4BmLogLevelTestCase : public P4TestCase
 {
@@ -188,11 +282,10 @@ class P4BmLogLevelTestCase : public P4TestCase
         std::string json = CreateDataDirFilename("p4src/simple_v1model/simple_v1model.json");
         for (const std::string level : {"off", "debug"})
         {
-            // One second of slack: file times use a coarser clock than now().
-            auto since = std::filesystem::file_time_type::clock::now() - std::chrono::seconds(1);
+            LogFiles before = PipelineLogs();
             Ptr<P4SwitchNetDevice> sw = CreateSwitch(0, json, level);
             bm::Logger::get()->flush(); // buffered lines reach the file and update its time
-            NS_TEST_EXPECT_MSG_EQ(PipelineLogWritten(sw->GetThriftPort(), since),
+            NS_TEST_EXPECT_MSG_EQ(PipelineLogWritten(sw->GetThriftPort(), before),
                                   (level != "off"),
                                   "Wrong pipeline log for BmLogLevel=" << level);
         }
@@ -218,6 +311,8 @@ class P4simTestSuite : public TestSuite
                     TestCase::QUICK);
         AddTestCase(new P4ThriftPortTestCase, TestCase::QUICK);
         AddTestCase(new P4BmLogLevelTestCase, TestCase::QUICK);
+        AddTestCase(new P4BmLogLevelDefaultTestCase, TestCase::QUICK);
+        AddTestCase(new P4DeprecatedAttributesTestCase, TestCase::QUICK);
     }
 };
 

@@ -23,9 +23,7 @@
 
 #include "ns3/p4-queue.h"
 #include "ns3/p4-switch-core.h"
-#include "ns3/p4-switch-queue-item.h"
 #include "ns3/p4-traffic-manager.h"
-#include "ns3/queue-disc.h"
 #include "ns3/switched-ethernet-channel.h"
 
 #include <bm/bm_sim/counters.h>
@@ -48,7 +46,6 @@ class P4CoreV1model : public P4SwitchCore
     // === Constructor & Destructor ===
     P4CoreV1model(P4SwitchNetDevice* net_device,
                   bool enable_swap,
-                  bool enableTracing,
                   uint64_t packet_rate,
                   size_t input_buffer_size_low,
                   size_t input_buffer_size_high,
@@ -88,7 +85,6 @@ class P4CoreV1model : public P4SwitchCore
     void EventDrivenEgressDequeue(uint32_t port);
     void ScheduleEgressIfNeeded(uint32_t port);
     void PortTxComplete(uint32_t port);
-    void TryTransmitFromQueueDisc(uint32_t port);
 
     // === Optional VOQ + fabric Traffic Manager (opt-in, default OFF) ===
     //
@@ -111,19 +107,6 @@ class P4CoreV1model : public P4SwitchCore
 
     /** @brief The Traffic Manager instance, or nullptr if the VOQ path is off. */
     Ptr<P4TrafficManager> GetTrafficManager() const;
-
-    // === Per-port QueueDisc ===
-
-    /**
-     * @brief Install (or replace) a QueueDisc on a given egress port.
-     *
-     * The QueueDisc will be initialized automatically if it has not been
-     * already.  Pass nullptr to remove an existing QueueDisc.
-     *
-     * @param port  Egress port index.
-     * @param qd    The QueueDisc to install, or nullptr to remove.
-     */
-    void SetPortQueueDisc(uint32_t port, Ptr<QueueDisc> qd);
 
     // === Internal helpers ===
     void MulticastPacket(bm::Packet* packet, unsigned int mgid);
@@ -805,15 +788,17 @@ class P4CoreV1model : public P4SwitchCore
     int Serialize(std::ostream* out);
 
     /**
-     * @brief Loads a new runtime configuration from a JSON string.
-     * @param newConfig JSON string containing the new configuration.
+     * @brief Loads a new P4 program for SwapConfigs() (needs EnableSwap).
+     * @param newConfig the BMv2 JSON of the program, as a string (not a path).
      * @return 0 on success, -1 on failure.
      */
     int LoadNewConfig(const std::string& newConfig);
 
     /**
-     * @brief Swaps the currently active configuration with a newly loaded one.
-     * @return 0 on success, -1 on failure.
+     * @brief Swaps to the program loaded by LoadNewConfig(): at once if the
+     * switch holds no packet, otherwise when its last packet has left; frames
+     * that arrive meanwhile wait (see P4SwitchCore::swap_configs()).
+     * @return 0 if the swap is done or waits, -1 on failure.
      */
     int SwapConfigs();
 
@@ -897,7 +882,6 @@ class P4CoreV1model : public P4SwitchCore
         EventId txCompleteEvent{};
     };
 
-    std::unordered_map<uint32_t, Ptr<QueueDisc>> m_portQueueDiscs;
     std::unordered_map<uint32_t, PortTxState> m_portTxState;
 
     /// Link rate of port 0, read at startup: seeds the Traffic Manager's PortRate and

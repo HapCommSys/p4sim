@@ -364,7 +364,6 @@ main(int argc, char* argv[])
         P4Helper p4Helper;
         p4Helper.SetDeviceAttribute("JsonPath", StringValue(p4JsonPath));
         p4Helper.SetDeviceAttribute("FlowTablePath", StringValue(flowTablePath));
-        p4Helper.SetDeviceAttribute("ChannelType", UintegerValue(0));
         p4Helper.SetDeviceAttribute("P4SwitchArch", UintegerValue(0)); // V1Model = 0
         p4Helper.SetDeviceAttribute(
             "SwitchRate",
