@@ -18,9 +18,22 @@
  */
 
 /**
- * This example is same with "firewall exerciese" in p4lang/tutorials
+ * This example is the "firewall" exercise of p4lang/tutorials
  * URL: https://github.com/p4lang/tutorials/tree/master/exercises/firewall
- * The P4 program implements basic firewall.
+ * The P4 program implements a stateful firewall for TCP on switch 0: hosts 0 and 1
+ * (host 4 and host 5 below) are inside, hosts 2 and 3 outside. A connection that
+ * a host inside opens is let through in both directions; a connection that a host
+ * outside opens is dropped. The example checks both with a TCP flow each way: the
+ * first must deliver at least 90% of the bytes its client sent, the second none.
+ * It exits with 1 otherwise.
+ *
+ * Limits of the program: only TCP is filtered, UDP and ICMP pass in both directions,
+ * and traffic that stays inside or outside does not pass the firewall. Switch 0
+ * remembers a connection in two Bloom filters of 4096 bits that are never cleared:
+ * packets of a closed connection are still let in, and after n connections from
+ * inside, a connection from outside gets through by mistake with a probability of
+ * about (1 - e^(-n/4096))^2, 5% for n = 1000. The flow tables hold the port numbers
+ * and MAC addresses of this topology; they must be rewritten when topo.txt changes.
  *
  *          ┌──────────┐              ┌──────────┐
  *          │ Switch 2 \\            /│ Switch 3 │
@@ -34,7 +47,7 @@
  *  ┌───┼────┐     ┌─┴──────┐    ┌─────┼──┐     ┌─────┼──┐
  *  │ host 4 │     │ host 5 │    │ host 6 │     │ host 7 │
  *  └────────┘     └────────┘    └────────┘     └────────┘
- *  |----Interal network----|
+ *  |----Internal network----|
  *
  */
 
@@ -106,6 +119,12 @@ ConvertMacToHex(Address macAddr)
     return hexStream.str();
 }
 
+/// Adds the size of \p packet, which an application sent, to \p bytes
+void
+CountSentBytes(uint64_t* bytes, Ptr<const Packet> packet)
+{
+    *bytes += packet->GetSize();
+}
 
 int
 main(int argc, char* argv[])
@@ -119,8 +138,8 @@ main(int argc, char* argv[])
     bool enableTracePcap = true;
 
     // P4 files: examples/p4src in the p4sim folder of this build
-    std::string p4SrcDir = GetP4ExamplePath() + "/p4_basic";
-    std::string p4JsonPath = p4SrcDir + "/p4_basic.json";
+    std::string p4SrcDir = GetP4ExamplePath() + "/firewall";
+    std::string p4JsonPath = p4SrcDir + "/firewall.json";
     std::string flowTableDirPath = p4SrcDir + "/";
     std::string topoInput = p4SrcDir + "/topo.txt";
     std::string topoFormat("CsmaTopo");
@@ -223,64 +242,40 @@ main(int argc, char* argv[])
         p4SwitchHelper.Install(switchNode.Get(i), switchNodes[i].switchDevices);
     }
 
-    // === Configuration for Link: h0 -----> h3
-    unsigned int serverI = 3;
-    unsigned int clientI = 0;
-    uint16_t servPort = 9093; // UDP port for the server
+    // Two TCP flows through the firewall on switch 0 (hosts 0 and 1 inside, 2 and 3 outside)
+    struct Flow
+    {
+        std::string name;    //!< what the flow shows
+        unsigned int client; //!< host that opens the connection
+        unsigned int server; //!< host that receives the data
+        uint16_t port;       //!< TCP port of the server
+        Ptr<PacketSink> sink;
+        uint64_t sent = 0; //!< bytes that the client handed to its socket
+    };
 
-    // === Retrieve Server Address ===
-    Ptr<Node> node = terminals.Get(serverI);
-    Ptr<Ipv4> ipv4_adder = node->GetObject<Ipv4>();
-    Ipv4Address serverAddr1 = ipv4_adder->GetAddress(1, 0).GetLocal();
-    InetSocketAddress dst1 = InetSocketAddress(serverAddr1, servPort);
-    PacketSinkHelper sink1("ns3::TcpSocketFactory", dst1);
-    ApplicationContainer sinkApp1 = sink1.Install(terminals.Get(serverI));
-    sinkApp1.Start(Seconds(sink_start_time));
-    sinkApp1.Stop(Seconds(sink_stop_time));
-    OnOffHelper onOff1("ns3::TcpSocketFactory", dst1);
-    onOff1.SetAttribute("PacketSize", UintegerValue(pktSize));
-    onOff1.SetAttribute("DataRate", StringValue(appDataRate));
-    onOff1.SetAttribute("OnTime", StringValue("ns3::ConstantRandomVariable[Constant=1]"));
-    onOff1.SetAttribute("OffTime", StringValue("ns3::ConstantRandomVariable[Constant=0]"));
-    ApplicationContainer app1 = onOff1.Install(terminals.Get(clientI));
-    app1.Start(Seconds(client_start_time));
-    app1.Stop(Seconds(client_stop_time));
+    std::vector<Flow> flows = {{"inside -> outside (host 0 -> host 3)", 0, 3, 9093, nullptr},
+                               {"outside -> inside (host 3 -> host 0)", 3, 0, 9094, nullptr}};
+    for (Flow& flow : flows)
+    {
+        PacketSinkHelper sink("ns3::TcpSocketFactory",
+                              InetSocketAddress(Ipv4Address::GetAny(), flow.port));
+        ApplicationContainer sinkApp = sink.Install(terminals.Get(flow.server));
+        sinkApp.Start(Seconds(sink_start_time));
+        sinkApp.Stop(Seconds(sink_stop_time));
+        flow.sink = DynamicCast<PacketSink>(sinkApp.Get(0));
 
-    // Normal Stream == Second == send link h3 -----> h0
-    serverI = 0;
-    clientI = 3;
-    servPort = 9200; // change the application port
-    InetSocketAddress dst2 = InetSocketAddress(serverAddr1, servPort);
-    PacketSinkHelper sink2 = PacketSinkHelper("ns3::UdpSocketFactory", dst2);
-    ApplicationContainer sinkApp2 = sink2.Install(terminals.Get(serverI));
-    sinkApp2.Start(Seconds(sink_start_time));
-    sinkApp2.Stop(Seconds(sink_stop_time));
-    OnOffHelper onOff2("ns3::UdpSocketFactory", dst2);
-    onOff2.SetAttribute("PacketSize", UintegerValue(pktSize));
-    onOff2.SetAttribute("DataRate", StringValue(appDataRate));
-    onOff2.SetAttribute("OnTime", StringValue("ns3::ConstantRandomVariable[Constant=1]"));
-    onOff2.SetAttribute("OffTime", StringValue("ns3::ConstantRandomVariable[Constant=0]"));
-    ApplicationContainer app2 = onOff2.Install(terminals.Get(clientI));
-    app2.Start(Seconds(client_start_time));
-    app2.Stop(Seconds(client_stop_time));
-
-    // Normal Stream == Second == send link h3 -----> h0
-    serverI = 0;
-    clientI = 1;
-    servPort = 9003; // change the application port
-    InetSocketAddress dst3 = InetSocketAddress(serverAddr1, servPort);
-    PacketSinkHelper sink3 = PacketSinkHelper("ns3::UdpSocketFactory", dst3);
-    ApplicationContainer sinkApp3 = sink3.Install(terminals.Get(serverI));
-    sinkApp3.Start(Seconds(sink_start_time));
-    sinkApp3.Stop(Seconds(sink_stop_time));
-    OnOffHelper onOff3("ns3::UdpSocketFactory", dst3);
-    onOff3.SetAttribute("PacketSize", UintegerValue(pktSize));
-    onOff3.SetAttribute("DataRate", StringValue(appDataRate));
-    onOff3.SetAttribute("OnTime", StringValue("ns3::ConstantRandomVariable[Constant=1]"));
-    onOff3.SetAttribute("OffTime", StringValue("ns3::ConstantRandomVariable[Constant=0]"));
-    ApplicationContainer app3 = onOff3.Install(terminals.Get(clientI));
-    app3.Start(Seconds(client_start_time));
-    app3.Stop(Seconds(client_stop_time));
+        InetSocketAddress dst(terminalInterfaces[flow.server].GetAddress(0), flow.port);
+        OnOffHelper onOff("ns3::TcpSocketFactory", dst);
+        onOff.SetAttribute("PacketSize", UintegerValue(pktSize));
+        onOff.SetAttribute("DataRate", StringValue(appDataRate));
+        onOff.SetAttribute("OnTime", StringValue("ns3::ConstantRandomVariable[Constant=1]"));
+        onOff.SetAttribute("OffTime", StringValue("ns3::ConstantRandomVariable[Constant=0]"));
+        ApplicationContainer app = onOff.Install(terminals.Get(flow.client));
+        app.Start(Seconds(client_start_time));
+        app.Stop(Seconds(client_stop_time));
+        app.Get(0)->TraceConnectWithoutContext("Tx",
+                                               MakeBoundCallback(&CountSentBytes, &flow.sent));
+    }
 
     if (enableTracePcap)
     {
@@ -292,6 +287,23 @@ main(int argc, char* argv[])
     unsigned long simulate_start = getTickCount();
     Simulator::Stop(Seconds(global_stop_time));
     Simulator::Run();
+
+    // The connection opened from inside carries what its client sent (at least 90%, so the
+    // firewall must also let the acknowledgements in, not only the handshake); the one
+    // opened from outside carries nothing
+    const Flow& allowed = flows[0];
+    const Flow& blocked = flows[1];
+    uint64_t allowedBytes = allowed.sink->GetTotalRx();
+    uint64_t blockedBytes = blocked.sink->GetTotalRx();
+    bool allowedPass = allowed.sent > 0 && allowedBytes * 10 >= allowed.sent * 9;
+    bool blockedPass = blockedBytes == 0;
+    bool pass = allowedPass && blockedPass;
+    std::cout << "Firewall on switch 0 (hosts 0 and 1 inside, hosts 2 and 3 outside):\n"
+              << "  [" << (allowedPass ? "PASS" : "FAIL") << "] " << allowed.name << ": "
+              << allowedBytes << " of " << allowed.sent
+              << " bytes received, the connection is allowed\n"
+              << "  [" << (blockedPass ? "PASS" : "FAIL") << "] " << blocked.name << ": "
+              << blockedBytes << " bytes received, the connection is blocked" << std::endl;
     Simulator::Destroy();
 
     unsigned long end = getTickCount();
@@ -300,5 +312,5 @@ main(int argc, char* argv[])
                                           << std::endl
                                           << "Run successfully!");
 
-    return 0;
+    return pass ? 0 : 1;
 }
