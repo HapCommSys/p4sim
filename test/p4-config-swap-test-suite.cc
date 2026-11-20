@@ -17,6 +17,7 @@
 #include "ns3/p4-controller.h"
 #include "ns3/p4-core-v1model.h"
 #include "ns3/p4-switch-net-device.h"
+#include "ns3/p4sim-ns3-compat.h"
 #include "ns3/switched-ethernet-channel.h"
 #include "ns3/test.h"
 
@@ -288,18 +289,18 @@ static class P4ConfigSwapTestSuite : public TestSuite
 {
   public:
     P4ConfigSwapTestSuite()
-        : TestSuite("p4-config-swap", UNIT)
+        : TestSuite("p4-config-swap", TestSuite::Type::UNIT)
     {
         AddTestCase(
             new ConfigSwapTestCase("v1model", P4SWITCH_ARCH_V1MODEL, false, SwapBy::CONTROLLER),
-            TestCase::QUICK);
+            P4SIM_TEST_QUICK);
         AddTestCase(
             new ConfigSwapTestCase("v1model", P4SWITCH_ARCH_V1MODEL, true, SwapBy::CONTROLLER),
-            TestCase::QUICK);
+            P4SIM_TEST_QUICK);
         AddTestCase(new ConfigSwapTestCase("v1model", P4SWITCH_ARCH_V1MODEL, true, SwapBy::CLI),
-                    TestCase::QUICK);
+                    P4SIM_TEST_QUICK);
         AddTestCase(new ConfigSwapTestCase("psa", P4SWITCH_ARCH_PSA, true, SwapBy::CORE),
-                    TestCase::QUICK);
-        AddTestCase(new ConfigSwapDisabledTestCase, TestCase::QUICK);
+                    P4SIM_TEST_QUICK);
+        AddTestCase(new ConfigSwapDisabledTestCase, P4SIM_TEST_QUICK);
     }
 } g_p4ConfigSwapTestSuite;

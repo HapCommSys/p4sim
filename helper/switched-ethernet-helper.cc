@@ -23,6 +23,7 @@
 #include "ns3/log.h"
 #include "ns3/mac48-address.h"
 #include "ns3/net-device-queue-interface.h"
+#include "ns3/p4sim-ns3-compat.h"
 #include "ns3/packet.h"
 #include "ns3/pcap-file-wrapper.h"
 #include "ns3/switched-ethernet-channel.h"
@@ -130,8 +131,7 @@ SwitchedEthernetHelper::EnablePcapInternal(std::string prefix,
     std::string filename =
         explicitFilename ? prefix : pcapHelper.GetFilenameFromDevice(prefix, device);
 
-    Ptr<PcapFileWrapper> file =
-        pcapHelper.CreateFile(filename, std::ios::out, PcapHelper::DLT_EN10MB);
+    Ptr<PcapFileWrapper> file = pcapHelper.CreateFile(filename, std::ios::out, P4SIM_PCAP_ETHERNET);
 
     if (promiscuous)
     {

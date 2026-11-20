@@ -33,6 +33,7 @@
 #include "ns3/p4-core-psa.h"
 #include "ns3/p4-core-v1model.h"
 #include "ns3/p4-nic-pna.h"
+#include "ns3/p4sim-ns3-compat.h"
 #include "ns3/packet.h"
 #include "ns3/simulator.h"
 #include "ns3/string.h"
@@ -66,7 +67,7 @@ P4SwitchNetDevice::GetTypeId()
                           BooleanValue(false),
                           MakeBooleanAccessor(&P4SwitchNetDevice::m_enableTracing),
                           MakeBooleanChecker(),
-                          TypeId::DEPRECATED,
+                          TypeId::SupportLevel::DEPRECATED,
                           "it has no effect and will be removed in the next major version. "
                           "To trace packets, use the trace sources of the devices (MacTx, "
                           "MacRx, ...), PacketSink or FlowMonitor.")
@@ -91,7 +92,7 @@ P4SwitchNetDevice::GetTypeId()
                           UintegerValue(P4CHANNELCSMA),
                           MakeUintegerAccessor(&P4SwitchNetDevice::m_channelType),
                           MakeUintegerChecker<uint32_t>(),
-                          TypeId::DEPRECATED,
+                          TypeId::SupportLevel::DEPRECATED,
                           "it has no effect and will be removed in the next major version. "
                           "The ports are set by Attach() and AddBridgePort().")
 
@@ -772,7 +773,7 @@ P4SwitchNetDevice::SendOnBridgePort(uint32_t port, Ptr<Packet> frame, Time* txTi
     {
         // With the port's framing, if its device has one (the P4 point-to-point
         // device; ns-3's CSMA device adds its FCS and gap itself)
-        EnumValue framing;
+        P4SIM_ENUM_VALUE(LinkFraming::Type) framing;
         LinkFraming::Type type = LinkFraming::NONE;
         if (m_bridgePorts[port]->GetAttributeFailSafe("Framing", framing))
         {
