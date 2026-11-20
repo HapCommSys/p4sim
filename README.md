@@ -9,7 +9,7 @@
 
 P4sim runs P4 programs in the [ns-3 network simulator](https://www.nsnam.org/): switches execute their P4 program on the BMv2 behavioral model, while ns-3 provides the topology, the traffic and the time. This lets you evaluate programmable networks in end-to-end simulations.
 
-P4sim is open-source software licensed under the Apache License 2.0.
+P4sim is open-source software licensed under the Apache License 2.0; some files are under GPL-2.0-only (see [License](#license)).
 
 ### Key Features
 
@@ -235,6 +235,21 @@ sudo apt install doxygen graphviz dia
 ./ns3 docs doxygen
 xdg-open build/doxygen/html/index.html
 ```
+
+---
+
+## License
+
+P4sim is licensed under the [Apache License 2.0](LICENSE). The header of each file names its license; a file without a license header is under Apache 2.0. Exceptions:
+
+- **GPL-2.0-only** ([license text](LICENSES/GPL-2.0-only.txt)):
+  - code based on ns-3 and on Jeff Young's switched Ethernet channel: `custom-p2p-net-device`, `p4-p2p-channel`, `p4-p2p-helper`, `p4-topology-reader`, `p4-topology-reader-helper`, `switched-ethernet-channel` and `test/p4-p2p-channel-test-suite.cc`;
+  - `p4-core-pipeline`;
+  - files with code by Vineet Goel: `eth-net-device`, `p4-switch-net-device`, `p4-traffic-manager`; the tests `channel-state-test-suite.cc`, `p4-controller-test-suite.cc` and `p4-traffic-manager-test-suite.cc`; the examples `p4-basic-controller`, `p4-controller-action-profile`, `p4-source-routing` and `p4-voq-fabric-*`.
+- **Apache 2.0 with the notices of BMv2's authors**: the parts taken from BMv2 (`p4-core-v1model`, `p4-core-psa`, `p4-nic-pna`, `p4-queue`, `primitives-v1model.h`, `primitives-pna.h`, `register-access-v1model.h`, `patches/config.h`).
+- Code taken from [P4Simulator](https://github.com/kphf1995cm/P4Simulator) (Apache 2.0) says so in its header.
+
+P4sim builds on ns-3, which is licensed under GPL-2.0-only, and on BMv2 (Apache 2.0).
 
 ---
 
