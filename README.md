@@ -24,12 +24,12 @@ P4sim is open-source software licensed under the Apache License 2.0.
 
 A `P4SwitchNetDevice` runs a P4 program on BMv2 and has two kinds of port, which can be mixed (see [Switch ports](#switch-ports)):
 
-- **Bridge ports** (left in the figure): each port is an ordinary ns-3 device of the switch's node, such as a `CSMA` or a point-to-point device. This is the design of the `main` branch.
+- **Bridge ports** (left in the figure): each port is an ordinary ns-3 device of the switch's node, such as a `CSMA` or a point-to-point device. P4sim 1.x had only these.
 - **Switched-Ethernet ports** (right): each port is a full-duplex `SwitchedEthernetChannel` of the switch itself, so the switch sees when a port has sent a frame and controls its queues and timing.
 
 ![Two architectures](./doc/figures/p4sim_arch.drawio.png)
 
-Branches: `main` holds the current release (v1.0.0 and later fixes) with bridge ports only. `switch_channel`, this branch, is the development line for the next release: it adds the switched-Ethernet ports, the event-driven egress (v1model, PSA and PNA), the traffic manager, and `PipelineDelay`.
+Branches: `main` holds P4sim 2.0, which added the switched-Ethernet ports, the event-driven egress (v1model, PSA and PNA), the traffic manager and `PipelineDelay`. `main-deprecated` keeps the 1.x line (v1.0.0 and its later fixes, bridge ports only); it gets no more changes.
 
 ### Publications
 
@@ -93,8 +93,6 @@ cd contrib
 git clone https://github.com/HapCommSys/p4sim.git
 cd p4sim && sudo ./set_pkg_config_env.sh
 ```
-
-The clone gives the `main` branch; for this branch, add `-b switch_channel` to `git clone`.
 
 Configure and build:
 

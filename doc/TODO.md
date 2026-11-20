@@ -5,15 +5,13 @@ planned. Most items were found while reviewing the PRs of November 2026. Each
 item says what the problem is, what we propose, and where it stands. A PR that
 resolves an item removes it from this file.
 
-Branches: `main` is the released line. `switch_channel` is the development line
-with the event-driven egress, the traffic manager (TM) and the switched-Ethernet
-channel. It has all of main's PRs: those up to #55 from "phase B" (last in #60),
-and #65 as #66.
+Branches: `main` holds P4sim 2.0 and later. `main-deprecated` keeps the 1.x
+line (bridge ports only, the old timing model) and gets no more changes.
 
 ## Design questions
 
 ### Where does a congested switch hold its backlog?
-- **Today (`switch_channel`).** Packets wait in the TM queues between the
+- **Today.** Packets wait in the TM queues between the
   ingress and the egress (`egress_buffer`, or the VOQs). A port takes the next
   packet from the TM only when it is idle, and sends it as soon as the egress is
   done with it. #22 had added a per-port ns-3 `QueueDisc` after the egress
@@ -44,7 +42,7 @@ and #65 as #66.
 - **Still to decide.**
   - The size of the FIFO: no public value; a rough estimate is one or two
     full-size frames at 100 Gbps.
-  - The queue depth: on `switch_channel`, a TM queue of depth 1 holds one packet
+  - The queue depth: today, a TM queue of depth 1 holds one packet
     besides the one that the port is sending, and the dequeued packet does not
     count in `deq_qdepth` (as in BMv2).
 
@@ -55,14 +53,6 @@ and #65 as #66.
 - **Question.** Tofino can also forward cut-through, starting on a frame before
   it has fully arrived (it is store and forward by default). Whether to model
   that is open; it changes the latency, not the throughput.
-
-### The timing model of `main`
-- **Problem.** `main` still has the old timing model: a switch-wide egress timer
-  driven by `SwitchRate`; a queue without a rate spaces its packets 1 ms apart
-  (`rate_to_time(0)`); and the first packet of a queue waits one interval.
-  `switch_channel` fixed this in #40.
-- **Plan.** No change on `main` for now. It is replaced when `switch_channel` is
-  merged into `main`.
 
 ## Feature gaps
 
@@ -101,14 +91,8 @@ and #65 as #66.
 
 ## Bugs and cleanups
 
-- **`main`: `P4CoreV1model::CalculatePacketsPerSecond()`** doubles the counter
-  (`m_egressBp += m_egressBp`) and writes to a `static std::ofstream`, which all
-  switches of a process share.
-- **`main`: resubmit and recirculate** call `HandleIngressPipeline()`
-  recursively, one level per pass. `switch_channel` schedules the next pass
-  instead; this goes away when `switch_channel` is merged into `main`.
-- **The branches `ns-3.39` and `ns-3.49`** lack main's PRs after #35 (#37, #39,
-  #43, #50 to #55).
+- **The branches `ns-3.39` and `ns-3.49`** are based on P4sim 1.x (main at #35)
+  and have none of 2.0. The `ns-3.49` port (C++23) has to be redone on 2.0.
 - **BMv2.**
   - Upstream fix for BMv2's bundled spdlog (`registry.h`), which GCC rejects from
     C++20 on; the `ns-3.49` README patches the installed header instead.

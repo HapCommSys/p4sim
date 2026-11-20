@@ -61,9 +61,6 @@ cd p4sim
 sudo ./set_pkg_config_env.sh
 ```
 
-The clone gives the `main` branch. For the development line that this guide comes
-from, add `-b switch_channel` to `git clone`.
-
 `set_pkg_config_env.sh` registers BMv2 as the pkg-config package `bm`. Then configure
 and build ns-3:
 
