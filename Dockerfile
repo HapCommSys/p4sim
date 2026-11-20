@@ -1,9 +1,14 @@
-# P4sim in a container: ns-3.39 with P4sim, BMv2 1.15.8 and Thrift 0.16.0 on
-# Ubuntu 24.04, the versions P4sim is tested with. The P4 compiler is not
-# included: compile P4 programs with the image p4lang/p4c (see doc/docker.md).
+# P4sim in a container: ns-3.39 with P4sim, BMv2 1.15.8, Thrift 0.16.0 and the
+# P4 compiler p4c 1.2.5.19 on Ubuntu 24.04, the versions P4sim is tested with.
 #
 #   docker build -t p4sim .
 #   docker run --rm -it p4sim ./ns3 run p4-v1model-ipv4-forwarding
+
+ARG P4C_VERSION=1.2.5.19
+
+# The official p4c image, also on Ubuntu 24.04; its back ends are linked
+# statically except for the C and C++ libraries
+FROM p4lang/p4c:${P4C_VERSION} AS p4c
 
 FROM ubuntu:24.04
 
@@ -12,6 +17,8 @@ ARG BMV2_VERSION=1.15.8
 ARG NS3_VERSION=ns-3.39
 # Parallel build jobs; empty means one per CPU
 ARG JOBS=
+# "yes" keeps the debug information of the ns-3 build (about 2 GB more)
+ARG DEBUG_INFO=no
 
 ENV DEBIAN_FRONTEND=noninteractive
 
@@ -51,13 +58,25 @@ RUN git clone --depth 1 -b ${BMV2_VERSION} https://github.com/p4lang/behavioral-
     && ldconfig \
     && rm -rf /tmp/bmv2
 
-# ns-3 with P4sim from this repository
+# p4c: the driver and the back ends for BMv2 (v1model, PSA, PNA)
+COPY --from=p4c /usr/local/bin/p4c /usr/local/bin/p4c-bm2-ss /usr/local/bin/p4c-bm2-psa \
+     /usr/local/bin/p4c-bm2-pna /usr/local/bin/
+COPY --from=p4c /usr/local/share/p4c /usr/local/share/p4c
+
+# ns-3 with P4sim from this repository. Without DEBUG_INFO=yes, the debug
+# information is stripped from the objects, libraries and programs; strip -p keeps
+# their times, so ./ns3 does not rebuild them.
 RUN git clone --depth 1 -b ${NS3_VERSION} https://github.com/nsnam/ns-3-dev-git.git /ns3
 COPY . /ns3/contrib/p4sim
 WORKDIR /ns3
 RUN bash contrib/p4sim/set_pkg_config_env.sh \
     && ./ns3 configure --enable-tests --enable-examples \
         --enable-modules="p4sim;netanim;nix-vector-routing" \
-    && ./ns3 build -j ${JOBS:-$(nproc)}
+    && ./ns3 build -j ${JOBS:-$(nproc)} \
+    && if [ "$DEBUG_INFO" != yes ]; then \
+           find build cmake-cache -type f \
+               \( -name '*.o' -o -name '*.so' -o -name 'ns3.39-*-default' \) \
+               -exec strip --strip-debug -p {} + ; \
+       fi
 
 CMD ["bash"]

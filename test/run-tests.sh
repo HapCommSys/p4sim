@@ -11,6 +11,11 @@ examples=$(python3 -c "
 exec(open('$p4sim/test/examples-to-run.py').read())
 print('\n'.join(sorted({e[0].split()[0] for e in cpp_examples})))")
 
+if [ -z "$suites" ] || [ -z "$examples" ]; then
+    echo "No test suites or examples found"
+    exit 1
+fi
+
 failed=""
 run() {
     if ./test.py --no-build "$@" > /tmp/p4sim-test.log 2>&1 && grep -q '1 passed' /tmp/p4sim-test.log; then
