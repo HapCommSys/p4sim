@@ -6,6 +6,7 @@
  * sessions. Every change is read back from the switch through the BMv2 runtime
  * API or, for mirroring sessions, the API of the P4 core. Also the commands that
  * simple_switch_CLI adds to the runtime CLI, through the "simple_switch" Thrift
+ * service, and those of psa_switch_CLI on a PSA switch, through the "psa_switch"
  * service.
  */
 
@@ -51,16 +52,10 @@ CreateV1modelSwitch(const std::string& json, const std::string& flowTable)
     return sw;
 }
 
-/// Runs simple_switch_CLI with \p commands on \p thriftPort; returns what it prints
+/// Runs the shell command \p cmd; returns what it prints
 std::string
-RunSimpleSwitchCli(int thriftPort, const std::vector<std::string>& commands)
+RunCommand(const std::string& cmd)
 {
-    std::string cmd = "printf '%s\\n'";
-    for (const std::string& command : commands)
-    {
-        cmd += " '" + command + "'";
-    }
-    cmd += " | simple_switch_CLI --thrift-port " + std::to_string(thriftPort) + " 2>&1";
     std::string out;
     FILE* pipe = popen(cmd.c_str(), "r");
     if (pipe == nullptr)
@@ -74,6 +69,56 @@ RunSimpleSwitchCli(int thriftPort, const std::vector<std::string>& commands)
     }
     pclose(pipe);
     return out;
+}
+
+/// Runs \p cli (simple_switch_CLI, psa_switch_CLI) with \p commands on \p thriftPort;
+/// returns what it prints
+std::string
+RunCli(const std::string& cli, int thriftPort, const std::vector<std::string>& commands)
+{
+    std::string cmd = "printf '%s\\n'";
+    for (const std::string& command : commands)
+    {
+        cmd += " '" + command + "'";
+    }
+    return RunCommand(cmd + " | " + cli + " --thrift-port " + std::to_string(thriftPort) + " 2>&1");
+}
+
+/**
+ * Deletes mirroring session \p session through the "psa_switch" Thrift service,
+ * then gets and deletes it again; returns one line per call. It uses a Thrift
+ * client of its own, because psa_switch_CLI's mirroring_delete calls an RPC that
+ * the service does not have (BMv2 1.15.8). The client finds the Thrift modules as
+ * psa_switch_CLI does, in the folder that the CLI adds to sys.path, so BMv2's Python
+ * environment does not have to be active.
+ */
+std::string
+DeletePsaMirroringSession(int thriftPort, int session)
+{
+    const std::string script = R"py(
+import re, shutil, sys
+for line in open(shutil.which("psa_switch_CLI") or "/dev/null"):
+    folder = re.match(r"sys\.path\.append\(.(.+).\)", line.strip())
+    if folder:
+        sys.path.append(folder.group(1))
+from thrift.protocol import TBinaryProtocol, TMultiplexedProtocol
+from thrift.transport import TSocket, TTransport
+from pswitch_runtime import PsaSwitch
+from pswitch_runtime.ttypes import InvalidMirroringOperation
+transport = TTransport.TBufferedTransport(TSocket.TSocket("localhost", int(sys.argv[1])))
+transport.open()
+client = PsaSwitch.Client(TMultiplexedProtocol.TMultiplexedProtocol(
+    TBinaryProtocol.TBinaryProtocol(transport), "psa_switch"))
+for rpc in [client.mirroring_session_delete, client.mirroring_session_get,
+            client.mirroring_session_delete]:
+    try:
+        rpc(int(sys.argv[2]))
+        print(rpc.__name__, "ok")
+    except InvalidMirroringOperation as e:
+        print(rpc.__name__, "error", e.code)
+)py";
+    return RunCommand("python3 -c '" + script + "' " + std::to_string(thriftPort) + " " +
+                      std::to_string(session) + " 2>&1");
 }
 
 /// Action data with a single value
@@ -273,6 +318,11 @@ class P4ControllerMirroringTestCase : public P4TestCase
  * the P4 program clones to session 5 show that the clones use the session and
  * that the queues follow these settings. Then simple_switch_CLI reads the
  * sessions and the time of the switch.
+ *
+ * switch_channel: an idle port sends a frame at once, and a frame waits in the
+ * queue only while the port is busy. So the switch's ports send at 1 Gbps, and
+ * a first frame, L0, keeps port 1 busy: the first original then waits in the
+ * queue, which is full, and the second one is dropped.
  */
 class P4SimpleSwitchCliTestCase : public P4TestCase
 {
@@ -320,6 +370,7 @@ class P4SimpleSwitchCliTestCase : public P4TestCase
             Ptr<SimpleNetDevice> port = CreateObject<SimpleNetDevice>();
             Ptr<SimpleNetDevice> host = CreateObject<SimpleNetDevice>();
             port->SetAddress(Mac48Address::Allocate());
+            port->SetAttribute("DataRate", DataRateValue(DataRate("1Gbps")));
             host->SetAddress(Mac48Address::Allocate());
             port->SetChannel(channel);
             host->SetChannel(channel);
@@ -352,15 +403,23 @@ class P4SimpleSwitchCliTestCase : public P4TestCase
                               false,
                               "mirroring_delete did not delete session 7");
 
-        // Two frames that are cloned to session 5: the originals go to port 1, the
-        // clones to port 2
+        // L0 (not cloned) keeps port 1 busy. Then two frames that are cloned to
+        // session 5: the originals go to port 1, the clones to port 2
+        Simulator::Schedule(MilliSeconds(1), &P4SimpleSwitchCliTestCase::Send, this, 0x9000);
         Simulator::Schedule(MilliSeconds(1), &P4SimpleSwitchCliTestCase::Send, this, 0x9001);
         Simulator::Schedule(MilliSeconds(1), &P4SimpleSwitchCliTestCase::Send, this, 0x9004);
         Simulator::Stop(Seconds(1));
         Simulator::Run();
 
-        // set_queue_depth 1 1: port 1 holds one frame, so the second original is dropped
-        NS_TEST_EXPECT_MSG_EQ(m_received[1].size(), 1u, "Port 1 should send only one original");
+        // set_queue_depth 1 1: while port 1 sends L0, its queue holds one frame, so
+        // the second original is dropped
+        NS_TEST_EXPECT_MSG_EQ(m_received[1].size(),
+                              2u,
+                              "Port 1 should send L0 and only one original");
+        if (m_received[1].size() == 2)
+        {
+            NS_TEST_EXPECT_MSG_EQ(m_received[1][1].first, 0x9001, "Wrong original on port 1");
+        }
         // set_queue_rate 100 2: port 2 sends one frame per 10 ms
         NS_TEST_EXPECT_MSG_EQ(m_received[2].size(), 2u, "Port 2 should send both clones");
         if (m_received[2].size() == 2)
@@ -372,12 +431,13 @@ class P4SimpleSwitchCliTestCase : public P4TestCase
         }
 
         // The clock of the switch is the simulation clock: 1 s since the start
-        std::string out = RunSimpleSwitchCli(sw->GetThriftPort(),
-                                             {"mirroring_get 5",
-                                              "mirroring_get 6",
-                                              "mirroring_get 7",
-                                              "get_time_elapsed",
-                                              "get_time_since_epoch"});
+        std::string out = RunCli("simple_switch_CLI",
+                                 sw->GetThriftPort(),
+                                 {"mirroring_get 5",
+                                  "mirroring_get 6",
+                                  "mirroring_get 7",
+                                  "get_time_elapsed",
+                                  "get_time_since_epoch"});
         const std::vector<std::string> expected = {
             "RuntimeCmd: MirroringSessionConfig(port=2, mgid=None)\n",
             "RuntimeCmd: MirroringSessionConfig(port=None, mgid=1)\n",
@@ -399,6 +459,160 @@ class P4SimpleSwitchCliTestCase : public P4TestCase
 
 /**
  * \ingroup p4sim-tests
+ * The commands that psa_switch_CLI adds to the runtime CLI, which use the
+ * "psa_switch" Thrift service, on a PSA switch. The flow table file adds
+ * mirroring sessions 5 (port 2) and 6 (multicast group 1), gives every egress
+ * queue room for one frame and port 2 room for eight, lets every port send 100
+ * frames per second and port 2 send 50, and in its last line sends frames for
+ * unknown addresses to port 0. Frames check the queues and the last line. Then
+ * psa_switch_CLI reads the sessions and the time of the switch, and a Thrift
+ * client deletes a session.
+ *
+ * As in P4SimpleSwitchCliTestCase, a first frame, L0, keeps port 1 busy, so that
+ * the frames after it wait in the queue.
+ */
+class P4PsaSwitchCliTestCase : public P4TestCase
+{
+  public:
+    P4PsaSwitchCliTestCase()
+        : P4TestCase("psa_switch_CLI: mirroring sessions, queue depth and rate, time")
+    {
+    }
+
+  private:
+    /// Host 0 sends a frame with this EtherType to \p dst (see egress_ports_psa.p4)
+    void Send(const char* dst, uint16_t etherType)
+    {
+        m_hosts[0]->Send(Create<Packet>(4), Mac48Address(dst), etherType);
+    }
+
+    /// A host received a frame from the switch: note its EtherType and the time
+    bool Receive(Ptr<NetDevice> host,
+                 Ptr<const Packet> packet,
+                 uint16_t protocol,
+                 const Address& from,
+                 const Address& to,
+                 NetDevice::PacketType type)
+    {
+        auto port = std::find(m_hosts.begin(), m_hosts.end(), host) - m_hosts.begin();
+        m_received[port].emplace_back(protocol, Simulator::Now());
+        return true;
+    }
+
+    void DoRun() override
+    {
+        SetDataDir(NS_TEST_SOURCEDIR);
+        Ptr<Node> switchNode = CreateObject<Node>();
+        Ptr<Node> hostNode = CreateObject<Node>();
+        Ptr<P4SwitchNetDevice> sw = CreateObject<P4SwitchNetDevice>();
+        sw->SetAttribute("P4SwitchArch", UintegerValue(P4SWITCH_ARCH_PSA));
+        sw->SetAttribute(
+            "JsonPath",
+            StringValue(CreateDataDirFilename("p4src/egress_ports/egress_ports_psa.json")));
+        sw->SetAttribute(
+            "FlowTablePath",
+            StringValue(CreateDataDirFilename("p4src/egress_ports/flowtable_psa_cli.txt")));
+        sw->SetAttribute("BmLogLevel", StringValue("off"));
+        switchNode->AddDevice(sw);
+        for (uint32_t i = 0; i < 3; i++)
+        {
+            Ptr<SimpleChannel> channel = CreateObject<SimpleChannel>();
+            Ptr<SimpleNetDevice> port = CreateObject<SimpleNetDevice>();
+            Ptr<SimpleNetDevice> host = CreateObject<SimpleNetDevice>();
+            port->SetAddress(Mac48Address::Allocate());
+            port->SetAttribute("DataRate", DataRateValue(DataRate("1Gbps")));
+            host->SetAddress(Mac48Address::Allocate());
+            port->SetChannel(channel);
+            host->SetChannel(channel);
+            switchNode->AddDevice(port);
+            hostNode->AddDevice(host);
+            sw->AddBridgePort(port);
+            host->SetPromiscReceiveCallback(MakeCallback(&P4PsaSwitchCliTestCase::Receive, this));
+            m_hosts.push_back(host);
+        }
+        sw->Initialize(); // runs psa_switch_CLI with the flow table file
+
+        // Three frames for port 1, the first of them L0; three for port 2; one for
+        // an unknown address
+        Simulator::Schedule(MilliSeconds(1), [this]() {
+            for (uint16_t etherType : {0x9000, 0x9001, 0x9002})
+            {
+                Send("00:00:00:00:00:01", etherType);
+            }
+            for (uint16_t etherType : {0x9003, 0x9004, 0x9005})
+            {
+                Send("00:00:00:00:00:02", etherType);
+            }
+            Send("00:00:00:00:00:03", 0x9006);
+        });
+        Simulator::Stop(Seconds(1));
+        Simulator::Run();
+
+        // set_queue_depth 1 and set_queue_rate 100: port 1 sends L0, and 10 ms
+        // later the frame that waited in its queue. The third frame is dropped
+        NS_TEST_EXPECT_MSG_EQ(m_received[1].size(), 2u, "Port 1 should send L0 and one frame");
+        if (m_received[1].size() == 2)
+        {
+            NS_TEST_EXPECT_MSG_EQ(m_received[1][1].first, 0x9001, "Wrong second frame on port 1");
+            NS_TEST_EXPECT_MSG_GT_OR_EQ(m_received[1][1].second - m_received[1][0].second,
+                                        MilliSeconds(10),
+                                        "Port 1 should send its frames 10 ms apart");
+        }
+        // set_queue_depth 8 2 and set_queue_rate 50 2: port 2 sends all three
+        // frames, 20 ms apart
+        NS_TEST_EXPECT_MSG_EQ(m_received[2].size(), 3u, "Port 2 should send all three frames");
+        for (size_t i = 1; i < m_received[2].size(); i++)
+        {
+            NS_TEST_EXPECT_MSG_GT_OR_EQ(m_received[2][i].second - m_received[2][i - 1].second,
+                                        MilliSeconds(20),
+                                        "Port 2 should send its frames 20 ms apart");
+        }
+        // table_set_default, the last line of the file
+        NS_TEST_EXPECT_MSG_EQ(m_received[0].size(),
+                              1u,
+                              "The frame for an unknown address should leave on port 0");
+
+        // Session 7 is added with the API of the device, so mirroring_get reads
+        // the sessions of the P4 core. The clock of the switch is the simulation
+        // clock: 1 s since the start
+        NS_TEST_ASSERT_MSG_EQ(sw->AddMirroringSession(7, 1), true, "Cannot add session 7");
+        std::string out = RunCli("psa_switch_CLI",
+                                 sw->GetThriftPort(),
+                                 {"mirroring_get 5",
+                                  "mirroring_get 6",
+                                  "mirroring_get 7",
+                                  "get_time_elapsed",
+                                  "get_time_since_epoch"});
+        const std::vector<std::string> expected = {
+            "RuntimeCmd: MirroringSessionConfig(port=2, mgid=None)\n",
+            "RuntimeCmd: MirroringSessionConfig(port=None, mgid=1)\n",
+            "RuntimeCmd: MirroringSessionConfig(port=1, mgid=None)\n",
+            "RuntimeCmd: 1000000\nRuntimeCmd: 1000000\n", // the two times
+        };
+        for (const std::string& line : expected)
+        {
+            NS_TEST_EXPECT_MSG_NE(out.find(line),
+                                  std::string::npos,
+                                  "psa_switch_CLI should print '" << line << "':\n"
+                                                                  << out);
+        }
+
+        // Once session 6 is deleted, getting or deleting it fails with
+        // SESSION_NOT_FOUND (1)
+        out = DeletePsaMirroringSession(sw->GetThriftPort(), 6);
+        NS_TEST_EXPECT_MSG_EQ(out,
+                              "mirroring_session_delete ok\n"
+                              "mirroring_session_get error 1\n"
+                              "mirroring_session_delete error 1\n",
+                              "Wrong replies of the psa_switch service");
+    }
+
+    std::vector<Ptr<SimpleNetDevice>> m_hosts;            ///< one per switch port
+    std::vector<std::pair<uint16_t, Time>> m_received[3]; ///< (EtherType, time) per port
+};
+
+/**
+ * \ingroup p4sim-tests
  * P4Controller tests.
  */
 class P4ControllerTestSuite : public TestSuite
@@ -411,6 +625,7 @@ class P4ControllerTestSuite : public TestSuite
         AddTestCase(new P4ControllerActionProfileTestCase, TestCase::QUICK);
         AddTestCase(new P4ControllerMirroringTestCase, TestCase::QUICK);
         AddTestCase(new P4SimpleSwitchCliTestCase, TestCase::QUICK);
+        AddTestCase(new P4PsaSwitchCliTestCase, TestCase::QUICK);
     }
 };
 

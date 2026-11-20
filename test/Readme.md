@@ -7,24 +7,39 @@ From the ns-3 root, with `./ns3 configure --enable-tests --enable-examples`:
 ```bash
 ./test.py -s p4sim                               # one suite
 ./ns3 run "test-runner --suite=p4sim --verbose"  # one suite, with each test case
-./ns3 run "p4-basic-example --ns3::P4SwitchNetDevice::BmLogLevel=off"  # one example
+./ns3 run p4-basic-example                       # one example
+contrib/p4sim/test/run-tests.sh                  # every suite and example, with a summary
 ```
 
-No environment variable is needed, and suites can run in parallel. `./test.py -e`
-runs an example without the arguments in `examples-to-run.py`, so it writes the
-full BMv2 log to `/tmp`.
+No environment variable is needed, and suites can run in parallel.
 
 ## Suites
 
-| Suite | Checks | Needs BMv2 |
-|---|---|---|
-| `format-utils` | string and number conversion helpers | no |
-| `p4-topology-reader` | reading a topology file | no |
-| `p4-p2p-channel` | the P4 point-to-point channel | no |
-| `p4-queue` | egress queue: capacity, rate, FIFO, per-port rate, priorities | no |
-| `p4sim` | v1model, PSA and PNA load their program; Thrift ports; `BmLogLevel` | yes |
-| `p4-controller` | flow entries, action profiles and mirroring sessions, read back from the switch; the commands of `simple_switch_CLI` for mirroring, queues and time | yes, and `simple_switch_CLI` |
-| `p4-packet` | frames sent into a switch and the frames that leave it, on v1model, PNA and PSA | yes |
+18 suites, 113 test cases. The first seven do not need BMv2.
+
+| Suite | Checks |
+|---|---|
+| `format-utils` | string and number conversion helpers |
+| `p4-topology-reader` | reading a topology file |
+| `p4-p2p-channel` | the P4 point-to-point channel; short frames on a 100 Gbps link keep the exact line rate |
+| `channel-state-test-suite` | the states of the switched-Ethernet channel |
+| `switched-ethernet-host` | the transmit queue of a host device; short frames keep the exact line rate on 100 and 400 Gbps links and at the default rate, 10 Gbps |
+| `p4-queue` | egress queue: capacity, rate, FIFO, per-port rate, priorities |
+| `p4-traffic-manager` | the VOQ + fabric traffic manager |
+| `p4sim` | v1model, PSA and PNA load their program; Thrift ports; `BmLogLevel` and its default, `off`; the deprecated `ChannelType` and `EnableTracing` are still accepted |
+| `p4-packet` | frames sent into a switch and the frames that leave it, on v1model, PNA, PSA and the pipeline core |
+| `p4-controller` | flow entries, action profiles and mirroring sessions, read back from the switch; the mirroring, queue and time commands of `simple_switch_CLI` and `psa_switch_CLI` |
+| `p4-config-swap` | `EnableSwap`: an idle switch swaps its program at once, a busy one when its last packet has left; frames that arrive meanwhile wait and use the new program (v1model through `P4Controller` and `simple_switch_CLI`, PSA); without `EnableSwap` the program stays |
+| `p4-egress` | a congested switched-Ethernet port sends back to back at its line rate; a switch with a full egress queue, or one whose port just refused a frame, can be destroyed |
+| `p4-switch-rate` | `SwitchRate` limits the whole pipeline, 0 means no limit, a full input buffer drops |
+| `p4-pipeline-delay` | `PipelineDelay` delays every packet by the same time without lowering the throughput (default egress path, VOQ, PSA, pipeline core, with `SwitchRate`, on a congested port), once per pass for recirculated frames and clones; a switch with packets in its pipeline can be destroyed |
+| `p4-bridge-port` | CSMA and point-to-point bridge ports next to a switched-Ethernet port |
+| `p4-pna` | a PNA switch forwards, and drops what its program does not send; a full output queue drops |
+| `link-framing` | Ethernet framing (preamble, FCS, padding, interframe gap) on the switched-Ethernet channel and the P4 point-to-point device; between two hosts, through a switch, and in a switch's estimate for a point-to-point bridge port |
+| `switched-ethernet-traffic-control` | flow control on host devices: a queue disc schedules the backlog of a host, `FqCoDelQueueDisc` is the default, `DisableFlowControl()` installs none |
+
+`p4-controller` also needs `simple_switch_CLI` and `psa_switch_CLI`, `p4-config-swap`
+`simple_switch_CLI`.
 
 [`examples-to-run.py`](examples-to-run.py) lists the examples that `test.py` runs
 as smoke tests: each must exit with 0. It keeps the examples from breaking unnoticed.
@@ -42,10 +57,12 @@ can change details such as generated names).
 
 `p4-packet` runs the `.stf` files in [`p4src/forward`](p4src/forward) on a switch
 with three ports, once per architecture: `forward_v1model.p4`, `forward_pna.p4` and
-`forward_psa.p4` behave the same. [`p4src/priority`](p4src/priority) checks the
+`forward_psa.p4` behave the same, and the pipeline core (`P4SwitchArch` 3) runs
+`forward_v1model.p4`. [`p4src/drop`](p4src/drop) checks `mark_to_drop()` in the
+ingress and in the egress, on v1model and the pipeline core. [`p4src/priority`](p4src/priority) checks the
 priority queues of v1model, [`p4src/resubmit`](p4src/resubmit) and
 [`p4src/recirculate`](p4src/recirculate) its resubmit and recirculation,
-[`p4src/clone`](p4src/clone) its clones (also to a multicast group), [`p4src/primitives`](p4src/primitives)
+[`p4src/clone`](p4src/clone) its clones (also to a multicast group) and those of PSA, [`p4src/primitives`](p4src/primitives)
 `digest()`, `hash()` with max 0 and `random()` with lo > hi, and [`p4src/lag`](p4src/lag)
 the LAG member that its multicast picks. The format is a subset of p4c's STF:
 
@@ -59,6 +76,7 @@ mc_node_create 0 2 | 3                        # node 0 (rid 0): port 2 and LAG 3
 mc_node_associate 1 0                         # node 0 is in group 1
 packet 0 0000000000fe 000000000010 0800 ...   # send this frame into port 0
 expect 1 000000000011 0000000000fe 0800 ...   # this frame leaves port 1
+register MyEgress.egress_frames 0 2           # after the run, this register holds 2
 ```
 
 Frames are Ethernet frames in hex; spaces are ignored and `*` in `expect` matches
@@ -70,7 +88,8 @@ program goes in its own directory as `<dir>/<dir>_<arch>.p4`.
 ## Writing a test
 
 - Find data with `SetDataDir(NS_TEST_SOURCEDIR)` and `CreateDataDirFilename()`.
-- Set `BmLogLevel` to `off`; the BMv2 log is written for every packet.
+- Leave `BmLogLevel` at `off` (the default); at `trace` the BMv2 log is written
+  for every packet.
 - Leave `ThriftPort` at 0. A switch reserves a free port starting at
   `$P4SIM_THRIFT_PORT_BASE` (9090) with a lock on `/tmp/p4sim-thrift-<port>.lock`,
   so parallel runs never share a port.

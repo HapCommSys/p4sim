@@ -25,6 +25,7 @@
 #include "ns3/custom-header.h"
 #include "ns3/data-rate.h"
 #include "ns3/ethernet-header.h"
+#include "ns3/link-framing.h"
 #include "ns3/net-device.h"
 #include "ns3/node.h"
 #include "ns3/nstime.h"
@@ -328,6 +329,13 @@ class CustomP2PNetDevice : public NetDevice
      * transmission
      */
     Time m_tInterframeGap;
+
+    /// Exact end of the last frame and its interframe gap, in seconds (not
+    /// rounded to the simulator's resolution; see TransmitStart())
+    int64x64_t m_txEnd{0};
+
+    /// "Framing" attribute: what the link puts on the wire around each frame
+    LinkFraming::Type m_framing{LinkFraming::NONE};
 
     /**
      * The P4P2PChannel to which this CustomP2PNetDevice has been

@@ -1,0 +1,6 @@
+table_set_default ipv4_nhop drop
+table_set_default arp_simple drop
+table_add ipv4_nhop ipv4_forward 0x0a010101 => 00:00:00:00:00:01 0x0
+table_add arp_simple set_arp_nhop 0x0a010101 => 0x0
+table_add ipv4_nhop ipv4_forward 0x0a010102 => 00:00:00:00:00:03 0x1
+table_add arp_simple set_arp_nhop 0x0a010102 => 0x1

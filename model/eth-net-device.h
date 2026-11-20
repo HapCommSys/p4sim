@@ -1,0 +1,197 @@
+/*
+ * Copyright (c) 2025 TU Dresden
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation;
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software
+ * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+ *
+ * Authors: Mingyu Ma <mingyu.ma@tu-dresden.de>
+ * Modified: Vineet Goel <vineetgoel692@gmail.com>
+ */
+
+#ifndef ETH_NET_DEVICE_H
+#define ETH_NET_DEVICE_H
+
+#include "ns3/event-id.h"
+#include "ns3/mac48-address.h"
+#include "ns3/net-device.h"
+#include "ns3/queue.h"
+#include "ns3/traced-callback.h"
+
+namespace ns3
+{
+
+class SwitchedEthernetChannel;
+
+/**
+ * \ingroup p4sim
+ *
+ * \brief Plain Ethernet host device for the host side of a SwitchedEthernetChannel.
+ *
+ * Used to connect a regular (non-P4) host node to a P4SwitchNetDevice via a
+ * SwitchedEthernetChannel.  On the wire the link carries full Ethernet frames;
+ * this device strips/adds the Ethernet header when handing off to/from the
+ * IP stack, exactly like a CsmaNetDevice.
+ *
+ * Typical setup via SwitchedEthernetHelper:
+ * \code
+ *   Ptr<P4SwitchNetDevice> sw =
+ *       DynamicCast<P4SwitchNetDevice>(p4.Install(switchNode).Get(0));
+ *   SwitchedEthernetHelper eth;
+ *   NetDeviceContainer devs = eth.Install(sw, hosts);
+ *   // devs.Get(i) = SwitchedEthernetHostDevice on hosts.Get(i)
+ * \endcode
+ */
+class SwitchedEthernetHostDevice : public NetDevice
+{
+  public:
+    static TypeId GetTypeId();
+
+    SwitchedEthernetHostDevice();
+    ~SwitchedEthernetHostDevice() override;
+
+    /**
+     * \brief Attach this device to \p channel.
+     *
+     * Must be called exactly once after construction.  The device registers
+     * itself as the host slot on the channel.
+     */
+    void Attach(Ptr<SwitchedEthernetChannel> channel);
+
+    /**
+     * \brief Deliver an incoming Ethernet frame from the channel.
+     *
+     * Called by SwitchedEthernetChannel after the propagation delay.
+     * Checks the destination MAC, strips the Ethernet header and calls
+     * the registered receive callbacks.
+     */
+    void ReceiveFrame(Ptr<Packet> frame);
+
+    /**
+     * \brief Set the transmit queue.
+     *
+     * Frames that arrive while the device is sending wait here and leave back
+     * to back; a frame that does not fit is dropped (MacTxDrop). The default
+     * is a DropTailQueue of 100 packets. SwitchedEthernetHelper sets the
+     * queue and connects it to the traffic control layer (flow control); a
+     * queue set later is not connected.
+     */
+    void SetQueue(Ptr<Queue<Packet>> queue);
+
+    /** \return The transmit queue. */
+    Ptr<Queue<Packet>> GetQueue() const;
+
+    // -----------------------------------------------------------------------
+    // NetDevice interface
+    // -----------------------------------------------------------------------
+    void SetIfIndex(const uint32_t index) override;
+    uint32_t GetIfIndex() const override;
+    Ptr<Channel> GetChannel() const override;
+    void SetAddress(Address address) override;
+    Address GetAddress() const override;
+    bool SetMtu(const uint16_t mtu) override;
+    uint16_t GetMtu() const override;
+    bool IsLinkUp() const override;
+    void AddLinkChangeCallback(Callback<void> callback) override;
+    bool IsBroadcast() const override;
+    Address GetBroadcast() const override;
+    bool IsMulticast() const override;
+    Address GetMulticast(Ipv4Address multicastGroup) const override;
+    Address GetMulticast(Ipv6Address addr) const override;
+    bool IsPointToPoint() const override;
+    bool IsBridge() const override;
+    bool Send(Ptr<Packet> packet, const Address& dest, uint16_t protocolNumber) override;
+    bool SendFrom(Ptr<Packet> packet,
+                  const Address& source,
+                  const Address& dest,
+                  uint16_t protocolNumber) override;
+    Ptr<Node> GetNode() const override;
+    void SetNode(Ptr<Node> node) override;
+    bool NeedsArp() const override;
+    void SetReceiveCallback(NetDevice::ReceiveCallback cb) override;
+    void SetPromiscReceiveCallback(NetDevice::PromiscReceiveCallback cb) override;
+    bool SupportsSendFrom() const override;
+
+  protected:
+    void DoDispose() override;
+
+  private:
+    /// Puts the next queued frame on the wire, unless a frame is being sent
+    void TransmitStart();
+
+    /// The frame on the wire has been serialised: free the channel slot and
+    /// send the next one. If the link was detached meanwhile, the frame is
+    /// lost and reported through PhyTxDrop.
+    void TransmitComplete();
+
+    Ptr<Queue<Packet>> m_queue; ///< frames waiting to be sent
+    bool m_txBusy{false};       ///< true while a frame is being serialised
+    Ptr<Packet> m_currentPkt;   ///< the frame being serialised
+    EventId m_txCompleteEvent;  ///< the pending TransmitComplete()
+    EventId m_txRetryEvent;     ///< the pending TransmitStart() after a refused frame
+    Ptr<SwitchedEthernetChannel> m_channel;
+    uint32_t m_devId{0};
+    Mac48Address m_address;
+    uint16_t m_mtu{1500};
+    Ptr<Node> m_node;
+    uint32_t m_ifIndex{0};
+    NetDevice::ReceiveCallback m_rxCallback;
+    NetDevice::PromiscReceiveCallback m_promiscRxCallback;
+
+    TracedCallback<Ptr<const Packet>> m_macTxTrace;
+    TracedCallback<Ptr<const Packet>> m_macRxTrace;
+    TracedCallback<Ptr<const Packet>> m_macTxDropTrace;
+    TracedCallback<Ptr<const Packet>> m_phyTxDropTrace; ///< a frame lost on a detached link
+    /**
+     * A trace source that emulates a non-promiscuous protocol sniffer connected
+     * to the device.  Unlike your average everyday sniffer, this trace source
+     * will not fire on PACKET_OTHERHOST events.
+     *
+     * On the transmit size, this trace hook will fire after a packet is dequeued
+     * from the device queue for transmission.  In Linux, for example, this would
+     * correspond to the point just before a device hard_start_xmit where
+     * dev_queue_xmit_nit is called to dispatch the packet to the PF_PACKET
+     * ETH_P_ALL handlers.
+     *
+     * On the receive side, this trace hook will fire when a packet is received,
+     * just before the receive callback is executed.  In Linux, for example,
+     * this would correspond to the point at which the packet is dispatched to
+     * packet sniffers in netif_receive_skb.
+     *
+     * \see class CallBackTraceSource
+     */
+    TracedCallback<Ptr<const Packet>> m_snifferTrace;
+
+    /**
+     * A trace source that emulates a promiscuous mode protocol sniffer connected
+     * to the device.  This trace source fire on packets destined for any host
+     * just like your average everyday packet sniffer.
+     *
+     * On the transmit size, this trace hook will fire after a packet is dequeued
+     * from the device queue for transmission.  In Linux, for example, this would
+     * correspond to the point just before a device hard_start_xmit where
+     * dev_queue_xmit_nit is called to dispatch the packet to the PF_PACKET
+     * ETH_P_ALL handlers.
+     *
+     * On the receive side, this trace hook will fire when a packet is received,
+     * just before the receive callback is executed.  In Linux, for example,
+     * this would correspond to the point at which the packet is dispatched to
+     * packet sniffers in netif_receive_skb.
+     *
+     * \see class CallBackTraceSource
+     */
+    TracedCallback<Ptr<const Packet>> m_promiscSnifferTrace;
+};
+
+} // namespace ns3
+
+#endif // ETH_NET_DEVICE_H

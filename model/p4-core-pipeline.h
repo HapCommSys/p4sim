@@ -40,9 +40,8 @@ class P4CorePipeline : public P4SwitchCore
      * @brief Construct a new P4 Core Pipeline object
      * @param netDevice P4 Switch Net Device
      * @param enableSwap enable swapping in run time
-     * @param enableTracing enable tracing
      */
-    P4CorePipeline(P4SwitchNetDevice* netDevice, bool enableSwap, bool enableTracing);
+    P4CorePipeline(P4SwitchNetDevice* netDevice, bool enableSwap);
 
     /**
      * @brief Destroy the P4 Core Pipeline object
@@ -99,9 +98,10 @@ class P4CorePipeline : public P4SwitchCore
     void HandleIngressPipeline() override;
 
     /**
-     * @brief [override, dummy] Enqueue a packet to the switch queue buffer
+     * @brief [override] Send a processed packet to its port. The core has no
+     * egress queues; Enqueue() calls this once the pipeline delay is over.
      */
-    void Enqueue(uint32_t egress_port, std::unique_ptr<bm::Packet>&& packet) override;
+    void EnqueueNow(uint32_t egress_port, std::unique_ptr<bm::Packet>&& packet) override;
 
     /**
      * @brief [override, dummy] Handle the egress pipeline

@@ -18,6 +18,7 @@
  */
 
 #include "ns3/custom-p2p-net-device.h"
+#include "ns3/enum.h"
 #include "ns3/error-model.h"
 #include "ns3/llc-snap-header.h"
 #include "ns3/log.h"
@@ -70,6 +71,17 @@ CustomP2PNetDevice::GetTypeId(void)
                           TimeValue(Seconds(0.0)),
                           MakeTimeAccessor(&CustomP2PNetDevice::m_tInterframeGap),
                           MakeTimeChecker())
+            .AddAttribute(
+                "Framing",
+                "What this device puts on the wire around each frame it sends, "
+                "as the Framing attribute of SwitchedEthernetChannel. None (the "
+                "default): the frame alone. Ethernet: IEEE 802.3, an 8-byte "
+                "preamble and start-of-frame delimiter, a 4-byte FCS, padding up "
+                "to the 64-byte minimum frame, and a 12-byte interframe gap. They "
+                "only take time; the far end receives the frame as it was sent.",
+                EnumValue(LinkFraming::NONE),
+                MakeEnumAccessor(&CustomP2PNetDevice::m_framing),
+                MakeEnumChecker(LinkFraming::NONE, "None", LinkFraming::ETHERNET, "Ethernet"))
             //
             // Transmit queueing discipline for the device which includes its own set
             // of trace hooks.
@@ -744,8 +756,23 @@ CustomP2PNetDevice::TransmitStart(Ptr<Packet> p)
     m_currentPkt = p;
     m_phyTxBeginTrace(m_currentPkt);
 
-    Time txTime = m_bps.CalculateBytesTxTime(p->GetSize());
-    Time txCompleteTime = txTime + m_tInterframeGap;
+    // Exact times in seconds. The simulator rounds every event time to its
+    // resolution (1 ns by default); a frame that follows the previous one back
+    // to back (it starts no later than the rounded end of that frame and its
+    // gap) starts at their exact end, so the rounding does not add up. After an
+    // idle time, a frame starts now.
+    bool backToBack = Time::From(m_txEnd, Time::S) >= Simulator::Now();
+    int64x64_t start = backToBack ? m_txEnd : Simulator::Now().To(Time::S);
+    // The frame takes its bytes with the link's framing (see the Framing
+    // attribute); the gap of the framing and InterframeGap delay only the next
+    // frame, not the delivery of this one.
+    LinkFraming framing(m_framing);
+    int64x64_t bitRate(m_bps.GetBitRate());
+    int64x64_t frameEnd = start + int64x64_t(framing.GetWireBytes(p->GetSize()) * 8) / bitRate;
+    m_txEnd =
+        frameEnd + int64x64_t(framing.GetGapBytes() * 8) / bitRate + m_tInterframeGap.To(Time::S);
+    Time txTime = Time::From(frameEnd, Time::S) - Simulator::Now();
+    Time txCompleteTime = Time::From(m_txEnd, Time::S) - Simulator::Now();
 
     NS_LOG_LOGIC("Schedule TransmitCompleteEvent in " << txCompleteTime.As(Time::S));
     Simulator::Schedule(txCompleteTime, &CustomP2PNetDevice::TransmitComplete, this);
@@ -861,8 +888,32 @@ CustomP2PNetDevice::Receive(Ptr<Packet> packet)
         //
         Ptr<Packet> originalPacket = packet->Copy();
 
-        // EthernetHeader eeh_hd;
-        // bool hasEthernet = originalPacket->PeekHeader(eeh_hd);
+        // The addresses for the callbacks. A frame that still has its Ethernet
+        // header (on a switch port always) brings its own: a P4 switch must see
+        // the frame's destination, not this port's address. A frame rebuilt from
+        // the custom header has none; it is from the remote device, to this one.
+        Address from = GetRemote();
+        Address to = GetAddress();
+        NetDevice::PacketType packetType = NetDevice::PACKET_HOST;
+        EthernetHeader eth;
+        if (!m_NeedProcessHeader && packet->PeekHeader(eth))
+        {
+            Mac48Address dst = eth.GetDestination();
+            from = eth.GetSource();
+            to = dst;
+            if (dst.IsBroadcast())
+            {
+                packetType = NetDevice::PACKET_BROADCAST;
+            }
+            else if (dst.IsGroup())
+            {
+                packetType = NetDevice::PACKET_MULTICAST;
+            }
+            else if (dst != m_address)
+            {
+                packetType = NetDevice::PACKET_OTHERHOST;
+            }
+        }
 
         // std::cout << "***Netdevice: Receive: before remove the custom header " << std::endl;
         // originalPacket->Print (std::cout);
@@ -898,12 +949,7 @@ CustomP2PNetDevice::Receive(Ptr<Packet> packet)
         if (!m_promiscCallback.IsNull())
         {
             m_macPromiscRxTrace(originalPacket);
-            m_promiscCallback(this,
-                              packet,
-                              protocol,
-                              GetRemote(),
-                              GetAddress(),
-                              NetDevice::PACKET_HOST);
+            m_promiscCallback(this, packet, protocol, from, to, packetType);
         }
 
         m_macRxTrace(originalPacket);

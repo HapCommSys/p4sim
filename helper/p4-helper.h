@@ -20,8 +20,12 @@
 #ifndef P4_HELPER_H
 #define P4_HELPER_H
 
+#include "ns3/attribute.h"
 #include "ns3/net-device-container.h"
+#include "ns3/node-container.h"
 #include "ns3/object-factory.h"
+#include "ns3/p4-switch-net-device.h"
+#include "ns3/trace-helper.h"
 
 #include <string>
 
@@ -30,66 +34,101 @@ namespace ns3
 
 /**
  * \ingroup p4sim
- * \brief Helper class to manage P4 programmable bridge devices.
+ * \brief Helper for installing a P4SwitchNetDevice on a switch node.
  *
- * The P4Helper class simplifies the creation, configuration, and installation
- * of P4-based bridge devices (e.g., ns3::P4SwitchNetDevice) on NS-3 nodes. It
- * allows for adding LAN segments as ports and configuring attributes for the
- * bridge devices. This helper is designed for simulations involving P4
- * programmable switches or devices.
+ * P4Helper manages a single object factory for the P4SwitchNetDevice.
+ * Use SetDeviceAttribute() to configure P4-specific parameters (JsonPath,
+ * FlowTablePath, P4SwitchArch, SwitchRate, …) before calling Install().
+ *
+ * To connect host nodes use SwitchedEthernetHelper, which owns the channel
+ * factory and the SwitchedEthernetHostDevice installation:
+ *
+ * \code
+ *   // Switch setup — P4 parameters only
+ *   P4Helper p4;
+ *   p4.SetDeviceAttribute("JsonPath",      StringValue("/path/switch.json"));
+ *   p4.SetDeviceAttribute("FlowTablePath", StringValue("/path/rules.txt"));
+ *   p4.SetDeviceAttribute("P4SwitchArch",  UintegerValue(0)); // V1Model
+ *   p4.SetDeviceAttribute("SwitchRate",    UintegerValue(10000));
+ *   NetDeviceContainer swDevs = p4.Install(switchNode);
+ *   Ptr<P4SwitchNetDevice> sw =
+ *       DynamicCast<P4SwitchNetDevice>(swDevs.Get(0));
+ *
+ *   // Host setup — channel / NIC parameters only
+ *   SwitchedEthernetHelper eth;
+ *   eth.SetChannelAttribute("DataRate", DataRateValue(DataRate("1Gbps")));
+ *   eth.SetChannelAttribute("Delay",    TimeValue(MicroSeconds(5)));
+ *   NetDeviceContainer hostDevs = eth.Install(sw, hosts);
+ * \endcode
  */
-class P4Helper
+class P4Helper : public PcapHelperForDevice, public AsciiTraceHelperForDevice
 {
   public:
-    /**
-     * \brief Construct a P4Helper object.
-     *
-     * This initializes the internal object factory for creating
-     * ns3::P4SwitchNetDevice instances.
-     */
     P4Helper();
+    ~P4Helper() override = default;
+
+    // -----------------------------------------------------------------------
+    // Attribute configuration
+    // -----------------------------------------------------------------------
 
     /**
-     * \brief Set an attribute on the P4 bridge device.
+     * \brief Set an attribute on the P4SwitchNetDevice created by Install().
      *
-     * This method configures attributes for the bridge devices created by this
-     * helper. The attributes can control various aspects of the bridge device's
-     * behavior.
-     *
-     * \param name The name of the attribute to set.
-     * \param value The value of the attribute to set.
+     * Typical attributes: JsonPath, FlowTablePath, P4SwitchArch, SwitchRate.
      */
     void SetDeviceAttribute(const std::string& name, const AttributeValue& value);
 
-    /**
-     * \brief Install a P4 bridge device on a given node.
-     *
-     * This method creates an ns3::P4SwitchNetDevice with the configured
-     * attributes, adds the device to the specified node, and attaches the
-     * given net devices as bridge ports.
-     *
-     * \param node The node to install the device on.
-     * \param c Container of NetDevices to add as bridge ports.
-     * \return A container holding the created bridge device.
-     */
-    NetDeviceContainer Install(Ptr<Node> node, const NetDeviceContainer& c) const;
+    // -----------------------------------------------------------------------
+    // Install
+    // -----------------------------------------------------------------------
 
     /**
-     * \brief Install a P4 bridge device on a named node.
+     * \brief Install a P4SwitchNetDevice on \p switchNode.
      *
-     * This method resolves the node by name, creates an
-     * ns3::P4SwitchNetDevice with the configured attributes, adds the
-     * device to the resolved node, and attaches the given net devices
-     * as bridge ports.
+     * Assigns a unique MAC address and adds the device to the node.
+     * No channels or NIC devices are created — use SwitchedEthernetHelper
+     * to connect host nodes.
      *
-     * \param nodeName The name of the node to install the device on.
-     * \param c Container of NetDevices to add as bridge ports.
-     * \return A container holding the created bridge device.
+     * \param switchNode The switch node.
+     * \return Container holding the created P4SwitchNetDevice.
      */
-    NetDeviceContainer Install(const std::string& nodeName, const NetDeviceContainer& c) const;
+    NetDeviceContainer Install(Ptr<Node> switchNode) const;
+
+    /**
+     * \brief Install a P4SwitchNetDevice on the named node.
+     */
+    NetDeviceContainer Install(const std::string& switchNodeName) const;
+
+    /**
+     * \brief Install a P4SwitchNetDevice on \p node whose ports are the
+     *        devices in \p ports (bridge ports, see
+     *        P4SwitchNetDevice::AddBridgePort()), in that order.
+     * \return A container with the new P4SwitchNetDevice.
+     */
+    NetDeviceContainer Install(Ptr<Node> node, const NetDeviceContainer& ports) const;
+
+    /**
+     * \brief Install a P4SwitchNetDevice on the named node with the devices in
+     *        \p ports as its ports.
+     */
+    NetDeviceContainer Install(const std::string& nodeName, const NetDeviceContainer& ports) const;
 
   private:
-    ObjectFactory m_deviceFactory; //!< Factory for creating P4 bridge devices.
+    Ptr<P4SwitchNetDevice> InstallSwitchPriv(Ptr<Node> node) const;
+
+    // PcapHelperForDevice
+    void EnablePcapInternal(std::string prefix,
+                            Ptr<NetDevice> nd,
+                            bool promiscuous,
+                            bool explicitFilename) override;
+
+    // AsciiTraceHelperForDevice
+    void EnableAsciiInternal(Ptr<OutputStreamWrapper> stream,
+                             std::string prefix,
+                             Ptr<NetDevice> nd,
+                             bool explicitFilename) override;
+
+    ObjectFactory m_deviceFactory; ///< P4SwitchNetDevice factory
 };
 
 } // namespace ns3

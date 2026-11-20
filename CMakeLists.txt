@@ -59,6 +59,12 @@ if(SIMPLESWITCH_THRIFT_LIB)
   list(APPEND third_party_libs ${SIMPLESWITCH_THRIFT_LIB})
 endif()
 
+# The "psa_switch" Thrift service of psa_switch_CLI (p4-core-psa-thrift.cc)
+find_library(PSASWITCH_THRIFT_LIB psaswitch_thrift PATHS /usr/local/lib)
+if(PSASWITCH_THRIFT_LIB)
+  list(APPEND third_party_libs ${PSASWITCH_THRIFT_LIB})
+endif()
+
 find_library(THRIFT_LIB thrift PATHS /usr/local/lib)
 if(THRIFT_LIB)
   list(APPEND third_party_libs ${THRIFT_LIB})
@@ -73,47 +79,59 @@ build_lib(
         utils/format-utils.cc
         utils/switch-api.cc
         utils/p4-queue.cc
+        utils/p4-traffic-manager.cc
         utils/fattree-topo-helper.cc
+        model/switched-ethernet-channel.cc
+        model/link-framing.cc
+        model/eth-net-device.cc
+        model/p4-switch-core.cc
+        model/p4-core-v1model.cc
+        model/p4-core-v1model-thrift.cc
+        model/p4-core-psa.cc
+        model/p4-core-psa-thrift.cc
+        model/p4-nic-pna.cc
+        model/p4-switch-net-device.cc
+        helper/p4-helper.cc
+        helper/switched-ethernet-helper.cc
+        helper/build-flowtable-helper.cc
         model/p4-bridge-channel.cc
         model/p4-p2p-channel.cc
         model/custom-header.cc
         model/p4-topology-reader.cc
-        model/p4-switch-core.cc
-        model/p4-core-v1model.cc
-        model/p4-core-v1model-thrift.cc
         model/p4-core-pipeline.cc
-        model/p4-core-psa.cc
-        model/p4-nic-pna.cc
-        model/p4-switch-net-device.cc
         model/custom-p2p-net-device.cc
         model/p4-controller.cc
-        helper/p4-helper.cc
         helper/p4-topology-reader-helper.cc
         helper/p4-p2p-helper.cc
-        helper/build-flowtable-helper.cc
     HEADER_FILES # equivalent to headers.source
         utils/p4-queue.h
+        utils/p4-traffic-manager.h
         utils/format-utils.h
         utils/switch-api.h
         utils/register-access-v1model.h
         utils/primitives-v1model.h
+        utils/primitives-pna.h
         utils/fattree-topo-helper.h
+        model/switched-ethernet-channel.h
+        model/link-framing.h
+        model/eth-net-device.h
+        model/p4-switch-core.h
+        model/p4-core-v1model.h
+        model/p4-core-psa.h
+        model/p4-nic-pna.h
+        model/p4-switch-net-device.h
+        helper/p4-helper.h
+        helper/switched-ethernet-helper.h
+        helper/build-flowtable-helper.h
         model/p4-bridge-channel.h
         model/p4-p2p-channel.h
         model/custom-header.h
         model/p4-topology-reader.h
-        model/p4-switch-core.h
-        model/p4-core-v1model.h
         model/p4-core-pipeline.h
-        model/p4-core-psa.h
-        model/p4-nic-pna.h
-        model/p4-switch-net-device.h
         model/custom-p2p-net-device.h
         model/p4-controller.h
-        helper/p4-helper.h
         helper/p4-topology-reader-helper.h
         helper/p4-p2p-helper.h
-        helper/build-flowtable-helper.h
         helper/p4-net-builder.h
     LIBRARIES_TO_LINK 
         ${libcore} 
@@ -121,15 +139,28 @@ build_lib(
         ${libtraffic-control}
         ${libapplications}
         ${libpoint-to-point}
+        ${libcsma}
+        ${libbridge}
         ${third_party_libs}
     TEST_SOURCES # equivalent to module_test.source
+        test/p4-traffic-manager-test-suite.cc
+        test/channel-state-test-suite.cc
+        test/p4-egress-test-suite.cc
+        test/p4-bridge-port-test-suite.cc
+        test/p4-pna-test-suite.cc
+        test/p4-switch-rate-test-suite.cc
+        test/p4-pipeline-delay-test-suite.cc
+        test/p4-config-swap-test-suite.cc
+        test/switched-ethernet-host-test-suite.cc
+        test/switched-ethernet-tc-test-suite.cc
+        test/link-framing-test-suite.cc
         test/p4-controller-test-suite.cc
-         test/p4sim-test-suite.cc
-         test/format-utils-test-suite.cc
-         test/p4-topology-reader-test-suite.cc
-         test/p4-p2p-channel-test-suite.cc
-         test/p4-queue-test-suite.cc
-         test/p4-packet-test-suite.cc
+        test/p4sim-test-suite.cc
+        test/format-utils-test-suite.cc
+        test/p4-topology-reader-test-suite.cc
+        test/p4-p2p-channel-test-suite.cc
+        test/p4-queue-test-suite.cc
+        test/p4-packet-test-suite.cc
         ${examples_as_tests_sources}
 )
 

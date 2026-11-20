@@ -241,8 +241,6 @@ main(int argc, char* argv[])
     P4Helper p4SwitchHelper;
     p4SwitchHelper.SetDeviceAttribute("JsonPath", StringValue(p4JsonPath));
     p4SwitchHelper.SetDeviceAttribute("FlowTablePath", StringValue(flowTablePath));
-    p4SwitchHelper.SetDeviceAttribute("EnableTracing", BooleanValue(true));
-    p4SwitchHelper.SetDeviceAttribute("ChannelType", UintegerValue(1));  // P2P
     p4SwitchHelper.SetDeviceAttribute("P4SwitchArch", UintegerValue(0)); // V1model
     p4SwitchHelper.SetDeviceAttribute("SwitchRate", UintegerValue(switchRate));
     p4SwitchHelper.SetDeviceAttribute("QueueBufferSize", UintegerValue(queueSize));

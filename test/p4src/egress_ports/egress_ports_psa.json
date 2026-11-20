@@ -1,0 +1,527 @@
+{
+  "header_types" : [
+    {
+      "name" : "ethernet_t",
+      "id" : 0,
+      "fields" : [
+        ["dstAddr", 48, false],
+        ["srcAddr", 48, false],
+        ["etherType", 16, false]
+      ]
+    },
+    {
+      "name" : "psa_ingress_output_metadata_t",
+      "id" : 1,
+      "fields" : [
+        ["class_of_service", 8, false],
+        ["clone", 1, false],
+        ["clone_session_id", 16, false],
+        ["drop", 1, false],
+        ["resubmit", 1, false],
+        ["multicast_group", 32, false],
+        ["egress_port", 32, false],
+        ["_padding", 5, false]
+      ]
+    },
+    {
+      "name" : "psa_egress_output_metadata_t",
+      "id" : 2,
+      "fields" : [
+        ["clone", 1, false],
+        ["clone_session_id", 16, false],
+        ["drop", 1, false],
+        ["_padding_0", 6, false]
+      ]
+    },
+    {
+      "name" : "psa_egress_deparser_input_metadata_t",
+      "id" : 3,
+      "fields" : [
+        ["egress_port", 32, false]
+      ]
+    },
+    {
+      "name" : "psa_ingress_parser_input_metadata_t",
+      "id" : 4,
+      "fields" : [
+        ["ingress_port", 32, false],
+        ["packet_path", 32, false]
+      ]
+    },
+    {
+      "name" : "psa_ingress_input_metadata_t",
+      "id" : 5,
+      "fields" : [
+        ["ingress_port", 32, false],
+        ["packet_path", 32, false],
+        ["ingress_timestamp", 64, false],
+        ["parser_error", 32, false]
+      ]
+    },
+    {
+      "name" : "psa_egress_parser_input_metadata_t",
+      "id" : 6,
+      "fields" : [
+        ["egress_port", 32, false],
+        ["packet_path", 32, false]
+      ]
+    },
+    {
+      "name" : "psa_egress_input_metadata_t",
+      "id" : 7,
+      "fields" : [
+        ["class_of_service", 8, false],
+        ["egress_port", 32, false],
+        ["packet_path", 32, false],
+        ["instance", 16, false],
+        ["egress_timestamp", 64, false],
+        ["parser_error", 32, false]
+      ]
+    },
+    {
+      "name" : "scalars_t",
+      "id" : 8,
+      "fields" : [
+        ["psa_ingress_output_metadata_t.class_of_service", 8, false],
+        ["psa_ingress_output_metadata_t.clone", 1, false],
+        ["psa_ingress_output_metadata_t.clone_session_id", 16, false],
+        ["psa_ingress_output_metadata_t.drop", 1, false],
+        ["psa_ingress_output_metadata_t.resubmit", 1, false],
+        ["psa_ingress_output_metadata_t.multicast_group", 32, false],
+        ["psa_ingress_output_metadata_t.egress_port", 32, false],
+        ["psa_egress_output_metadata_t.clone", 1, false],
+        ["psa_egress_output_metadata_t.clone_session_id", 16, false],
+        ["psa_egress_output_metadata_t.drop", 1, false],
+        ["psa_egress_deparser_input_metadata_t.egress_port", 32, false],
+        ["psa_ingress_parser_input_metadata_t.ingress_port", 32, false],
+        ["psa_ingress_parser_input_metadata_t.packet_path", 32, false],
+        ["psa_ingress_input_metadata_t.ingress_port", 32, false],
+        ["psa_ingress_input_metadata_t.packet_path", 32, false],
+        ["psa_ingress_input_metadata_t.ingress_timestamp", 64, false],
+        ["psa_ingress_input_metadata_t.parser_error", 32, false],
+        ["psa_egress_parser_input_metadata_t.egress_port", 32, false],
+        ["psa_egress_parser_input_metadata_t.packet_path", 32, false],
+        ["psa_egress_input_metadata_t.class_of_service", 8, false],
+        ["psa_egress_input_metadata_t.egress_port", 32, false],
+        ["psa_egress_input_metadata_t.packet_path", 32, false],
+        ["psa_egress_input_metadata_t.instance", 16, false],
+        ["psa_egress_input_metadata_t.egress_timestamp", 64, false],
+        ["psa_egress_input_metadata_t.parser_error", 32, false],
+        ["_padding_1", 3, false]
+      ]
+    }
+  ],
+  "headers" : [
+    {
+      "name" : "ethernet",
+      "id" : 0,
+      "header_type" : "ethernet_t",
+      "metadata" : false,
+      "pi_omit" : true
+    },
+    {
+      "name" : "psa_ingress_output_metadata",
+      "id" : 1,
+      "header_type" : "psa_ingress_output_metadata_t",
+      "metadata" : true,
+      "pi_omit" : true
+    },
+    {
+      "name" : "psa_egress_output_metadata",
+      "id" : 2,
+      "header_type" : "psa_egress_output_metadata_t",
+      "metadata" : true,
+      "pi_omit" : true
+    },
+    {
+      "name" : "psa_egress_deparser_input_metadata",
+      "id" : 3,
+      "header_type" : "psa_egress_deparser_input_metadata_t",
+      "metadata" : true,
+      "pi_omit" : true
+    },
+    {
+      "name" : "psa_ingress_parser_input_metadata",
+      "id" : 4,
+      "header_type" : "psa_ingress_parser_input_metadata_t",
+      "metadata" : true,
+      "pi_omit" : true
+    },
+    {
+      "name" : "psa_ingress_input_metadata",
+      "id" : 5,
+      "header_type" : "psa_ingress_input_metadata_t",
+      "metadata" : true,
+      "pi_omit" : true
+    },
+    {
+      "name" : "psa_egress_parser_input_metadata",
+      "id" : 6,
+      "header_type" : "psa_egress_parser_input_metadata_t",
+      "metadata" : true,
+      "pi_omit" : true
+    },
+    {
+      "name" : "psa_egress_input_metadata",
+      "id" : 7,
+      "header_type" : "psa_egress_input_metadata_t",
+      "metadata" : true,
+      "pi_omit" : true
+    },
+    {
+      "name" : "scalars",
+      "id" : 8,
+      "header_type" : "scalars_t",
+      "metadata" : true,
+      "pi_omit" : true
+    }
+  ],
+  "header_stacks" : [],
+  "header_union_types" : [],
+  "header_unions" : [],
+  "header_union_stacks" : [],
+  "field_lists" : [],
+  "errors" : [],
+  "enums" : [
+    {
+      "name" : "PSA_PacketPath_t",
+      "entries" : [
+        ["NORMAL", 0],
+        ["NORMAL_UNICAST", 1],
+        ["NORMAL_MULTICAST", 2],
+        ["CLONE_I2E", 3],
+        ["CLONE_E2E", 4],
+        ["RESUBMIT", 5],
+        ["RECIRCULATE", 6]
+      ]
+    },
+    {
+      "name" : "PSA_MeterColor_t",
+      "entries" : [
+        ["RED", 0],
+        ["GREEN", 1],
+        ["YELLOW", 2]
+      ]
+    }
+  ],
+  "parsers" : [
+    {
+      "name" : "ingress_parser",
+      "id" : 0,
+      "init_state" : "start",
+      "parse_states" : [
+        {
+          "name" : "start",
+          "id" : 0,
+          "parser_ops" : [
+            {
+              "parameters" : [
+                {
+                  "type" : "regular",
+                  "value" : "ethernet"
+                }
+              ],
+              "op" : "extract"
+            }
+          ],
+          "transitions" : [
+            {
+              "type" : "default",
+              "value" : null,
+              "mask" : null,
+              "next_state" : null
+            }
+          ],
+          "transition_key" : []
+        }
+      ]
+    },
+    {
+      "name" : "egress_parser",
+      "id" : 1,
+      "init_state" : "start",
+      "parse_states" : [
+        {
+          "name" : "start",
+          "id" : 1,
+          "parser_ops" : [],
+          "transitions" : [
+            {
+              "type" : "default",
+              "value" : null,
+              "mask" : null,
+              "next_state" : null
+            }
+          ],
+          "transition_key" : []
+        }
+      ]
+    }
+  ],
+  "parse_vsets" : [],
+  "deparsers" : [
+    {
+      "name" : "ingress_deparser",
+      "id" : 0,
+      "source_info" : {
+        "filename" : "egress_ports_psa.p4",
+        "line" : 55,
+        "column" : 8,
+        "source_fragment" : "IngressDeparserImpl"
+      },
+      "order" : ["ethernet"],
+      "primitives" : []
+    },
+    {
+      "name" : "egress_deparser",
+      "id" : 1,
+      "source_info" : {
+        "filename" : "egress_ports_psa.p4",
+        "line" : 79,
+        "column" : 8,
+        "source_fragment" : "EgressDeparserImpl"
+      },
+      "order" : [],
+      "primitives" : []
+    }
+  ],
+  "meter_arrays" : [],
+  "counter_arrays" : [],
+  "register_arrays" : [],
+  "calculations" : [],
+  "learn_lists" : [],
+  "actions" : [
+    {
+      "name" : "IngressImpl.to_port",
+      "id" : 0,
+      "runtime_data" : [
+        {
+          "name" : "port",
+          "bitwidth" : 32
+        }
+      ],
+      "primitives" : [
+        {
+          "op" : "assign",
+          "parameters" : [
+            {
+              "type" : "field",
+              "value" : ["psa_ingress_output_metadata", "drop"]
+            },
+            {
+              "type" : "expression",
+              "value" : {
+                "type" : "expression",
+                "value" : {
+                  "op" : "b2d",
+                  "left" : null,
+                  "right" : {
+                    "type" : "bool",
+                    "value" : false
+                  }
+                }
+              }
+            }
+          ],
+          "source_info" : {
+            "filename" : "egress_ports_psa.p4",
+            "line" : 36,
+            "column" : 8,
+            "source_fragment" : "send_to_port(ostd, port)"
+          }
+        },
+        {
+          "op" : "assign",
+          "parameters" : [
+            {
+              "type" : "field",
+              "value" : ["psa_ingress_output_metadata", "multicast_group"]
+            },
+            {
+              "type" : "hexstr",
+              "value" : "0x00000000"
+            }
+          ],
+          "source_info" : {
+            "filename" : "egress_ports_psa.p4",
+            "line" : 36,
+            "column" : 8,
+            "source_fragment" : "send_to_port(ostd, port)"
+          }
+        },
+        {
+          "op" : "assign",
+          "parameters" : [
+            {
+              "type" : "field",
+              "value" : ["psa_ingress_output_metadata", "egress_port"]
+            },
+            {
+              "type" : "runtime_data",
+              "value" : 0
+            }
+          ],
+          "source_info" : {
+            "filename" : "egress_ports_psa.p4",
+            "line" : 36,
+            "column" : 8,
+            "source_fragment" : "send_to_port(ostd, port)"
+          }
+        }
+      ]
+    },
+    {
+      "name" : "IngressImpl.drop",
+      "id" : 1,
+      "runtime_data" : [],
+      "primitives" : [
+        {
+          "op" : "assign",
+          "parameters" : [
+            {
+              "type" : "field",
+              "value" : ["psa_ingress_output_metadata", "drop"]
+            },
+            {
+              "type" : "expression",
+              "value" : {
+                "type" : "expression",
+                "value" : {
+                  "op" : "b2d",
+                  "left" : null,
+                  "right" : {
+                    "type" : "bool",
+                    "value" : true
+                  }
+                }
+              }
+            }
+          ],
+          "source_info" : {
+            "filename" : "egress_ports_psa.p4",
+            "line" : 39,
+            "column" : 8,
+            "source_fragment" : "ingress_drop(ostd)"
+          }
+        }
+      ]
+    }
+  ],
+  "pipelines" : [
+    {
+      "name" : "ingress",
+      "id" : 0,
+      "source_info" : {
+        "filename" : "egress_ports_psa.p4",
+        "line" : 32,
+        "column" : 8,
+        "source_fragment" : "IngressImpl"
+      },
+      "init_table" : "IngressImpl.mac_port",
+      "tables" : [
+        {
+          "name" : "IngressImpl.mac_port",
+          "id" : 0,
+          "source_info" : {
+            "filename" : "egress_ports_psa.p4",
+            "line" : 41,
+            "column" : 10,
+            "source_fragment" : "mac_port"
+          },
+          "key" : [
+            {
+              "match_type" : "exact",
+              "name" : "hdr.ethernet.dstAddr",
+              "target" : ["ethernet", "dstAddr"],
+              "mask" : null
+            }
+          ],
+          "match_type" : "exact",
+          "type" : "simple",
+          "max_size" : 2,
+          "with_counters" : false,
+          "support_timeout" : false,
+          "direct_meters" : null,
+          "action_ids" : [0, 1],
+          "actions" : ["IngressImpl.to_port", "IngressImpl.drop"],
+          "base_default_next" : null,
+          "next_tables" : {
+            "IngressImpl.to_port" : null,
+            "IngressImpl.drop" : null
+          },
+          "default_entry" : {
+            "action_id" : 1,
+            "action_const" : false,
+            "action_data" : [],
+            "action_entry_const" : false
+          },
+          "entries" : [
+            {
+              "source_info" : {
+                "filename" : "egress_ports_psa.p4",
+                "line" : 45,
+                "column" : 12,
+                "source_fragment" : "0x000000000001: to_port((PortId_t) 32w1)"
+              },
+              "match_key" : [
+                {
+                  "match_type" : "exact",
+                  "key" : "0x000000000001"
+                }
+              ],
+              "action_entry" : {
+                "action_id" : 0,
+                "action_data" : ["0x1"]
+              },
+              "priority" : 1
+            },
+            {
+              "source_info" : {
+                "filename" : "egress_ports_psa.p4",
+                "line" : 46,
+                "column" : 12,
+                "source_fragment" : "0x000000000002: to_port((PortId_t) 32w2)"
+              },
+              "match_key" : [
+                {
+                  "match_type" : "exact",
+                  "key" : "0x000000000002"
+                }
+              ],
+              "action_entry" : {
+                "action_id" : 0,
+                "action_data" : ["0x2"]
+              },
+              "priority" : 2
+            }
+          ]
+        }
+      ],
+      "action_profiles" : [],
+      "conditionals" : []
+    },
+    {
+      "name" : "egress",
+      "id" : 1,
+      "source_info" : {
+        "filename" : "egress_ports_psa.p4",
+        "line" : 73,
+        "column" : 8,
+        "source_fragment" : "EgressImpl"
+      },
+      "init_table" : null,
+      "tables" : [],
+      "action_profiles" : [],
+      "conditionals" : []
+    }
+  ],
+  "checksums" : [],
+  "force_arith" : [],
+  "extern_instances" : [],
+  "field_aliases" : [],
+  "program" : "egress_ports_psa.p4",
+  "__meta__" : {
+    "version" : [2, 23],
+    "compiler" : "https://github.com/p4lang/p4c"
+  }
+}

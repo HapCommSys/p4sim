@@ -71,8 +71,8 @@ struct bmv2_hash_v1model_pipeline
 REGISTER_HASH(hash_ex_v1model_pipeline);
 REGISTER_HASH(bmv2_hash_v1model_pipeline);
 
-P4CorePipeline::P4CorePipeline(P4SwitchNetDevice* netDevice, bool enableSwap, bool enableTracing)
-    : P4SwitchCore(netDevice, enableSwap, enableTracing),
+P4CorePipeline::P4CorePipeline(P4SwitchNetDevice* netDevice, bool enableSwap)
+    : P4SwitchCore(netDevice, enableSwap),
       m_packetId(0)
 {
     // configure for the switch v1model
@@ -111,6 +111,10 @@ P4CorePipeline::ReceivePacket(Ptr<Packet> packetIn,
     bm_packet.get()->set_ingress_port(inPort);
 
     phv->reset_metadata();
+    // ns-3 metadata, read back in EnqueueNow()
+    RegisterAccess::clear_all(bm_packet.get());
+    RegisterAccess::set_ns_protocol(bm_packet.get(), protocol);
+    RegisterAccess::set_ns_address(bm_packet.get(), GetAddressIndex(destination));
     phv->get_field("standard_metadata.ingress_port").set(inPort);
     bm_packet->set_register(RegisterAccess::PACKET_LENGTH_REG_IDX, len);
     phv->get_field("standard_metadata.packet_length").set(len);
@@ -134,6 +138,13 @@ P4CorePipeline::ReceivePacket(Ptr<Packet> packetIn,
         get_learn_engine()->learn(learn_id, *bm_packet.get());
     }
 
+    // The ingress dropped the packet (mark_to_drop()): no egress, as in simple_switch
+    if (egress_spec == m_dropPort)
+    {
+        NS_LOG_DEBUG("Packet dropped at the end of the ingress");
+        return 0;
+    }
+
     // === Egress
     bm::Pipeline* egress_mau = this->get_pipeline("egress");
     bm::Deparser* deparser = this->get_deparser("deparser");
@@ -146,12 +157,18 @@ P4CorePipeline::ReceivePacket(Ptr<Packet> packetIn,
 
     egress_mau->apply(bm_packet.get());
 
+    // The egress dropped the packet (mark_to_drop() sets egress_spec)
+    if (phv->get_field("standard_metadata.egress_spec").get_uint() == m_dropPort)
+    {
+        NS_LOG_DEBUG("Packet dropped at the end of the egress");
+        return 0;
+    }
+
     // === Deparser
     deparser->deparse(bm_packet.get());
 
-    // === Send the packet to the destination
-    Ptr<Packet> ns_packet = ConvertToNs3Packet(std::move(bm_packet));
-    m_switchNetDevice->SendNs3Packet(ns_packet, egress_spec, protocol, destination);
+    // === Send the packet once the pipeline delay is over (see EnqueueNow())
+    Enqueue(egress_spec, std::move(bm_packet));
     return 0;
 }
 
@@ -196,9 +213,16 @@ P4CorePipeline::HandleEgressPipeline(size_t workerId)
 }
 
 void
-P4CorePipeline::Enqueue(uint32_t egress_port, std::unique_ptr<bm::Packet>&& packet)
+P4CorePipeline::EnqueueNow(uint32_t egress_port, std::unique_ptr<bm::Packet>&& packet)
 {
-    NS_LOG_WARN("NO inter queue buffer in this simple v1model, use ReceivePacket instead");
+    // No egress queues: the packet goes to its port at once
+    uint16_t protocol = RegisterAccess::get_ns_protocol(packet.get());
+    int addr_index = RegisterAccess::get_ns_address(packet.get());
+    Ptr<Packet> ns_packet = ConvertToNs3Packet(std::move(packet));
+    m_switchNetDevice->SendNs3Packet(ns_packet,
+                                     static_cast<int>(egress_port),
+                                     protocol,
+                                     m_destinationList[addr_index]);
 }
 
 } // namespace ns3

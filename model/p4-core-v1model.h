@@ -15,6 +15,7 @@
  *
  * Authors: Antonin Bas <antonin@barefootnetworks.com>
  * Modified: Mingyu Ma <mingyu.ma@tu-dresden.de>
+ *           Vineet Goel <vineetgoel692@gmail.com>
  */
 
 #ifndef P4_CORE_V1MODEL_H
@@ -22,9 +23,11 @@
 
 #include "ns3/p4-queue.h"
 #include "ns3/p4-switch-core.h"
-#include "ns3/traced-callback.h"
+#include "ns3/p4-traffic-manager.h"
+#include "ns3/switched-ethernet-channel.h"
 
 #include <bm/bm_sim/counters.h>
+#include <unordered_map>
 
 #define SSWITCH_VIRTUAL_QUEUE_NUM_V1MODEL 8
 
@@ -34,905 +37,890 @@
 #undef LOG_WARN
 #undef LOG_LOGIC
 
-namespace ns3 {
+namespace ns3
+{
 
-class P4CoreV1model : public P4SwitchCore {
-public:
-  static TypeId GetTypeId(void);
-  // === Constructor & Destructor ===
-  P4CoreV1model(P4SwitchNetDevice *net_device, bool enable_swap,
-                bool enableTracing, uint64_t packet_rate,
-                size_t input_buffer_size_low, size_t input_buffer_size_high,
-                size_t queue_buffer_size,
-                size_t nb_queues_per_port = SSWITCH_VIRTUAL_QUEUE_NUM_V1MODEL);
-  ~P4CoreV1model();
+class P4CoreV1model : public P4SwitchCore
+{
+  public:
+    // === Constructor & Destructor ===
+    P4CoreV1model(P4SwitchNetDevice* net_device,
+                  bool enable_swap,
+                  uint64_t packet_rate,
+                  size_t input_buffer_size_low,
+                  size_t input_buffer_size_high,
+                  size_t queue_buffer_size,
+                  size_t nb_queues_per_port = SSWITCH_VIRTUAL_QUEUE_NUM_V1MODEL);
+    ~P4CoreV1model();
 
-  /**
-   * @brief Different types of packet instances
-   * @details The packet instance type is used to determine the processing
-   * pipeline of the packet. PKT_INSTANCE_TYPE_NORMAL usually will have
-   * lower priority than other types.
-   */
-  enum PktInstanceTypeV1model {
-    PKT_INSTANCE_TYPE_NORMAL,
-    PKT_INSTANCE_TYPE_INGRESS_CLONE,
-    PKT_INSTANCE_TYPE_EGRESS_CLONE,
-    PKT_INSTANCE_TYPE_COALESCED,
-    PKT_INSTANCE_TYPE_RECIRC,
-    PKT_INSTANCE_TYPE_REPLICATION,
-    PKT_INSTANCE_TYPE_RESUBMIT,
-  };
+    /**
+     * @brief Packet instance types used to distinguish processing paths.
+     */
+    enum PktInstanceTypeV1model
+    {
+        PKT_INSTANCE_TYPE_NORMAL,
+        PKT_INSTANCE_TYPE_INGRESS_CLONE,
+        PKT_INSTANCE_TYPE_EGRESS_CLONE,
+        PKT_INSTANCE_TYPE_COALESCED,
+        PKT_INSTANCE_TYPE_RECIRC,
+        PKT_INSTANCE_TYPE_REPLICATION,
+        PKT_INSTANCE_TYPE_RESUBMIT,
+    };
 
-  // === Packet Processing ===
-  /**
-   * @brief Receive a packet from the switch net device
-   * @details This function is called by the switch net device to pass a packet
-   * to the switch core for processing.
-   * @param packetIn The packet to be processed
-   * @param inPort The ingress port of the packet
-   * @param protocol The protocol of the packet
-   * @param destination The destination address of the packet
-   * @return int 0 if successful
-   */
-  int ReceivePacket(Ptr<Packet> packetIn, int inPort, uint16_t protocol,
-                    const Address &destination) override;
+    // === Packet Processing (P4SwitchCore overrides) ===
+    int ReceivePacket(Ptr<Packet> packetIn,
+                      int inPort,
+                      uint16_t protocol,
+                      const Address& destination) override;
+    void swap_notify_() override;
+    void start_and_return_() override;
+    void reset_target_state_() override;
+    void HandleIngressPipeline() override;
+    size_t GetNInputPackets() const override;
+    void EnqueueNow(uint32_t egress_port, std::unique_ptr<bm::Packet>&& packet) override;
+    bool HandleEgressPipeline(size_t workerId) override;
 
-  /**
-   * @brief Notified of a config swap
-   */
-  void swap_notify_() override;
+    // === Scheduling ===
+    void CalculateScheduleTime();
+    void EventDrivenEgressDequeue(uint32_t port);
+    void ScheduleEgressIfNeeded(uint32_t port);
+    void PortTxComplete(uint32_t port);
 
-  /**
-   * @brief Start the switch and return
-   * Set the scheduler time with the switch rate
-   */
-  void start_and_return_() override;
+    // === Optional VOQ + fabric Traffic Manager (opt-in, default OFF) ===
+    //
+    // Additive integration layer.  When disabled (the default), the switch uses
+    // the legacy output-queued path (egress_buffer + event-driven dequeue) and
+    // NONE of the methods below have any effect.  When enabled via
+    // SetEnableVoqFabric(true) before the switch starts, packets leaving the
+    // ingress pipeline are steered into a P4TrafficManager (VOQ -> priority-first
+    // fabric -> strict-priority egress) instead of egress_buffer.  The legacy
+    // path is left fully intact for side-by-side comparison / review.
 
-  /**
-   * @brief Reset the target state
-   */
-  void reset_target_state_() override;
+    /**
+     * @brief Enable or disable the VOQ + fabric Traffic Manager path.
+     *
+     * Must be called before start_and_return_() (the TM is constructed there,
+     * once the ports/link rate are known).  Default is disabled.
+     */
+    void SetEnableVoqFabric(bool enable);
+    bool GetEnableVoqFabric() const;
 
-  /**
-   * @brief Handle the ingress pipeline
-   */
-  void HandleIngressPipeline() override;
+    /** @brief The Traffic Manager instance, or nullptr if the VOQ path is off. */
+    Ptr<P4TrafficManager> GetTrafficManager() const;
 
-  /**
-   * @brief Enqueue a packet to the queue buffer between ingress and egress
-   * @param egress_port The egress port of the packet
-   * @param packet The packet to be enqueued
-   * @return void
-   */
-  void Enqueue(uint32_t egress_port,
-               std::unique_ptr<bm::Packet> &&packet) override;
+    // === Internal helpers ===
+    void MulticastPacket(bm::Packet* packet, unsigned int mgid);
+    void CopyFieldList(const std::unique_ptr<bm::Packet>& packet,
+                       const std::unique_ptr<bm::Packet>& packetCopy,
+                       PktInstanceTypeV1model copyType,
+                       int fieldListId);
 
-  /**
-   * @brief Handle the egress pipeline
-   * @param workerId The worker ID of the egress pipeline
-   * @return bool True if the egress pipeline is handled successfully
-   * @return bool False if the egress pipeline needs additional scheduling
-   */
-  bool HandleEgressPipeline(size_t workerId) override;
+    // === Queue configuration ===
+    int SetEgressPriorityQueueDepth(size_t port, size_t priority, size_t depthPkts);
+    int SetEgressQueueDepth(size_t port, size_t depthPkts);
+    int SetAllEgressQueueDepths(size_t depthPkts);
+    int SetEgressPriorityQueueRate(size_t port, size_t priority, uint64_t ratePps);
+    int SetEgressQueueRate(size_t port, uint64_t ratePps);
+    int SetAllEgressQueueRates(uint64_t ratePps);
 
-  /**
-   * @brief Calculate the schedule time for the egress pipeline
-   */
-  void CalculateScheduleTime();
+    //========== Flow Table Operations =========
+    /**
+     * @brief Retrieves the number of entries in a match table
+     * @param tableName Name of the match table
+     */
+    int GetNumEntries(const std::string& tableName);
+    /**
+     * @brief Clears all entries in a match table
+     * @param tableName Name of the match table
+     * @param resetDefault Whether to also reset the default entry
+     */
+    int ClearFlowTableEntries(const std::string& tableName, bool resetDefault);
+    /**
+     * @brief Adds an entry to a match table with a match key, action, and
+     * optional priority
+     * @param tableName Name of the match table
+     * @param matchKey Match key for the entry
+     * @param actionName Name of the action to invoke
+     * @param actionData Parameters for the action
+     * @param handleOut Pointer to store the resulting entry handle
+     * @param priority Optional priority value (used for ternary/LPM tables)
+     */
+    int AddFlowEntry(const std::string& tableName,
+                     const std::vector<bm::MatchKeyParam>& matchKey,
+                     const std::string& actionName,
+                     bm::ActionData&& actionData,
+                     bm::entry_handle_t* handle,
+                     int priority = -1);
+    /**
+     * @brief Sets the default action for a match table
+     * @param tableName Name of the match table
+     * @param actionName Name of the default action to apply
+     * @param actionData Parameters for the default action
+     */
+    int SetDefaultAction(const std::string& tableName,
+                         const std::string& actionName,
+                         bm::ActionData&& actionData);
+    /**
+     * @brief Resets the default entry for a match table to its original
+     * configuration
+     * @param tableName Name of the match table
+     */
+    int ResetDefaultEntry(const std::string& tableName);
+    /**
+     * @brief Deletes a specific entry from a match table
+     * @param tableName Name of the match table
+     * @param handle Entry handle identifying the rule to delete
+     */
+    int DeleteFlowEntry(const std::string& tableName, bm::entry_handle_t handle);
+    /**
+     * @brief Modifies an existing match table entry with a new action and
+     * parameters
+     * @param tableName Name of the match table
+     * @param handle Entry handle identifying the rule to modify
+     * @param actionName Name of the new action to assign
+     * @param actionData Parameters for the new action
+     */
+    int ModifyFlowEntry(const std::string& tableName,
+                        bm::entry_handle_t handle,
+                        const std::string& actionName,
+                        bm::ActionData actionData);
+    /**
+     * @brief Sets a time-to-live (TTL) in milliseconds for a specific match table
+     * entry
+     * @param tableName Name of the match table
+     * @param handle Entry handle identifying the rule
+     * @param ttlMs Timeout duration in milliseconds
+     */
+    int SetEntryTtl(const std::string& tableName, bm::entry_handle_t handle, unsigned int ttlMs);
 
-  /**
-   * @brief Set the egress timer event
-   * @details This function is called by the egress timer event to trigger the
-   * egress pipeline
-   */
-  void CalculatePacketsPerSecond();
+    //  ======== Action Profile Operations ===========
 
-  /**
-   * @brief Set the egress timer event
-   * @details This function is called by the egress timer event to trigger the
-   * dequeue, then run the egress pipeline
-   */
-  void SetEgressTimerEvent();
+    /**
+     * @brief Adds a member to an action profile.
+     * @param profileName The name of the action profile.
+     * @param actionName The name of the action.
+     * @param actionData The action parameters.
+     * @param[out] outHandle Pointer to store the resulting member handle.
+     * @return 0 on success, -1 on failure.
+     */
+    int AddActionProfileMember(const std::string& profileName,
+                               const std::string& actionName,
+                               bm::ActionData&& actionData,
+                               bm::ActionProfile::mbr_hdl_t* outHandle);
 
-  /**
-   * @brief Multicast a packet to a multicast group ID
-   * @param packet The packet to be multicast
-   * @param mgid The multicast group ID
-   */
-  void MulticastPacket(bm::Packet *packet, unsigned int mgid);
+    /**
+     * @brief Deletes a member from an action profile.
+     * @param profileName The name of the action profile.
+     * @param memberHandle The handle of the member to delete.
+     * @return 0 on success, -1 on failure.
+     */
+    int DeleteActionProfileMember(const std::string& profileName,
+                                  bm::ActionProfile::mbr_hdl_t memberHandle);
 
-  /**
-   * @brief Used for ingress cloning, resubmit
-   */
-  void CopyFieldList(const std::unique_ptr<bm::Packet> &packet,
-                     const std::unique_ptr<bm::Packet> &packetCopy,
-                     PktInstanceTypeV1model copyType, int fieldListId);
+    /**
+     * @brief Modifies an existing member in an action profile.
+     * @param profileName The name of the action profile.
+     * @param memberHandle The handle of the member to modify.
+     * @param actionName The new action name.
+     * @param actionData The new action parameters.
+     * @return 0 on success, -1 on failure.
+     */
+    int ModifyActionProfileMember(const std::string& profileName,
+                                  bm::ActionProfile::mbr_hdl_t memberHandle,
+                                  const std::string& actionName,
+                                  bm::ActionData&& actionData);
 
-  /**
-   * @brief Set the depth of a priority queue
-   * @param port The egress port
-   * @param priority The priority of the queue
-   * @param depthPkts The depth of the queue in packets
-   * @return int 0 if successful
-   */
-  int SetEgressPriorityQueueDepth(size_t port, size_t priority,
-                                  size_t depthPkts);
+    /**
+     * @brief Creates a group in an action profile.
+     * @param profileName The name of the action profile.
+     * @param[out] outHandle Pointer to store the resulting group handle.
+     * @return 0 on success, -1 on failure.
+     */
+    int CreateActionProfileGroup(const std::string& profileName,
+                                 bm::ActionProfile::grp_hdl_t* outHandle);
 
-  /**
-   * @brief Set the depth of a queue
-   * @param port The egress port
-   * @param depthPkts The depth of the queue in packets
-   * @return int 0 if successful
-   */
-  int SetEgressQueueDepth(size_t port, size_t depthPkts);
+    /**
+     * @brief Deletes a group from an action profile.
+     * @param profileName The name of the action profile.
+     * @param groupHandle The handle of the group to delete.
+     * @return 0 on success, -1 on failure.
+     */
+    int DeleteActionProfileGroup(const std::string& profileName,
+                                 bm::ActionProfile::grp_hdl_t groupHandle);
 
-  /**
-   * @brief Set the depth of all queues
-   * @param depthPkts The depth of the queue in packets
-   * @return int 0 if successful
-   */
-  int SetAllEgressQueueDepths(size_t depthPkts);
+    /**
+     * @brief Adds a member to a group in an action profile.
+     * @param profileName The name of the action profile.
+     * @param memberHandle The member handle to add.
+     * @param groupHandle The group handle to add to.
+     * @return 0 on success, -1 on failure.
+     */
+    int AddMemberToGroup(const std::string& profileName,
+                         bm::ActionProfile::mbr_hdl_t memberHandle,
+                         bm::ActionProfile::grp_hdl_t groupHandle);
 
-  /**
-   * @brief Set the rate of a priority queue
-   * @param port The egress port
-   * @param priority The priority of the queue
-   * @param ratePps The rate of the queue in packets per second
-   * @return int 0 if successful
-   */
-  int SetEgressPriorityQueueRate(size_t port, size_t priority,
-                                 uint64_t ratePps);
+    /**
+     * @brief Removes a member from a group in an action profile.
+     * @param profileName The name of the action profile.
+     * @param memberHandle The member handle to remove.
+     * @param groupHandle The group handle to remove from.
+     * @return 0 on success, -1 on failure.
+     */
+    int RemoveMemberFromGroup(const std::string& profileName,
+                              bm::ActionProfile::mbr_hdl_t memberHandle,
+                              bm::ActionProfile::grp_hdl_t groupHandle);
 
-  /**
-   * @brief Set the rate of a virtual queue
-   * @param port The egress port
-   * @param ratePps The rate of the queue in packets per second
-   * @return int 0 if successful
-   */
-  int SetEgressQueueRate(size_t port, uint64_t ratePps);
+    /**
+     * @brief Retrieves all members in an action profile.
+     * @param profileName The name of the action profile.
+     * @param[out] members Pointer to a vector where members will be stored.
+     * @return 0 on success, -1 on failure.
+     */
+    int GetActionProfileMembers(const std::string& profileName,
+                                std::vector<bm::ActionProfile::Member>* members);
 
-  /**
-   * @brief Set the rate of all virtual queues
-   * @param ratePps The rate of the queue in packets per second
-   * @return int 0 if successful
-   */
-  int SetAllEgressQueueRates(uint64_t ratePps);
+    /**
+     * @brief Retrieves a specific member from an action profile.
+     * @param profileName The name of the action profile.
+     * @param memberHandle The handle of the member to retrieve.
+     * @param[out] member Pointer to the member structure to populate.
+     * @return 0 on success, -1 on failure.
+     */
+    int GetActionProfileMember(const std::string& profileName,
+                               bm::ActionProfile::mbr_hdl_t memberHandle,
+                               bm::ActionProfile::Member* member);
 
-  //========== Flow Table Operations =========
-  /**
-   * @brief Retrieves the number of entries in a match table
-   * @param tableName Name of the match table
-   */
-  int GetNumEntries(const std::string &tableName);
-  /**
-   * @brief Clears all entries in a match table
-   * @param tableName Name of the match table
-   * @param resetDefault Whether to also reset the default entry
-   */
-  int ClearFlowTableEntries(const std::string &tableName, bool resetDefault);
-  /**
-   * @brief Adds an entry to a match table with a match key, action, and
-   * optional priority
-   * @param tableName Name of the match table
-   * @param matchKey Match key for the entry
-   * @param actionName Name of the action to invoke
-   * @param actionData Parameters for the action
-   * @param handleOut Pointer to store the resulting entry handle
-   * @param priority Optional priority value (used for ternary/LPM tables)
-   */
-  int AddFlowEntry(const std::string &tableName,
-                   const std::vector<bm::MatchKeyParam> &matchKey,
-                   const std::string &actionName, bm::ActionData &&actionData,
-                   bm::entry_handle_t *handle, int priority = -1);
-  /**
-   * @brief Sets the default action for a match table
-   * @param tableName Name of the match table
-   * @param actionName Name of the default action to apply
-   * @param actionData Parameters for the default action
-   */
-  int SetDefaultAction(const std::string &tableName,
-                       const std::string &actionName,
-                       bm::ActionData &&actionData);
-  /**
-   * @brief Resets the default entry for a match table to its original
-   * configuration
-   * @param tableName Name of the match table
-   */
-  int ResetDefaultEntry(const std::string &tableName);
-  /**
-   * @brief Deletes a specific entry from a match table
-   * @param tableName Name of the match table
-   * @param handle Entry handle identifying the rule to delete
-   */
-  int DeleteFlowEntry(const std::string &tableName, bm::entry_handle_t handle);
-  /**
-   * @brief Modifies an existing match table entry with a new action and
-   * parameters
-   * @param tableName Name of the match table
-   * @param handle Entry handle identifying the rule to modify
-   * @param actionName Name of the new action to assign
-   * @param actionData Parameters for the new action
-   */
-  int ModifyFlowEntry(const std::string &tableName, bm::entry_handle_t handle,
-                      const std::string &actionName, bm::ActionData actionData);
-  /**
-   * @brief Sets a time-to-live (TTL) in milliseconds for a specific match table
-   * entry
-   * @param tableName Name of the match table
-   * @param handle Entry handle identifying the rule
-   * @param ttlMs Timeout duration in milliseconds
-   */
-  int SetEntryTtl(const std::string &tableName, bm::entry_handle_t handle,
-                  unsigned int ttlMs);
+    /**
+     * @brief Retrieves all groups in an action profile.
+     * @param profileName The name of the action profile.
+     * @param[out] groups Pointer to a vector where groups will be stored.
+     * @return 0 on success, -1 on failure.
+     */
+    int GetActionProfileGroups(const std::string& profileName,
+                               std::vector<bm::ActionProfile::Group>* groups);
 
-  //  ======== Action Profile Operations ===========
+    /**
+     * @brief Retrieves a specific group in an action profile.
+     * @param profileName The name of the action profile.
+     * @param groupHandle The handle of the group to retrieve.
+     * @param[out] group Pointer to the group structure to populate.
+     * @return 0 on success, -1 on failure.
+     */
+    int GetActionProfileGroup(const std::string& profileName,
+                              bm::ActionProfile::grp_hdl_t groupHandle,
+                              bm::ActionProfile::Group* group);
 
-  /**
-   * @brief Adds a member to an action profile.
-   * @param profileName The name of the action profile.
-   * @param actionName The name of the action.
-   * @param actionData The action parameters.
-   * @param[out] outHandle Pointer to store the resulting member handle.
-   * @return 0 on success, -1 on failure.
-   */
-  int AddActionProfileMember(const std::string &profileName,
-                             const std::string &actionName,
-                             bm::ActionData &&actionData,
-                             bm::ActionProfile::mbr_hdl_t *outHandle);
+    // =========== Indirect Table Operations ==============
+    /**
+     * @brief Adds an entry to an indirect match table using a member handle.
+     * @param tableName Name of the indirect match table.
+     * @param matchKey Match key for the entry.
+     * @param memberHandle Handle to the action profile member.
+     * @param[out] outHandle Pointer to store the generated entry handle.
+     * @param priority Priority of the match entry (default is 1).
+     * @return 0 on success, -1 on failure.
+     */
+    int AddIndirectEntry(const std::string& tableName,
+                         const std::vector<bm::MatchKeyParam>& matchKey,
+                         bm::ActionProfile::mbr_hdl_t memberHandle,
+                         bm::entry_handle_t* outHandle,
+                         int priority = 1);
 
-  /**
-   * @brief Deletes a member from an action profile.
-   * @param profileName The name of the action profile.
-   * @param memberHandle The handle of the member to delete.
-   * @return 0 on success, -1 on failure.
-   */
-  int DeleteActionProfileMember(const std::string &profileName,
-                                bm::ActionProfile::mbr_hdl_t memberHandle);
+    /**
+     * @brief Modifies an existing indirect match table entry to update its
+     * member.
+     * @param tableName Name of the indirect match table.
+     * @param entryHandle Handle of the entry to modify.
+     * @param memberHandle New member handle to assign to the entry.
+     * @return 0 on success, -1 on failure.
+     */
+    int ModifyIndirectEntry(const std::string& tableName,
+                            bm::entry_handle_t entryHandle,
+                            bm::ActionProfile::mbr_hdl_t memberHandle);
 
-  /**
-   * @brief Modifies an existing member in an action profile.
-   * @param profileName The name of the action profile.
-   * @param memberHandle The handle of the member to modify.
-   * @param actionName The new action name.
-   * @param actionData The new action parameters.
-   * @return 0 on success, -1 on failure.
-   */
-  int ModifyActionProfileMember(const std::string &profileName,
-                                bm::ActionProfile::mbr_hdl_t memberHandle,
-                                const std::string &actionName,
-                                bm::ActionData &&actionData);
+    /**
+     * @brief Deletes an entry from an indirect match table.
+     * @param tableName Name of the indirect match table.
+     * @param entryHandle Handle of the entry to delete.
+     * @return 0 on success, -1 on failure.
+     */
+    int DeleteIndirectEntry(const std::string& tableName, bm::entry_handle_t entryHandle);
 
-  /**
-   * @brief Creates a group in an action profile.
-   * @param profileName The name of the action profile.
-   * @param[out] outHandle Pointer to store the resulting group handle.
-   * @return 0 on success, -1 on failure.
-   */
-  int CreateActionProfileGroup(const std::string &profileName,
-                               bm::ActionProfile::grp_hdl_t *outHandle);
-
-  /**
-   * @brief Deletes a group from an action profile.
-   * @param profileName The name of the action profile.
-   * @param groupHandle The handle of the group to delete.
-   * @return 0 on success, -1 on failure.
-   */
-  int DeleteActionProfileGroup(const std::string &profileName,
-                               bm::ActionProfile::grp_hdl_t groupHandle);
-
-  /**
-   * @brief Adds a member to a group in an action profile.
-   * @param profileName The name of the action profile.
-   * @param memberHandle The member handle to add.
-   * @param groupHandle The group handle to add to.
-   * @return 0 on success, -1 on failure.
-   */
-  int AddMemberToGroup(const std::string &profileName,
-                       bm::ActionProfile::mbr_hdl_t memberHandle,
-                       bm::ActionProfile::grp_hdl_t groupHandle);
-
-  /**
-   * @brief Removes a member from a group in an action profile.
-   * @param profileName The name of the action profile.
-   * @param memberHandle The member handle to remove.
-   * @param groupHandle The group handle to remove from.
-   * @return 0 on success, -1 on failure.
-   */
-  int RemoveMemberFromGroup(const std::string &profileName,
-                            bm::ActionProfile::mbr_hdl_t memberHandle,
-                            bm::ActionProfile::grp_hdl_t groupHandle);
-
-  /**
-   * @brief Retrieves all members in an action profile.
-   * @param profileName The name of the action profile.
-   * @param[out] members Pointer to a vector where members will be stored.
-   * @return 0 on success, -1 on failure.
-   */
-  int GetActionProfileMembers(const std::string &profileName,
-                              std::vector<bm::ActionProfile::Member> *members);
-
-  /**
-   * @brief Retrieves a specific member from an action profile.
-   * @param profileName The name of the action profile.
-   * @param memberHandle The handle of the member to retrieve.
-   * @param[out] member Pointer to the member structure to populate.
-   * @return 0 on success, -1 on failure.
-   */
-  int GetActionProfileMember(const std::string &profileName,
-                             bm::ActionProfile::mbr_hdl_t memberHandle,
-                             bm::ActionProfile::Member *member);
-
-  /**
-   * @brief Retrieves all groups in an action profile.
-   * @param profileName The name of the action profile.
-   * @param[out] groups Pointer to a vector where groups will be stored.
-   * @return 0 on success, -1 on failure.
-   */
-  int GetActionProfileGroups(const std::string &profileName,
-                             std::vector<bm::ActionProfile::Group> *groups);
-
-  /**
-   * @brief Retrieves a specific group in an action profile.
-   * @param profileName The name of the action profile.
-   * @param groupHandle The handle of the group to retrieve.
-   * @param[out] group Pointer to the group structure to populate.
-   * @return 0 on success, -1 on failure.
-   */
-  int GetActionProfileGroup(const std::string &profileName,
-                            bm::ActionProfile::grp_hdl_t groupHandle,
-                            bm::ActionProfile::Group *group);
-
-  // =========== Indirect Table Operations ==============
-  /**
-   * @brief Adds an entry to an indirect match table using a member handle.
-   * @param tableName Name of the indirect match table.
-   * @param matchKey Match key for the entry.
-   * @param memberHandle Handle to the action profile member.
-   * @param[out] outHandle Pointer to store the generated entry handle.
-   * @param priority Priority of the match entry (default is 1).
-   * @return 0 on success, -1 on failure.
-   */
-  int AddIndirectEntry(const std::string &tableName,
-                       const std::vector<bm::MatchKeyParam> &matchKey,
-                       bm::ActionProfile::mbr_hdl_t memberHandle,
-                       bm::entry_handle_t *outHandle, int priority = 1);
-
-  /**
-   * @brief Modifies an existing indirect match table entry to update its
-   * member.
-   * @param tableName Name of the indirect match table.
-   * @param entryHandle Handle of the entry to modify.
-   * @param memberHandle New member handle to assign to the entry.
-   * @return 0 on success, -1 on failure.
-   */
-  int ModifyIndirectEntry(const std::string &tableName,
-                          bm::entry_handle_t entryHandle,
-                          bm::ActionProfile::mbr_hdl_t memberHandle);
-
-  /**
-   * @brief Deletes an entry from an indirect match table.
-   * @param tableName Name of the indirect match table.
-   * @param entryHandle Handle of the entry to delete.
-   * @return 0 on success, -1 on failure.
-   */
-  int DeleteIndirectEntry(const std::string &tableName,
-                          bm::entry_handle_t entryHandle);
-
-  /**
-   * @brief Sets a timeout (TTL) in milliseconds for an indirect table entry.
-   * @param tableName Name of the table.
-   * @param handle Handle of the entry.
-   * @param ttlMs Timeout value in milliseconds.
-   * @return 0 on success, -1 on failure.
-   */
-  int SetIndirectEntryTtl(const std::string &tableName,
-                          bm::entry_handle_t handle, unsigned int ttlMs);
-
-  /**
-   * @brief Sets the default member to be used when no match is found in an
-   * indirect match table.
-   * @param tableName Name of the table.
-   * @param memberHandle Handle of the member to be set as default.
-   * @return 0 on success, -1 on failure.
-   */
-  int SetIndirectDefaultMember(const std::string &tableName,
-                               bm::ActionProfile::mbr_hdl_t memberHandle);
-
-  /**
-   * @brief Resets the default entry of an indirect match table.
-   * @param tableName Name of the table.
-   * @return 0 on success, -1 on failure.
-   */
-  int ResetIndirectDefaultEntry(const std::string &tableName);
-
-  /**
-   * @brief Adds an entry to an indirect wide-switch (WS) match table using a
-   * group handle.
-   * @param tableName Name of the indirect WS match table.
-   * @param matchKey Match key for the entry.
-   * @param groupHandle Group handle to associate with the entry.
-   * @param[out] outHandle Pointer to store the generated entry handle.
-   * @param priority Priority of the match entry (default is 1).
-   * @return 0 on success, -1 on failure.
-   */
-  int AddIndirectWsEntry(const std::string &tableName,
-                         const std::vector<bm::MatchKeyParam> &matchKey,
-                         bm::ActionProfile::grp_hdl_t groupHandle,
-                         bm::entry_handle_t *outHandle, int priority = 1);
-
-  /**
-   * @brief Modifies an entry in an indirect WS match table with a new group
-   * handle.
-   * @param tableName Name of the indirect WS match table.
-   * @param handle Handle of the entry to modify.
-   * @param groupHandle New group handle to assign.
-   * @return 0 on success, -1 on failure.
-   */
-  int ModifyIndirectWsEntry(const std::string &tableName,
+    /**
+     * @brief Sets a timeout (TTL) in milliseconds for an indirect table entry.
+     * @param tableName Name of the table.
+     * @param handle Handle of the entry.
+     * @param ttlMs Timeout value in milliseconds.
+     * @return 0 on success, -1 on failure.
+     */
+    int SetIndirectEntryTtl(const std::string& tableName,
                             bm::entry_handle_t handle,
-                            bm::ActionProfile::grp_hdl_t groupHandle);
+                            unsigned int ttlMs);
 
-  /**
-   * @brief Sets the default group for an indirect wide-switch match table.
-   * @param tableName Name of the table.
-   * @param groupHandle Group handle to set as default.
-   * @return 0 on success, -1 on failure.
-   */
-  int SetIndirectWsDefaultGroup(const std::string &tableName,
-                                bm::ActionProfile::grp_hdl_t groupHandle);
+    /**
+     * @brief Sets the default member to be used when no match is found in an
+     * indirect match table.
+     * @param tableName Name of the table.
+     * @param memberHandle Handle of the member to be set as default.
+     * @return 0 on success, -1 on failure.
+     */
+    int SetIndirectDefaultMember(const std::string& tableName,
+                                 bm::ActionProfile::mbr_hdl_t memberHandle);
 
-  // ======== Flow Table Entry Retrieval Operations ===========
+    /**
+     * @brief Resets the default entry of an indirect match table.
+     * @param tableName Name of the table.
+     * @return 0 on success, -1 on failure.
+     */
+    int ResetIndirectDefaultEntry(const std::string& tableName);
 
-  /**
-   * @brief Retrieves all entries from a match table
-   * @param tableName Name of the match table
-   * @param entriesOut Pointer to a vector where the retrieved entries will be
-   * stored
-   * @return 0 on success, -1 on failure
-   */
-  std::vector<bm::MatchTable::Entry>
-  GetFlowEntries(const std::string &tableName);
-  /**
-   * @brief Retrieves all entries from an indirect match table
-   * @param tableName Name of the indirect match table
-   * @param entriesOut Pointer to a vector where the retrieved entries will be
-   * stored
-   * @return 0 on success, -1 on failure
-   */
-  std::vector<bm::MatchTableIndirect::Entry>
-  GetIndirectFlowEntries(const std::string &tableName);
-  /**
-   * @brief Retrieves all entries from an indirect wide-switch match table
-   * @param tableName Name of the indirect wide-switch match table
-   * @param entriesOut Pointer to a vector where the retrieved entries will be
-   * stored
-   * @return 0 on success, -1 on failure
-   */
-  std::vector<bm::MatchTableIndirectWS::Entry>
-  GetIndirectWsFlowEntries(const std::string &tableName);
-  /**
-   * @brief Retrieves a specific entry from a match table by handle
-   * @param tableName Name of the match table
-   * @param handle Entry handle identifying the rule
-   * @param entryOut Pointer to store the retrieved entry
-   * @return 0 on success, -1 on failure
-   */
-  /**
-   * @brief Retrieves a direct match table entry from the specified table.
-   * @param tableName  Name of the match table to query.
-   * @param handle     Handle (ID) of the entry within the match table.
-   * @param entry      Pointer to a MatchTable::Entry object where the retrieved
-   *                   entry data will be stored.
-   * @return 0 on success, or a non-zero error code on failure.
-   */
-  int GetEntry(const std::string &tableName, bm::entry_handle_t handle,
-               bm::MatchTable::Entry *entry);
+    /**
+     * @brief Adds an entry to an indirect wide-switch (WS) match table using a
+     * group handle.
+     * @param tableName Name of the indirect WS match table.
+     * @param matchKey Match key for the entry.
+     * @param groupHandle Group handle to associate with the entry.
+     * @param[out] outHandle Pointer to store the generated entry handle.
+     * @param priority Priority of the match entry (default is 1).
+     * @return 0 on success, -1 on failure.
+     */
+    int AddIndirectWsEntry(const std::string& tableName,
+                           const std::vector<bm::MatchKeyParam>& matchKey,
+                           bm::ActionProfile::grp_hdl_t groupHandle,
+                           bm::entry_handle_t* outHandle,
+                           int priority = 1);
 
-  /**
-   * @brief Retrieves an entry from an indirect match table.
-   * @param tableName  Name of the indirect match table to query.
-   * @param handle     Handle (ID) of the entry within the indirect match table.
-   * @param entry      Pointer to a MatchTableIndirect::Entry object where the
-   *                   retrieved entry data will be stored.
-   * @return 0 on success, or a non-zero error code on failure.
-   */
-  int GetIndirectEntry(const std::string &tableName, bm::entry_handle_t handle,
-                       bm::MatchTableIndirect::Entry *entry);
+    /**
+     * @brief Modifies an entry in an indirect WS match table with a new group
+     * handle.
+     * @param tableName Name of the indirect WS match table.
+     * @param handle Handle of the entry to modify.
+     * @param groupHandle New group handle to assign.
+     * @return 0 on success, -1 on failure.
+     */
+    int ModifyIndirectWsEntry(const std::string& tableName,
+                              bm::entry_handle_t handle,
+                              bm::ActionProfile::grp_hdl_t groupHandle);
 
-  /**
-   * @brief Retrieves an entry from an indirect match table with selector (WS).
-   * @param tableName  Name of the indirect match table with selector.
-   * @param handle     Handle (ID) of the entry within the table.
-   * @param entry      Pointer to a MatchTableIndirectWS::Entry object where the
-   *                   retrieved entry data will be stored.
-   * @return 0 on success, or a non-zero error code on failure.
-   */
-  int GetIndirectWsEntry(const std::string &tableName,
+    /**
+     * @brief Sets the default group for an indirect wide-switch match table.
+     * @param tableName Name of the table.
+     * @param groupHandle Group handle to set as default.
+     * @return 0 on success, -1 on failure.
+     */
+    int SetIndirectWsDefaultGroup(const std::string& tableName,
+                                  bm::ActionProfile::grp_hdl_t groupHandle);
+
+    // ======== Flow Table Entry Retrieval Operations ===========
+
+    /**
+     * @brief Retrieves all entries from a match table
+     * @param tableName Name of the match table
+     * @param entriesOut Pointer to a vector where the retrieved entries will be
+     * stored
+     * @return 0 on success, -1 on failure
+     */
+    std::vector<bm::MatchTable::Entry> GetFlowEntries(const std::string& tableName);
+    /**
+     * @brief Retrieves all entries from an indirect match table
+     * @param tableName Name of the indirect match table
+     * @param entriesOut Pointer to a vector where the retrieved entries will be
+     * stored
+     * @return 0 on success, -1 on failure
+     */
+    std::vector<bm::MatchTableIndirect::Entry> GetIndirectFlowEntries(const std::string& tableName);
+    /**
+     * @brief Retrieves all entries from an indirect wide-switch match table
+     * @param tableName Name of the indirect wide-switch match table
+     * @param entriesOut Pointer to a vector where the retrieved entries will be
+     * stored
+     * @return 0 on success, -1 on failure
+     */
+    std::vector<bm::MatchTableIndirectWS::Entry> GetIndirectWsFlowEntries(
+        const std::string& tableName);
+    /**
+     * @brief Retrieves a specific entry from a match table by handle
+     * @param tableName Name of the match table
+     * @param handle Entry handle identifying the rule
+     * @param entryOut Pointer to store the retrieved entry
+     * @return 0 on success, -1 on failure
+     */
+    /**
+     * @brief Retrieves a direct match table entry from the specified table.
+     * @param tableName  Name of the match table to query.
+     * @param handle     Handle (ID) of the entry within the match table.
+     * @param entry      Pointer to a MatchTable::Entry object where the retrieved
+     *                   entry data will be stored.
+     * @return 0 on success, or a non-zero error code on failure.
+     */
+    int GetEntry(const std::string& tableName,
+                 bm::entry_handle_t handle,
+                 bm::MatchTable::Entry* entry);
+
+    /**
+     * @brief Retrieves an entry from an indirect match table.
+     * @param tableName  Name of the indirect match table to query.
+     * @param handle     Handle (ID) of the entry within the indirect match table.
+     * @param entry      Pointer to a MatchTableIndirect::Entry object where the
+     *                   retrieved entry data will be stored.
+     * @return 0 on success, or a non-zero error code on failure.
+     */
+    int GetIndirectEntry(const std::string& tableName,
                          bm::entry_handle_t handle,
-                         bm::MatchTableIndirectWS::Entry *entry);
+                         bm::MatchTableIndirect::Entry* entry);
 
-  /**
-   * @brief Retrieve the default entry from a direct match-action table.
-   * @param tableName Name of the match-action table.
-   * @param entry Pointer to a MatchTable::Entry object where the retrieved
-   * entry will be stored.
-   * @return 0 on success, non-zero on failure.
-   */
-  int GetDefaultEntry(const std::string &tableName,
-                      bm::MatchTable::Entry *entry);
+    /**
+     * @brief Retrieves an entry from an indirect match table with selector (WS).
+     * @param tableName  Name of the indirect match table with selector.
+     * @param handle     Handle (ID) of the entry within the table.
+     * @param entry      Pointer to a MatchTableIndirectWS::Entry object where the
+     *                   retrieved entry data will be stored.
+     * @return 0 on success, or a non-zero error code on failure.
+     */
+    int GetIndirectWsEntry(const std::string& tableName,
+                           bm::entry_handle_t handle,
+                           bm::MatchTableIndirectWS::Entry* entry);
 
-  /**
-   * @brief Retrieve the default entry from an indirect match-action table.
-   * @param tableName Name of the match-action table.
-   * @param entry Pointer to a MatchTableIndirect::Entry object where the
-   * retrieved entry will be stored.
-   * @return 0 on success, non-zero on failure.
-   */
-  int GetIndirectDefaultEntry(const std::string &tableName,
-                              bm::MatchTableIndirect::Entry *entry);
+    /**
+     * @brief Retrieve the default entry from a direct match-action table.
+     * @param tableName Name of the match-action table.
+     * @param entry Pointer to a MatchTable::Entry object where the retrieved
+     * entry will be stored.
+     * @return 0 on success, non-zero on failure.
+     */
+    int GetDefaultEntry(const std::string& tableName, bm::MatchTable::Entry* entry);
 
-  /**
-   * @brief Retrieve the default entry from an indirect-with-selector
-   * match-action table.
-   * @param tableName Name of the match-action table.
-   * @param entry Pointer to a MatchTableIndirectWS::Entry object where the
-   * retrieved entry will be stored.
-   * @return 0 on success, non-zero on failure.
-   */
-  int GetIndirectWsDefaultEntry(const std::string &tableName,
-                                bm::MatchTableIndirectWS::Entry *entry);
-  /**
-   * @brief Retrieve a direct table entry using a specific match key.
-   * @param tableName Name of the match-action table.
-   * @param matchKey Match key parameters to locate the entry.
-   * @param entry Pointer to a MatchTable::Entry object where the retrieved
-   * entry will be stored.
-   * @param priority Priority of the match (default is 1).
-   * @return 0 on success, non-zero on failure.
-   */
-  int GetEntryFromKey(const std::string &tableName,
-                      const std::vector<bm::MatchKeyParam> &matchKey,
-                      bm::MatchTable::Entry *entry, int priority = 1);
-  /**
-   * @brief Retrieve an entry from an indirect match-action table using a
-   * specific match key.
-   * @param tableName Name of the match-action table.
-   * @param matchKey Match key parameters to locate the entry.
-   * @param entry Pointer to a MatchTableIndirect::Entry object where the
-   * retrieved entry will be stored.
-   * @param priority Priority of the match (default is 1).
-   * @return 0 on success, non-zero on failure.
-   */
-  int GetIndirectEntryFromKey(const std::string &tableName,
-                              const std::vector<bm::MatchKeyParam> &matchKey,
-                              bm::MatchTableIndirect::Entry *entry,
-                              int priority = 1);
-  /**
-   * @brief Retrieve an entry from an indirect-with-selector match-action table
-   * using a specific match key.
-   * @param tableName Name of the match-action table.
-   * @param matchKey Match key parameters to locate the entry.
-   * @param entry Pointer to a MatchTableIndirectWS::Entry object where the
-   * retrieved entry will be stored.
-   * @param priority Priority of the match (default is 1).
-   * @return 0 on success, non-zero on failure.
-   */
-  int GetIndirectWsEntryFromKey(const std::string &tableName,
-                                const std::vector<bm::MatchKeyParam> &matchKey,
-                                bm::MatchTableIndirectWS::Entry *entry,
+    /**
+     * @brief Retrieve the default entry from an indirect match-action table.
+     * @param tableName Name of the match-action table.
+     * @param entry Pointer to a MatchTableIndirect::Entry object where the
+     * retrieved entry will be stored.
+     * @return 0 on success, non-zero on failure.
+     */
+    int GetIndirectDefaultEntry(const std::string& tableName, bm::MatchTableIndirect::Entry* entry);
+
+    /**
+     * @brief Retrieve the default entry from an indirect-with-selector
+     * match-action table.
+     * @param tableName Name of the match-action table.
+     * @param entry Pointer to a MatchTableIndirectWS::Entry object where the
+     * retrieved entry will be stored.
+     * @return 0 on success, non-zero on failure.
+     */
+    int GetIndirectWsDefaultEntry(const std::string& tableName,
+                                  bm::MatchTableIndirectWS::Entry* entry);
+    /**
+     * @brief Retrieve a direct table entry using a specific match key.
+     * @param tableName Name of the match-action table.
+     * @param matchKey Match key parameters to locate the entry.
+     * @param entry Pointer to a MatchTable::Entry object where the retrieved
+     * entry will be stored.
+     * @param priority Priority of the match (default is 1).
+     * @return 0 on success, non-zero on failure.
+     */
+    int GetEntryFromKey(const std::string& tableName,
+                        const std::vector<bm::MatchKeyParam>& matchKey,
+                        bm::MatchTable::Entry* entry,
+                        int priority = 1);
+    /**
+     * @brief Retrieve an entry from an indirect match-action table using a
+     * specific match key.
+     * @param tableName Name of the match-action table.
+     * @param matchKey Match key parameters to locate the entry.
+     * @param entry Pointer to a MatchTableIndirect::Entry object where the
+     * retrieved entry will be stored.
+     * @param priority Priority of the match (default is 1).
+     * @return 0 on success, non-zero on failure.
+     */
+    int GetIndirectEntryFromKey(const std::string& tableName,
+                                const std::vector<bm::MatchKeyParam>& matchKey,
+                                bm::MatchTableIndirect::Entry* entry,
                                 int priority = 1);
+    /**
+     * @brief Retrieve an entry from an indirect-with-selector match-action table
+     * using a specific match key.
+     * @param tableName Name of the match-action table.
+     * @param matchKey Match key parameters to locate the entry.
+     * @param entry Pointer to a MatchTableIndirectWS::Entry object where the
+     * retrieved entry will be stored.
+     * @param priority Priority of the match (default is 1).
+     * @return 0 on success, non-zero on failure.
+     */
+    int GetIndirectWsEntryFromKey(const std::string& tableName,
+                                  const std::vector<bm::MatchKeyParam>& matchKey,
+                                  bm::MatchTableIndirectWS::Entry* entry,
+                                  int priority = 1);
 
-  // === Counter Functions ===
+    // === Counter Functions ===
 
-  /**
-   * @brief Read packet and byte counters for a specific table entry.
-   * @param tableName The name of the table.
-   * @param handle The entry handle.
-   * @param bytes Output: number of bytes.
-   * @param packets Output: number of packets.
-   * @return 0 on success, -1 on failure.
-   */
-  int ReadTableCounters(const std::string &tableName, bm::entry_handle_t handle,
-                        uint64_t *bytes, uint64_t *packets);
+    /**
+     * @brief Read packet and byte counters for a specific table entry.
+     * @param tableName The name of the table.
+     * @param handle The entry handle.
+     * @param bytes Output: number of bytes.
+     * @param packets Output: number of packets.
+     * @return 0 on success, -1 on failure.
+     */
+    int ReadTableCounters(const std::string& tableName,
+                          bm::entry_handle_t handle,
+                          uint64_t* bytes,
+                          uint64_t* packets);
 
-  /**
-   * @brief Reset all counters in the specified match-action table.
-   * @param tableName The name of the table.
-   * @return 0 on success, -1 on failure.
-   */
-  int ResetTableCounters(const std::string &tableName);
+    /**
+     * @brief Reset all counters in the specified match-action table.
+     * @param tableName The name of the table.
+     * @return 0 on success, -1 on failure.
+     */
+    int ResetTableCounters(const std::string& tableName);
 
-  /**
-   * @brief Write counters for a specific table entry.
-   * @param tableName The name of the table.
-   * @param handle The entry handle.
-   * @param bytes Number of bytes to set.
-   * @param packets Number of packets to set.
-   * @return 0 on success, -1 on failure.
-   */
-  int WriteTableCounters(const std::string &tableName,
-                         bm::entry_handle_t handle, uint64_t bytes,
-                         uint64_t packets);
-  /**
+    /**
+     * @brief Write counters for a specific table entry.
+     * @param tableName The name of the table.
+     * @param handle The entry handle.
+     * @param bytes Number of bytes to set.
+     * @param packets Number of packets to set.
+     * @return 0 on success, -1 on failure.
+     */
+    int WriteTableCounters(const std::string& tableName,
+                           bm::entry_handle_t handle,
+                           uint64_t bytes,
+                           uint64_t packets);
+    /**
 
-  *@brief Read the byte and packet count from a named counter at a given index.
-  *@param counterName Name of the counter array.
-  *@param index Index within the counter array.
-  *@param[out] bytes Pointer to store the byte count.
-  *@param[out] packets Pointer to store the packet count.
-  *@return 0 on success, -1 on failure.
-  */
-  int ReadCounter(const std::string &counterName, size_t index,
-                  bm::MatchTableAbstract::counter_value_t *bytes,
-                  bm::MatchTableAbstract::counter_value_t *packets);
+    *@brief Read the byte and packet count from a named counter at a given index.
+    *@param counterName Name of the counter array.
+    *@param index Index within the counter array.
+    *@param[out] bytes Pointer to store the byte count.
+    *@param[out] packets Pointer to store the packet count.
+    *@return 0 on success, -1 on failure.
+    */
+    int ReadCounter(const std::string& counterName,
+                    size_t index,
+                    bm::MatchTableAbstract::counter_value_t* bytes,
+                    bm::MatchTableAbstract::counter_value_t* packets);
 
-  /**
-   *@brief Reset all values in a named counter array to zero.
-   *@param counterName Name of the counter array to reset.
-   *@return 0 on success, -1 on failure.
-   */
-  int ResetCounter(const std::string &counterName);
+    /**
+     *@brief Reset all values in a named counter array to zero.
+     *@param counterName Name of the counter array to reset.
+     *@return 0 on success, -1 on failure.
+     */
+    int ResetCounter(const std::string& counterName);
 
-  /**
-   *@brief Manually write values to a counter array at a given index.
-   *@param counterName Name of the counter array.
-   *@param index Index within the counter array.
-   *@param bytes Number of bytes to write.
-   *@param packets Number of packets to write
-   *@return 0 on success, -1 on failure.
-   */
-  int WriteCounter(const std::string &counterName, size_t index,
-                   bm::MatchTableAbstract::counter_value_t bytes,
-                   bm::MatchTableAbstract::counter_value_t packets);
+    /**
+     *@brief Manually write values to a counter array at a given index.
+     *@param counterName Name of the counter array.
+     *@param index Index within the counter array.
+     *@param bytes Number of bytes to write.
+     *@param packets Number of packets to write
+     *@return 0 on success, -1 on failure.
+     */
+    int WriteCounter(const std::string& counterName,
+                     size_t index,
+                     bm::MatchTableAbstract::counter_value_t bytes,
+                     bm::MatchTableAbstract::counter_value_t packets);
 
-  // ============= Meter Operations ============
+    // ============= Meter Operations ============
 
-  /**
-   *@brief Set meter rates for a specific match table entry.
-   *@param tableName Name of the match table.
-   *@param handle Entry handle in the table.
-   *@param configs Rate configuration vector.
-   *@return 0 on success, -1 on failure.
-   */
-  int SetMeterRates(const std::string &tableName, bm::entry_handle_t handle,
-                    const std::vector<bm::Meter::rate_config_t> &configs);
+    /**
+     *@brief Set meter rates for a specific match table entry.
+     *@param tableName Name of the match table.
+     *@param handle Entry handle in the table.
+     *@param configs Rate configuration vector.
+     *@return 0 on success, -1 on failure.
+     */
+    int SetMeterRates(const std::string& tableName,
+                      bm::entry_handle_t handle,
+                      const std::vector<bm::Meter::rate_config_t>& configs);
 
-  /**
-   *@brief Get meter rates for a specific match table entry.
-   *@param tableName Name of the match table.
-   *@param handle Entry handle in the table.
-   *@param[out] configs Pointer to hold the retrieved rate configurations.
-   *@return 0 on success, -1 on failure.
-   */
-  int GetMeterRates(const std::string &tableName, bm::entry_handle_t handle,
-                    std::vector<bm::Meter::rate_config_t> *configs);
+    /**
+     *@brief Get meter rates for a specific match table entry.
+     *@param tableName Name of the match table.
+     *@param handle Entry handle in the table.
+     *@param[out] configs Pointer to hold the retrieved rate configurations.
+     *@return 0 on success, -1 on failure.
+     */
+    int GetMeterRates(const std::string& tableName,
+                      bm::entry_handle_t handle,
+                      std::vector<bm::Meter::rate_config_t>* configs);
 
-  /**
-   *@brief Reset meter rates for a specific match table entry.
-   *@param tableName Name of the match table.
-   *@param handle Entry handle in the table.
-   *@return 0 on success, -1 on failure.
-   */
-  int ResetMeterRates(const std::string &tableName, bm::entry_handle_t handle);
+    /**
+     *@brief Reset meter rates for a specific match table entry.
+     *@param tableName Name of the match table.
+     *@param handle Entry handle in the table.
+     *@return 0 on success, -1 on failure.
+     */
+    int ResetMeterRates(const std::string& tableName, bm::entry_handle_t handle);
 
-  /**
-   *@brief Set the rate configuration for an entire meter array.
-   *@param meterName Name of the meter array.
-   *@param configs Rate configuration vector to apply.
-   *@return 0 on success, -1 on failure.
-   */
-  int SetMeterArrayRates(const std::string &meterName,
-                         const std::vector<bm::Meter::rate_config_t> &configs);
+    /**
+     *@brief Set the rate configuration for an entire meter array.
+     *@param meterName Name of the meter array.
+     *@param configs Rate configuration vector to apply.
+     *@return 0 on success, -1 on failure.
+     */
+    int SetMeterArrayRates(const std::string& meterName,
+                           const std::vector<bm::Meter::rate_config_t>& configs);
 
-  /**
-   *@brief Set meter rates for a specific index in a meter array.
-   *@param meterName Name of the meter array.
-   *@param idx Index within the meter array.
-   *@param configs Rate configuration vector.
-   *@return 0 on success, -1 on failure.
-   */
-  int MeterSetRates(const std::string &meterName, size_t idx,
-                    const std::vector<bm::Meter::rate_config_t> &configs);
+    /**
+     *@brief Set meter rates for a specific index in a meter array.
+     *@param meterName Name of the meter array.
+     *@param idx Index within the meter array.
+     *@param configs Rate configuration vector.
+     *@return 0 on success, -1 on failure.
+     */
+    int MeterSetRates(const std::string& meterName,
+                      size_t idx,
+                      const std::vector<bm::Meter::rate_config_t>& configs);
 
-  /**
-   *@brief Get meter rate configuration for a specific index in a meter array.
-   *@param meterName Name of the meter array.
-   *@param idx Index within the meter array.
-   *@param[out] configs Pointer to store the retrieved rate configurations.
-   *@return 0 on success, -1 on failure.
-   */
-  int MeterGetRates(const std::string &meterName, size_t idx,
-                    std::vector<bm::Meter::rate_config_t> *configs);
+    /**
+     *@brief Get meter rate configuration for a specific index in a meter array.
+     *@param meterName Name of the meter array.
+     *@param idx Index within the meter array.
+     *@param[out] configs Pointer to store the retrieved rate configurations.
+     *@return 0 on success, -1 on failure.
+     */
+    int MeterGetRates(const std::string& meterName,
+                      size_t idx,
+                      std::vector<bm::Meter::rate_config_t>* configs);
 
-  /**
-   *@brief Reset meter rate configuration at a given index in a meter array.
-   *@param meterName Name of the meter array.
-   *@param idx Index within the meter array.
-   *@return 0 on success, -1 on failure.
-   */
-  int MeterResetRates(const std::string &meterName, size_t idx);
+    /**
+     *@brief Reset meter rate configuration at a given index in a meter array.
+     *@param meterName Name of the meter array.
+     *@param idx Index within the meter array.
+     *@return 0 on success, -1 on failure.
+     */
+    int MeterResetRates(const std::string& meterName, size_t idx);
 
-  // ======= Register Operations   =======
-  /**
-   * @brief Reads the value from a specific register index.
-   * @param registerName Name of the register array to read from.
-   * @param index Index within the register array to read.
-   * @param value Pointer to a bm::Data object where the read value will be
-   * stored.
-   * @return 0 on success, non-zero on failure (e.g., invalid register name or
-   * index).
-   */
-  int RegisterRead(const std::string &registerName, size_t index,
-                   bm::Data *value);
+    // ======= Register Operations   =======
+    /**
+     * @brief Reads the value from a specific register index.
+     * @param registerName Name of the register array to read from.
+     * @param index Index within the register array to read.
+     * @param value Pointer to a bm::Data object where the read value will be
+     * stored.
+     * @return 0 on success, non-zero on failure (e.g., invalid register name or
+     * index).
+     */
+    int RegisterRead(const std::string& registerName, size_t index, bm::Data* value);
 
-  /**
-   * @brief Writes a value to a specific register index
-   * @param registerName Name of the register array to write to.
-   * @param index Index within the register array to write.
-   * @param value Value to write (as bm::Data).
-   * @return 0 on success, non-zero on failure.
-   */
-  int RegisterWrite(const std::string &registerName, size_t index,
-                    const bm::Data &value);
+    /**
+     * @brief Writes a value to a specific register index
+     * @param registerName Name of the register array to write to.
+     * @param index Index within the register array to write.
+     * @param value Value to write (as bm::Data).
+     * @return 0 on success, non-zero on failure.
+     */
+    int RegisterWrite(const std::string& registerName, size_t index, const bm::Data& value);
 
-  /**
-   * @brief Reads the entire register array.
-   * @param registerName Name of the register array to read from.
-   * @return A vector containing all register values (each as bm::Data).
-   *         The vector will be empty if the register name is invalid.
-   */
-  std::vector<bm::Data> RegisterReadAll(const std::string &registerName);
+    /**
+     * @brief Reads the entire register array.
+     * @param registerName Name of the register array to read from.
+     * @return A vector containing all register values (each as bm::Data).
+     *         The vector will be empty if the register name is invalid.
+     */
+    std::vector<bm::Data> RegisterReadAll(const std::string& registerName);
 
-  /**
-   * @brief Writes the same value to a range of register indices.
-   * @param registerName Name of the register array to write to.
-   * @param startIndex Starting index of the range (inclusive).
-   * @param endIndex Ending index of the range (inclusive).
-   * @param value Value to write (as bm::Data) to all indices in the range.
-   * @return 0 on success, non-zero on failure.
-   */
-  int RegisterWriteRange(const std::string &registerName, size_t startIndex,
-                         size_t endIndex, const bm::Data &value);
+    /**
+     * @brief Writes the same value to a range of register indices.
+     * @param registerName Name of the register array to write to.
+     * @param startIndex Starting index of the range (inclusive).
+     * @param endIndex Ending index of the range (inclusive).
+     * @param value Value to write (as bm::Data) to all indices in the range.
+     * @return 0 on success, non-zero on failure.
+     */
+    int RegisterWriteRange(const std::string& registerName,
+                           size_t startIndex,
+                           size_t endIndex,
+                           const bm::Data& value);
 
-  /**
-   * @brief Resets all entries in the specified register array to zero.
-   * @param registerName Name of the register array to reset.
-   * @return 0 on success, non-zero on failure.
-   */
-  int RegisterReset(const std::string &registerName);
+    /**
+     * @brief Resets all entries in the specified register array to zero.
+     * @param registerName Name of the register array to reset.
+     * @return 0 on success, non-zero on failure.
+     */
+    int RegisterReset(const std::string& registerName);
 
-  // ======= Parse Value Set Functions  =======
+    // ======= Parse Value Set Functions  =======
 
-  /**
-   * @brief Adds a value to a parse value set.
-   * @param vsetName Name of the parse value set.
-   * @param value The value to add to the set.
-   * @return 0 on success, -1 on failure.
-   */
-  int ParseVsetAdd(const std::string &vsetName, const bm::ByteContainer &value);
+    /**
+     * @brief Adds a value to a parse value set.
+     * @param vsetName Name of the parse value set.
+     * @param value The value to add to the set.
+     * @return 0 on success, -1 on failure.
+     */
+    int ParseVsetAdd(const std::string& vsetName, const bm::ByteContainer& value);
 
-  /**
-   * @brief Removes a value from a parse value set.
-   * @param vsetName Name of the parse value set.
-   * @param value The value to remove from the set.
-   * @return 0 on success, -1 on failure.
-   */
-  int ParseVsetRemove(const std::string &vsetName,
-                      const bm::ByteContainer &value);
+    /**
+     * @brief Removes a value from a parse value set.
+     * @param vsetName Name of the parse value set.
+     * @param value The value to remove from the set.
+     * @return 0 on success, -1 on failure.
+     */
+    int ParseVsetRemove(const std::string& vsetName, const bm::ByteContainer& value);
 
-  /**
-   * @brief Retrieves all values in a parse value set.
-   * @param vsetName Name of the parse value set.
-   * @param values Output vector to store retrieved ByteContainers.
-   * @return 0 on success, -1 on failure.
-   */
-  int ParseVsetGet(const std::string &vsetName,
-                   std::vector<bm::ByteContainer> *values);
+    /**
+     * @brief Retrieves all values in a parse value set.
+     * @param vsetName Name of the parse value set.
+     * @param values Output vector to store retrieved ByteContainers.
+     * @return 0 on success, -1 on failure.
+     */
+    int ParseVsetGet(const std::string& vsetName, std::vector<bm::ByteContainer>* values);
 
-  /**
-   * @brief Clears all values in a parse value set.
-   * @param vsetName Name of the parse value set.
-   * @return 0 on success, -1 on failure.
-   */
-  int ParseVsetClear(const std::string &vsetName);
+    /**
+     * @brief Clears all values in a parse value set.
+     * @param vsetName Name of the parse value set.
+     * @return 0 on success, -1 on failure.
+     */
+    int ParseVsetClear(const std::string& vsetName);
 
-  // ======= Runtime State Management ========
-  /**
-   * @brief Resets the runtime state of the switch to its initial configuration.
-   * @return 0 on success, -1 on failure.
-   */
-  int ResetState();
+    // ======= Runtime State Management ========
+    /**
+     * @brief Resets the runtime state of the switch to its initial configuration.
+     * @return 0 on success, -1 on failure.
+     */
+    int ResetState();
 
-  /**
-   * @brief Serializes the current runtime state to an output stream.
-   * @param[out] out Pointer to output stream to write the serialized
-   * configuration.
-   * @return 0 on success, -1 on failure.
-   */
-  int Serialize(std::ostream *out);
+    /**
+     * @brief Serializes the current runtime state to an output stream.
+     * @param[out] out Pointer to output stream to write the serialized
+     * configuration.
+     * @return 0 on success, -1 on failure.
+     */
+    int Serialize(std::ostream* out);
 
-  /**
-   * @brief Loads a new runtime configuration from a JSON string.
-   * @param newConfig JSON string containing the new configuration.
-   * @return 0 on success, -1 on failure.
-   */
-  int LoadNewConfig(const std::string &newConfig);
+    /**
+     * @brief Loads a new P4 program for SwapConfigs() (needs EnableSwap).
+     * @param newConfig the BMv2 JSON of the program, as a string (not a path).
+     * @return 0 on success, -1 on failure.
+     */
+    int LoadNewConfig(const std::string& newConfig);
 
-  /**
-   * @brief Swaps the currently active configuration with a newly loaded one.
-   * @return 0 on success, -1 on failure.
-   */
-  int SwapConfigs();
+    /**
+     * @brief Swaps to the program loaded by LoadNewConfig(): at once if the
+     * switch holds no packet, otherwise when its last packet has left; frames
+     * that arrive meanwhile wait (see P4SwitchCore::swap_configs()).
+     * @return 0 if the swap is done or waits, -1 on failure.
+     */
+    int SwapConfigs();
 
-  /**
-   * @brief Retrieves the current runtime configuration as a JSON string.
-   * @param[out] configOut Pointer to a string to store the configuration.
-   * @return 0 on success, -1 on failure.
-   */
-  int GetConfig(std::string *configOut);
+    /**
+     * @brief Retrieves the current runtime configuration as a JSON string.
+     * @param[out] configOut Pointer to a string to store the configuration.
+     * @return 0 on success, -1 on failure.
+     */
+    int GetConfig(std::string* configOut);
 
-  /**
-   * @brief Retrieves the MD5 hash of the current runtime configuration.
-   * @param[out] md5Out Pointer to a string to store the MD5 hash.
-   * @return 0 on success, -1 on failure.
-   */
-  int GetConfigMd5(std::string *md5Out);
+    /**
+     * @brief Retrieves the MD5 hash of the current runtime configuration.
+     * @param[out] md5Out Pointer to a string to store the MD5 hash.
+     * @return 0 on success, -1 on failure.
+     */
+    int GetConfigMd5(std::string* md5Out);
 
-protected:
-  /**
-   * @brief Add the "simple_switch" Thrift service, which simple_switch_CLI uses
-   * for its own commands: mirroring_add, set_queue_depth, get_time_elapsed and
-   * the like (defined in p4-core-v1model-thrift.cc)
-   */
-  void AddThriftServices() override;
+  protected:
+    /**
+     * @brief Add the "simple_switch" Thrift service, which simple_switch_CLI uses
+     * for its own commands: mirroring_add, set_queue_depth, get_time_elapsed and
+     * the like (defined in p4-core-v1model-thrift.cc)
+     */
+    void AddThriftServices() override;
 
-  /**
-   * @brief The egress thread mapper for dequeue process of queue buffer
-   * bmv2 using 4u default, in ns-3 only single thread for processing
-   */
-  struct EgressThreadMapper {
-    explicit EgressThreadMapper(size_t nb_threads) : nb_threads(nb_threads) {}
+    /**
+     * @brief Maps an egress port to the worker thread index (single-threaded in ns-3).
+     */
+    struct EgressThreadMapper
+    {
+        explicit EgressThreadMapper(size_t nb_threads)
+            : nb_threads(nb_threads)
+        {
+        }
 
-    size_t operator()(size_t egress_port) const {
-      return egress_port % nb_threads;
-    }
+        size_t operator()(size_t egress_port) const
+        {
+            return egress_port % nb_threads;
+        }
 
-    size_t nb_threads;
-  };
+        size_t nb_threads;
+    };
 
-private:
-  uint64_t m_packetId;
-  uint64_t m_switchRate;
+  private:
+    uint64_t m_packetId;
+    uint64_t m_switchRate;
 
-  // enable tracing
-  uint64_t m_inputBps;  // bps
-  uint64_t m_inputBp;   // bp
-  uint64_t m_inputPps;  // pps
-  uint64_t m_inputPp;   // pp
-  uint64_t m_egressBps; // bps
-  uint64_t m_egressBp;  // bp
-  uint64_t m_egressPps; // pps
-  uint64_t m_egressPp;  // pp
+    Time m_timeInterval;       ///< Statistics logging interval
+    double m_virtualQueueRate; ///< Per-queue rate (pps)
 
-  Time m_timeInterval;       // s
-  double m_virtualQueueRate; // pps
+    size_t m_nbQueuesPerPort;
+    uint64_t m_startTimestamp; ///< Simulation start timestamp
 
-  size_t m_nbQueuesPerPort;
-  EventId m_egressTimeEvent;  //!< The timer event ID for dequeue
-  EventId m_egressRetryEvent; //!< Extra egress run scheduled by the timer
-  EventId m_tracingEvent;     //!< The timer event ID for tracing statistics
-  Time m_egressTimeRef;       //!< Desired time between timer event triggers
-  uint64_t m_startTimestamp; //!< Start time of the switch
+    static constexpr size_t m_nbEgressThreads = 1u;
 
-  static constexpr size_t m_nbEgressThreads = 1u; // 4u default in bmv2
+    std::unique_ptr<InputBuffer> input_buffer;
+    NSQueueingLogicPriRL<std::unique_ptr<bm::Packet>, EgressThreadMapper> egress_buffer;
 
-  std::unique_ptr<InputBuffer> input_buffer;
-  NSQueueingLogicPriRL<std::unique_ptr<bm::Packet>, EgressThreadMapper>
-      egress_buffer;
-  bm::Queue<std::unique_ptr<bm::Packet>> output_buffer;
+    /**
+     * @brief Put \p packet into the input buffer and let the ingress pipeline
+     * take it as SwitchRate allows (see P4SwitchCore::StartIngress()).
+     * @return false if the input buffer is full; the packet is then dropped
+     */
+    bool AdmitToIngress(InputBuffer::PacketType type, std::unique_ptr<bm::Packet>&& packet);
 
-  bool m_firstPacket;
-};
+    // ---- Event-driven scheduler state ----
+
+    /**
+     * @brief Per-port transmission state.
+     *
+     * busy is set when a packet has been handed to the NetDevice and cleared
+     * when the device reports the end of serialisation via PortTxComplete().
+     * pendingEvent allows cancellation of a stale dequeue timer;
+     * txCompleteEvent is the PortTxComplete() scheduled for a frame that the
+     * device refused, cancelled with the core.
+     */
+    struct PortTxState
+    {
+        bool busy{false};
+        EventId pendingEvent{};
+        EventId txCompleteEvent{};
+    };
+
+    std::unordered_map<uint32_t, PortTxState> m_portTxState;
+
+    /// Link rate of port 0, read at startup: seeds the Traffic Manager's PortRate and
+    /// appears in log messages. Serialisation is timed by each port's channel.
+    uint64_t m_linkRateBps{1000000000ULL};
+
+    // ---- VOQ + fabric Traffic Manager (opt-in) ----
+
+    /// When true, HandleIngressPipeline's Enqueue() steers packets into m_trafficManager
+    /// instead of egress_buffer.  Default false keeps the legacy output-queued path.
+    bool m_enableVoqFabric{false};
+
+    /// The Traffic Manager (VOQ + fabric + egress).  Null unless m_enableVoqFabric.
+    Ptr<P4TrafficManager> m_trafficManager;
+
+    /// Steer a post-ingress bm::Packet into the Traffic Manager's VOQ.
+    void EnqueueToTrafficManager(uint32_t egress_port, std::unique_ptr<bm::Packet>&& packet);
+
+    /// TransmitCallback target: run egress pipeline + deparse + send for a packet
+    /// the Traffic Manager has selected for transmission.
+    void TmTransmit(uint32_t outPort, uint8_t priority, std::unique_ptr<TmPayload> payload);
+
+    /// Datapath -> Traffic Manager completion hook.  Scheduled by TmTransmit()
+    /// for the moment the output port finishes serialising the current frame;
+    /// forwards to P4TrafficManager::NotifyEgressTxComplete() so the TM accounts
+    /// for the frame (transmitted, dropped, or recirculated) and serves the next
+    /// one.  \p outcome tells the TM what actually happened to the frame.
+    void TmNotifyTxDone(uint32_t outPort, TmTxOutcome outcome);
+
+    /// Schedule a TmNotifyTxDone() for \p outPort after \p delay, recording its
+    /// EventId in m_pendingTxDone so the destructor can cancel it before the TM
+    /// is disposed (a pending completion must never fire on a torn-down core).
+    void ScheduleTmNotifyTxDone(uint32_t outPort, Time delay, TmTxOutcome outcome);
+
+    /// Pending TmNotifyTxDone events, keyed by output port.  At most one frame
+    /// is in flight per port in completion-driven egress, so at most one entry
+    /// per port.  Cancelled in the destructor before m_trafficManager->Dispose().
+    std::unordered_map<uint32_t, EventId> m_pendingTxDone;
+}; // class P4CoreV1model
 
 } // namespace ns3
 

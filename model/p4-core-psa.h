@@ -22,6 +22,8 @@
 #include "ns3/p4-queue.h"
 #include "ns3/p4-switch-core.h"
 
+#include <unordered_map>
+
 #define SSWITCH_VIRTUAL_QUEUE_NUM_PSA 8
 
 namespace ns3
@@ -34,7 +36,6 @@ class P4CorePsa : public P4SwitchCore
     P4CorePsa(
         P4SwitchNetDevice* net_device,
         bool enable_swap,
-        bool enable_tracing,
         uint64_t packet_rate,
         size_t input_buffer_size,
         size_t queue_buffer_size,
@@ -58,8 +59,45 @@ class P4CorePsa : public P4SwitchCore
                       uint16_t protocol,
                       const Address& destination) override;
 
-    void SetEgressTimerEvent();
     void CalculateScheduleTime();
+
+    // ---- Event-driven scheduler ----
+
+    /**
+     * @brief Attempt to dequeue and process one packet from the egress buffer.
+     *
+     * Invoked when a packet is enqueued into a previously-empty queue
+     * (via ScheduleEgressIfNeeded()) or when port transmission completes
+     * (via PortTxComplete()).  If no packet is currently eligible based on
+     * its rate-limit timestamp, the next eligible time is computed and a
+     * new event is scheduled at that time.
+     *
+     * @param port  Egress port to dequeue from.  Pass UINT32_MAX to let the
+     *              scheduler pick the next eligible port (used by the legacy
+     *              HandleEgressPipeline wrapper).
+     */
+    void EventDrivenEgressDequeue(uint32_t port);
+
+    /**
+     * @brief Schedule an egress-dequeue event for @p port if none is pending.
+     *
+     * Called from Enqueue() after a packet is pushed.  If the port is idle
+     * and no dequeue event is already pending, a new EventDrivenEgressDequeue
+     * event is scheduled at the earliest rate-eligible time.
+     *
+     * @param port  The egress port that just received a packet.
+     */
+    void ScheduleEgressIfNeeded(uint32_t port);
+
+    /**
+     * @brief Callback invoked when link serialisation of a packet finishes.
+     *
+     * Marks the port free and calls ScheduleEgressIfNeeded() to drain the
+     * next queued packet.
+     *
+     * @param port  The egress port whose transmission just completed.
+     */
+    void PortTxComplete(uint32_t port);
 
     // === override ===
 
@@ -68,7 +106,8 @@ class P4CorePsa : public P4SwitchCore
     void reset_target_state_() override;
 
     void HandleIngressPipeline() override;
-    void Enqueue(uint32_t egress_port, std::unique_ptr<bm::Packet>&& packet) override;
+    size_t GetNInputPackets() const override;
+    void EnqueueNow(uint32_t egress_port, std::unique_ptr<bm::Packet>&& packet) override;
     bool HandleEgressPipeline(size_t workerId) override;
 
     void MultiCastPacket(bm::Packet* packet,
@@ -85,6 +124,13 @@ class P4CorePsa : public P4SwitchCore
     int SetAllEgressQueueRates(uint64_t ratePps);
 
   protected:
+    /**
+     * @brief Add the "psa_switch" Thrift service, which psa_switch_CLI uses for
+     * its own commands: mirroring_add, set_queue_depth, get_time_elapsed and the
+     * like (defined in p4-core-psa-thrift.cc)
+     */
+    void AddThriftServices() override;
+
     struct EgressThreadMapper
     {
         explicit EgressThreadMapper(size_t nb_threads)
@@ -103,22 +149,48 @@ class P4CorePsa : public P4SwitchCore
   private:
     static constexpr uint32_t PSA_PORT_RECIRCULATE = 0xfffffffa;
     static constexpr size_t nb_egress_threads = 1u; // 4u default
-    uint64_t m_packetId;                            // Packet ID
-    bool m_firstPacket;
-    bool m_enableTracing;
-    uint64_t m_switchRate; //!< Switch processing capability (unit: PPS (Packets
-                           //!< Per Second))
+    uint64_t m_packetId;
+    uint64_t m_switchRate; //!< Packet rate of the whole pipeline (pps), 0 = no limit
     size_t m_nbQueuesPerPort;
+    size_t m_inputBufferSize; //!< Capacity of input_buffer (packets)
 
-    EventId m_egressTimeEvent;  //!< The timer event ID [Egress]
-    EventId m_egressRetryEvent; //!< Extra egress run scheduled by the timer
-    Time m_egressTimeRef;       //!< Desired time between timer event triggers
+    /**
+     * @brief Put \p packet into the input buffer and let the ingress pipeline
+     * take it as SwitchRate allows (see P4SwitchCore::StartIngress()).
+     * @return false if the input buffer is full; the packet is then dropped
+     */
+    bool AdmitToIngress(std::unique_ptr<bm::Packet>&& packet);
 
-    // Buffers and Transmit Function
-    // std::unique_ptr<InputBuffer> input_buffer;
+    // Buffers
     bm::Queue<std::unique_ptr<bm::Packet>> input_buffer;
     NSQueueingLogicPriRL<std::unique_ptr<bm::Packet>, EgressThreadMapper> egress_buffer;
     bm::Queue<std::unique_ptr<bm::Packet>> output_buffer;
+
+    // ---- Event-driven scheduler state ----
+
+    /**
+     * @brief Per-port transmission state.
+     *
+     * busy         : true while a packet is being serialised on the link; the
+     *                device clears it through PortTxComplete().
+     * pendingEvent : EventId of the next scheduled dequeue attempt; allows
+     *                cancellation when a new packet arrives earlier.
+     */
+    struct PortTxState
+    {
+        bool busy{false};
+        EventId pendingEvent{};
+        EventId txCompleteEvent{}; ///< PortTxComplete() for a frame the device refused
+    };
+
+    /// Indexed by egress port number; created on first use.
+    std::unordered_map<uint32_t, PortTxState> m_portTxState;
+
+    /**
+     * @brief Link rate of port 0 (bits per second), for log messages only.
+     * Serialisation is timed by each port's channel.
+     */
+    uint64_t m_linkRateBps{1000000000ULL};
 };
 
 } // namespace ns3

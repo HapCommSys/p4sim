@@ -17,51 +17,24 @@
  */
 
 #include "ns3/p4-nic-pna.h"
+
+#include "ns3/data-rate.h"
 #include "ns3/p4-switch-net-device.h"
+#include "ns3/switched-ethernet-channel.h"
+#include "ns3/primitives-pna.h"
 #include "ns3/register-access-v1model.h"
 #include "ns3/simulator.h"
 
-#include <bm/bm_sim/actions.h>
-
 NS_LOG_COMPONENT_DEFINE("P4CorePna");
-
-namespace
-{
-
-// PNA forwarding extern functions (pna.p4). p4c-bm2-pna emits them as BMv2
-// primitives, but only the v1model primitives are registered in p4sim, so a
-// PNA JSON failed to load with "Unknown primitive action: drop_packet".
-
-// send_to_port(PortId_t dest_port)
-class send_to_port : public bm::ActionPrimitive<const bm::Data&>
-{
-    void operator()(const bm::Data& dest_port)
-    {
-        get_packet().set_egress_port(dest_port.get<uint32_t>());
-    }
-};
-
-REGISTER_PRIMITIVE(send_to_port);
-
-// drop_packet(): the packet is dropped once the main control completes.
-class drop_packet : public bm::ActionPrimitive<>
-{
-    void operator()()
-    {
-        get_packet().set_egress_port(SSWITCH_DROP_PORT);
-    }
-};
-
-REGISTER_PRIMITIVE(drop_packet);
-
-} // namespace
 
 namespace ns3
 {
 
-P4PnaNic::P4PnaNic(P4SwitchNetDevice* net_device, bool enable_swap)
-    : P4SwitchCore(net_device, enable_swap, false),
-      m_packetId(0)
+P4PnaNic::P4PnaNic(P4SwitchNetDevice* net_device, bool enable_swap, size_t queueBufferSize)
+    : P4SwitchCore(net_device, enable_swap),
+      m_packetId(0),
+      input_buffer(1024),
+      m_queueBufferSize(queueBufferSize)
 {
     // configure for the switch pna
     m_thriftCommand = "";             // default thrift command for pna
@@ -85,16 +58,30 @@ P4PnaNic::P4PnaNic(P4SwitchNetDevice* net_device, bool enable_swap)
     force_arith_header("pna_main_parser_input_metadata");
     force_arith_header("pna_main_input_metadata");
     force_arith_header("pna_main_output_metadata");
+
+    import_pna_primitives(); // register send_to_port, drop_packet
 }
 
 P4PnaNic::~P4PnaNic()
 {
+    // BMv2 pushes a sentinel to stop the ingress thread. ns-3 has no such
+    // thread, and the push would wait forever on a full buffer.
+    // Cancel the PortTxComplete() for a refused frame, which points to this NIC.
+    for (auto& kv : m_portTxState)
+    {
+        Simulator::Cancel(kv.second.txCompleteEvent);
+    }
 }
 
 bool
-P4PnaNic::main_processing_pipeline(std::unique_ptr<bm::Packet> bm_packet)
+P4PnaNic::main_processing_pipeline()
 {
     NS_LOG_FUNCTION(this);
+
+    std::unique_ptr<bm::Packet> bm_packet;
+    input_buffer.pop_back(&bm_packet);
+    if (bm_packet == nullptr)
+        return false;
 
     bm::PHV* phv = bm_packet->get_phv();
     auto input_port = phv->get_field("pna_main_parser_input_metadata.input_port").get_uint();
@@ -114,30 +101,39 @@ P4PnaNic::main_processing_pipeline(std::unique_ptr<bm::Packet> bm_packet)
     phv->get_field("pna_main_input_metadata.input_port")
         .set(phv->get_field("pna_main_parser_input_metadata.input_port"));
 
-    // a packet is dropped unless the main control calls send_to_port().
-    // Use the same constant as the drop_packet primitive above, which has no
-    // access to this switch instance (and thus to m_dropPort).
-    bm_packet->set_egress_port(SSWITCH_DROP_PORT);
+    // A packet is dropped unless the main control calls send_to_port().
+    bm_packet->set_egress_port(m_dropPort);
 
     bm::Pipeline* main_mau = this->get_pipeline("main_control");
     main_mau->apply(bm_packet.get());
     bm_packet->reset_exit();
 
-    int port = bm_packet->get_egress_port();
-    if (port == SSWITCH_DROP_PORT)
-    {
-        NS_LOG_DEBUG("Dropping packet received on port " << input_port);
-        return false;
-    }
-
     bm::Deparser* deparser = this->get_deparser("main_deparser");
     deparser->deparse(bm_packet.get());
 
+    int out_port = bm_packet->get_egress_port();
+
+    // drop_packet() sets the egress port to 511 (SSWITCH_DROP_PORT).
+    // Discard the packet silently rather than sending it to the network stack.
+    if (out_port == static_cast<int>(m_dropPort))
+    {
+        NS_LOG_DEBUG("PNA: drop_packet() invoked – discarding packet");
+        return false;
+    }
+
+    // Queue the frame for its port. The device sends one frame at a time and
+    // reports the end of each one through PortTxComplete().
+    auto port = static_cast<uint32_t>(out_port);
+    auto& pstate = m_portTxState[port];
+    if (pstate.queue.size() >= m_queueBufferSize)
+    {
+        NS_LOG_WARN("PNA port " << port << ": output queue full, packet dropped");
+        return false;
+    }
     uint16_t protocol = RegisterAccess::get_ns_protocol(bm_packet.get());
     int addr_index = RegisterAccess::get_ns_address(bm_packet.get());
-
-    Ptr<Packet> ns_packet = this->ConvertToNs3Packet(std::move(bm_packet));
-    m_switchNetDevice->SendNs3Packet(ns_packet, port, protocol, m_destinationList[addr_index]);
+    pstate.queue.push_back({this->ConvertToNs3Packet(std::move(bm_packet)), protocol, addr_index});
+    ScheduleTxIfNeeded(port);
     return true;
 }
 
@@ -169,10 +165,11 @@ P4PnaNic::ReceivePacket(Ptr<Packet> packetIn,
     // each add_header / remove_header primitive call
     bm_packet->set_register(0, len);
 
-    // The NIC has no internal queue: run the PNA pipeline synchronously, as
-    // P4CorePipeline does. (Previously the packet was pushed into a queue
-    // that nothing consumed.)
-    main_processing_pipeline(std::move(bm_packet));
+    input_buffer.push_front(std::move(bm_packet));
+
+    // The pipeline processes the packet at once; the frame then waits in the
+    // output queue of its port (see ScheduleTxIfNeeded()).
+    main_processing_pipeline();
     return 0;
 }
 
@@ -188,17 +185,23 @@ P4PnaNic::start_and_return_()
 {
     NS_LOG_FUNCTION(this);
 
+    bool found = false;
     for (const char* name : {"loopedback", "recirculated"})
     {
         if (field_exists("pna_main_parser_input_metadata", name) &&
             field_exists("pna_main_input_metadata", name))
         {
             m_loopedbackField = name;
-            return;
+            found = true;
+            break;
         }
     }
-    NS_FATAL_ERROR("PNA JSON defines neither 'loopedback' nor 'recirculated' in "
-                   "pna_main_parser_input_metadata / pna_main_input_metadata");
+    if (!found)
+    {
+        NS_FATAL_ERROR("PNA JSON defines neither 'loopedback' nor 'recirculated' in "
+                       "pna_main_parser_input_metadata / pna_main_input_metadata");
+    }
+    NS_LOG_DEBUG("PNA NIC ID " << m_p4SwitchId << ": event-driven scheduler active");
 }
 
 void
@@ -226,9 +229,47 @@ P4PnaNic::HandleEgressPipeline(size_t workerId)
 }
 
 void
-P4PnaNic::Enqueue(uint32_t egress_port, std::unique_ptr<bm::Packet>&& packet)
+P4PnaNic::EnqueueNow(uint32_t egress_port, std::unique_ptr<bm::Packet>&& packet)
 {
     NS_LOG_WARN("NO inter queue buffer in PNA, use main_processing_pipeline instead");
+}
+
+// ---------------------------------------------------------------------------
+// Event-driven scheduler
+// ---------------------------------------------------------------------------
+
+void
+P4PnaNic::ScheduleTxIfNeeded(uint32_t port)
+{
+    NS_LOG_FUNCTION(this << port);
+
+    auto& pstate = m_portTxState[port];
+    if (pstate.busy || pstate.queue.empty())
+    {
+        return; // PortTxComplete() sends the next frame
+    }
+    QueuedFrame frame = std::move(pstate.queue.front());
+    pstate.queue.pop_front();
+    pstate.busy = true;
+
+    NS_LOG_DEBUG("PNA port " << port << ": transmitting " << frame.packet->GetSize() << " B, "
+                             << pstate.queue.size() << " frames queued");
+    if (!m_switchNetDevice->SendNs3Packet(frame.packet,
+                                          static_cast<int>(port),
+                                          frame.protocol,
+                                          m_destinationList[frame.addrIndex]))
+    {
+        // Dropped by the device: nothing is on the wire, free the port.
+        pstate.txCompleteEvent = Simulator::ScheduleNow(&P4PnaNic::PortTxComplete, this, port);
+    }
+}
+
+void
+P4PnaNic::PortTxComplete(uint32_t port)
+{
+    NS_LOG_FUNCTION(this << port);
+    m_portTxState[port].busy = false;
+    ScheduleTxIfNeeded(port);
 }
 
 } // namespace ns3

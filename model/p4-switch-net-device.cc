@@ -15,14 +15,20 @@
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  *
  * Authors: Mingyu Ma <mingyu.ma@tu-dresden.de>
+ * Modified: Vineet Goel <vineetgoel692@gmail.com>
  */
 
 #include "ns3/p4-switch-net-device.h"
+
+#include "p4-switch-net-device.h"
+
 #include "ns3/boolean.h"
-#include "ns3/channel.h"
+#include "ns3/enum.h"
 #include "ns3/ethernet-header.h"
+#include "ns3/link-framing.h"
 #include "ns3/log.h"
 #include "ns3/node.h"
+#include "ns3/p4-bridge-channel.h"
 #include "ns3/p4-core-pipeline.h"
 #include "ns3/p4-core-psa.h"
 #include "ns3/p4-core-v1model.h"
@@ -30,624 +36,1149 @@
 #include "ns3/packet.h"
 #include "ns3/simulator.h"
 #include "ns3/string.h"
+#include "ns3/switched-ethernet-channel.h"
 #include "ns3/uinteger.h"
 
-namespace ns3 {
+#include <cstdint>
+
+namespace ns3
+{
 
 NS_LOG_COMPONENT_DEFINE("P4SwitchNetDevice");
-
 NS_OBJECT_ENSURE_REGISTERED(P4SwitchNetDevice);
 
-TypeId P4SwitchNetDevice::GetTypeId() {
-  static TypeId tid =
-      TypeId("ns3::P4SwitchNetDevice")
-          .SetParent<NetDevice>()
-          .SetGroupName("Bridge")
-          .AddConstructor<P4SwitchNetDevice>()
-          .AddAttribute(
-              "EnableTracing", "Enable tracing in the switch.",
-              BooleanValue(false),
-              MakeBooleanAccessor(&P4SwitchNetDevice::m_enableTracing),
-              MakeBooleanChecker())
+// ---------------------------------------------------------------------------
+// TypeId
+// ---------------------------------------------------------------------------
 
-          .AddAttribute("EnableSwap", "Enable swapping in the switch.",
-                        BooleanValue(false),
-                        MakeBooleanAccessor(&P4SwitchNetDevice::m_enableSwap),
-                        MakeBooleanChecker())
+TypeId
+P4SwitchNetDevice::GetTypeId()
+{
+    static TypeId tid =
+        TypeId("ns3::P4SwitchNetDevice")
+            .SetParent<NetDevice>()
+            .SetGroupName("P4sim")
+            .AddConstructor<P4SwitchNetDevice>()
 
-          .AddAttribute(
-              "P4SwitchArch",
-              "P4 switch architecture, v1model with 0, psa with 1, pna with 2.",
-              UintegerValue(P4SWITCH_ARCH_V1MODEL),
-              MakeUintegerAccessor(&P4SwitchNetDevice::m_switchArch),
-              MakeUintegerChecker<uint32_t>())
+            .AddAttribute("EnableTracing",
+                          "No effect. To trace packets, use the trace sources of the "
+                          "devices (MacTx, MacRx, ...), PacketSink or FlowMonitor.",
+                          BooleanValue(false),
+                          MakeBooleanAccessor(&P4SwitchNetDevice::m_enableTracing),
+                          MakeBooleanChecker(),
+                          TypeId::DEPRECATED,
+                          "it has no effect and will be removed in the next major version. "
+                          "To trace packets, use the trace sources of the devices (MacTx, "
+                          "MacRx, ...), PacketSink or FlowMonitor.")
 
-          .AddAttribute("JsonPath", "Path to the P4 JSON configuration file.",
-                        StringValue("/path/to/default.json"),
-                        MakeStringAccessor(&P4SwitchNetDevice::GetJsonPath,
-                                           &P4SwitchNetDevice::SetJsonPath),
-                        MakeStringChecker())
+            .AddAttribute("EnableSwap",
+                          "Allow swapping the P4 program at run time: load_new_config and "
+                          "swap_configs of the runtime CLI, or P4Controller::LoadNewConfig() "
+                          "and SwapConfigs(). The switch swaps once it holds no packet; frames "
+                          "that arrive meanwhile wait and then use the new program.",
+                          BooleanValue(false),
+                          MakeBooleanAccessor(&P4SwitchNetDevice::m_enableSwap),
+                          MakeBooleanChecker())
 
-          .AddAttribute(
-              "FlowTablePath", "Path to the flow table file.",
-              StringValue("/path/to/flow_table.txt"),
-              MakeStringAccessor(&P4SwitchNetDevice::GetFlowTablePath,
-                                 &P4SwitchNetDevice::SetFlowTablePath),
-              MakeStringChecker())
+            .AddAttribute("P4SwitchArch",
+                          "P4 pipeline architecture: 0=V1model, 1=PSA, 2=PNA, 3=Pipeline.",
+                          UintegerValue(P4SWITCH_ARCH_V1MODEL),
+                          MakeUintegerAccessor(&P4SwitchNetDevice::m_switchArch),
+                          MakeUintegerChecker<uint32_t>())
 
-          .AddAttribute(
-              "BmLogLevel",
-              "Level of the BMv2 pipeline log written to "
-              "/tmp/bmv2-<thrift port>-pipeline.log: trace, debug, info, notice, "
-              "warn, error, critical, alert, emerg or off. With off, no log file "
-              "is written, which also speeds up the simulation. The BMv2 logger "
-              "is shared by all switches of a simulation, so use the same level "
-              "for all of them (e.g. with Config::SetDefault).",
-              StringValue("trace"),
-              MakeStringAccessor(&P4SwitchNetDevice::m_bmLogLevel),
-              MakeStringChecker())
+            .AddAttribute("ChannelType",
+                          "No effect: the ports are set by Attach() and AddBridgePort().",
+                          UintegerValue(P4CHANNELCSMA),
+                          MakeUintegerAccessor(&P4SwitchNetDevice::m_channelType),
+                          MakeUintegerChecker<uint32_t>(),
+                          TypeId::DEPRECATED,
+                          "it has no effect and will be removed in the next major version. "
+                          "The ports are set by Attach() and AddBridgePort().")
 
-          .AddAttribute(
-              "ThriftPort",
-              "Thrift port of the switch, used by the runtime CLI that loads "
-              "the flow table. 0 picks the first free port, starting at "
-              "$P4SIM_THRIFT_PORT_BASE (9090 if unset). A port is free if no "
-              "other p4sim process has reserved it and no program listens on it.",
-              UintegerValue(0),
-              MakeUintegerAccessor(&P4SwitchNetDevice::m_thriftPort),
-              MakeUintegerChecker<uint16_t>())
+            .AddAttribute("JsonPath",
+                          "Path to the compiled P4 JSON file. "
+                          "Leave empty for NIC / passthrough mode.",
+                          StringValue(""),
+                          MakeStringAccessor(&P4SwitchNetDevice::GetJsonPath,
+                                             &P4SwitchNetDevice::SetJsonPath),
+                          MakeStringChecker())
 
-          .AddAttribute(
-              "InputBufferSizeLow",
-              "Capacity of the input buffer for the packets received on the "
-              "ports, in packets (PSA: for all packets that enter the ingress).",
-              UintegerValue(128),
-              MakeUintegerAccessor(&P4SwitchNetDevice::m_InputBufferSizeLow),
-              MakeUintegerChecker<size_t>())
+            .AddAttribute("FlowTablePath",
+                          "Path to the initial flow-table file.",
+                          StringValue(""),
+                          MakeStringAccessor(&P4SwitchNetDevice::GetFlowTablePath,
+                                             &P4SwitchNetDevice::SetFlowTablePath),
+                          MakeStringChecker())
 
-          .AddAttribute(
-              "InputBufferSizeHigh",
-              "v1model: capacity of the input buffer for resubmitted and "
-              "recirculated packets, in packets. The ingress takes these "
-              "before the packets received on the ports.",
-              UintegerValue(128),
-              MakeUintegerAccessor(&P4SwitchNetDevice::m_InputBufferSizeHigh),
-              MakeUintegerChecker<size_t>())
+            .AddAttribute(
+                "BmLogLevel",
+                "Level of the BMv2 pipeline log written to "
+                "/tmp/bmv2-<thrift port>-pipeline.log: trace, debug, info, notice, "
+                "warn, error, critical, alert, emerg or off. With off (the default), "
+                "no log file is written; trace logs every step of every packet, "
+                "which helps to debug a P4 program but slows the simulation down. "
+                "The BMv2 logger is shared by all switches of a simulation, so use "
+                "the same level for all of them (e.g. with Config::SetDefault).",
+                StringValue("off"),
+                MakeStringAccessor(&P4SwitchNetDevice::m_bmLogLevel),
+                MakeStringChecker())
 
-          .AddAttribute(
-              "QueueBufferSize", "Total buffer size for the switch queue.",
-              UintegerValue(128),
-              MakeUintegerAccessor(&P4SwitchNetDevice::m_queueBufferSize),
-              MakeUintegerChecker<size_t>())
+            .AddAttribute(
+                "ThriftPort",
+                "Thrift port of the switch, used by the runtime CLI that loads "
+                "the flow table. 0 picks the first free port, starting at "
+                "$P4SIM_THRIFT_PORT_BASE (9090 if unset). A port is free if no "
+                "other p4sim process has reserved it and no program listens on it.",
+                UintegerValue(0),
+                MakeUintegerAccessor(&P4SwitchNetDevice::m_thriftPort),
+                MakeUintegerChecker<uint16_t>())
 
-          .AddAttribute("SwitchRate",
-                        "Packet processing speed in switch (unit: pps)",
-                        UintegerValue(1000),
-                        MakeUintegerAccessor(&P4SwitchNetDevice::m_switchRate),
-                        MakeUintegerChecker<uint64_t>())
+            .AddAttribute("InputBufferSizeLow",
+                          "Capacity of the input buffer for the packets received on the "
+                          "ports, in packets (PSA: for all packets that enter the ingress).",
+                          UintegerValue(128),
+                          MakeUintegerAccessor(&P4SwitchNetDevice::m_InputBufferSizeLow),
+                          MakeUintegerChecker<size_t>())
 
-          .AddAttribute("ChannelType",
-                        "Channel type for the switch, csma with 0, p2p with 1.",
-                        UintegerValue(0),
-                        MakeUintegerAccessor(&P4SwitchNetDevice::m_channelType),
-                        MakeUintegerChecker<uint32_t>())
+            .AddAttribute("InputBufferSizeHigh",
+                          "v1model: capacity of the input buffer for resubmitted and "
+                          "recirculated packets, in packets. The ingress takes these "
+                          "before the packets received on the ports.",
+                          UintegerValue(128),
+                          MakeUintegerAccessor(&P4SwitchNetDevice::m_InputBufferSizeHigh),
+                          MakeUintegerChecker<size_t>())
 
-          .AddAttribute("Mtu", "The MAC-level Maximum Transmission Unit",
-                        UintegerValue(1500),
-                        MakeUintegerAccessor(&P4SwitchNetDevice::SetMtu,
-                                             &P4SwitchNetDevice::GetMtu),
-                        MakeUintegerChecker<uint16_t>())
+            .AddAttribute("QueueBufferSize",
+                          "Capacity of each output queue, in packets: per port and "
+                          "priority (v1model, PSA), or per port (PNA).",
+                          UintegerValue(128),
+                          MakeUintegerAccessor(&P4SwitchNetDevice::m_queueBufferSize),
+                          MakeUintegerChecker<size_t>())
 
-          .AddTraceSource(
-              "SwitchEvent", "Emitted when a switch event occurs",
-              MakeTraceSourceAccessor(&P4SwitchNetDevice::m_switchEvent),
-              "ns3::TracedCallback::Uint32String");
+            .AddAttribute("SwitchRate",
+                          "Packet rate of the whole P4 pipeline (packets per second). "
+                          "0 (the default) means no limit, as in a hardware switch. With a "
+                          "rate R, the pipeline takes one packet per 1/R (resubmitted and "
+                          "recirculated passes included); packets that arrive meanwhile wait "
+                          "in the input buffer, and are dropped (MacRxDrop) when it is full.",
+                          UintegerValue(0),
+                          MakeUintegerAccessor(&P4SwitchNetDevice::m_switchRate),
+                          MakeUintegerChecker<uint64_t>())
 
-  return tid;
+            .AddAttribute("PipelineDelay",
+                          "Time a packet spends in the P4 pipeline (parser, ingress, egress "
+                          "and deparser), as a fixed latency: every packet reaches the egress "
+                          "queues this much later, clones and multicast copies included; the "
+                          "egress then takes no time. The pipeline takes the next packet at "
+                          "once, so the delay does not lower the throughput (see SwitchRate). "
+                          "A recirculated packet passes the pipeline again and is delayed "
+                          "again. 0 (the default) means no delay. v1model, PSA and the pipeline "
+                          "core; PNA ignores it. For scale: on Tofino, the ingress block "
+                          "(parser, control, deparser) was measured at 162 to 224 ns on 100G "
+                          "ports and 221 to 472 ns on 10G ports, depending on the program "
+                          "(Franco et al., Computer Communications 218, 2024).",
+                          TimeValue(Seconds(0)),
+                          MakeTimeAccessor(&P4SwitchNetDevice::m_pipelineDelay),
+                          MakeTimeChecker(Seconds(0)))
+
+            .AddAttribute("EnableVoqFabric",
+                          "If true, a V1model switch routes post-ingress traffic through the "
+                          "VOQ + fabric Traffic Manager instead of the legacy output queues. "
+                          "Default false keeps the legacy output-queued datapath.",
+                          BooleanValue(false),
+                          MakeBooleanAccessor(&P4SwitchNetDevice::m_enableVoqFabric),
+                          MakeBooleanChecker())
+
+            .AddAttribute(
+                "Mtu",
+                "Maximum Transmission Unit.",
+                UintegerValue(1500),
+                MakeUintegerAccessor(&P4SwitchNetDevice::SetMtu, &P4SwitchNetDevice::GetMtu),
+                MakeUintegerChecker<uint16_t>())
+
+            .AddTraceSource("SwitchEvent",
+                            "Fired when the P4 pipeline emits a switch event.",
+                            MakeTraceSourceAccessor(&P4SwitchNetDevice::m_switchEvent),
+                            "ns3::TracedCallback::Uint32String")
+
+            .AddTraceSource(
+                "MacTx",
+                "Trace source indicating a packet has arrived for transmission by this device",
+                MakeTraceSourceAccessor(&P4SwitchNetDevice::m_macTxTrace),
+                "ns3::Packet::TracedCallback")
+
+            .AddTraceSource("MacTxDrop",
+                            "Trace source indicating a packet has been dropped by the device "
+                            "before transmission",
+                            MakeTraceSourceAccessor(&P4SwitchNetDevice::m_macTxDropTrace),
+                            "ns3::Packet::TracedCallback")
+
+            .AddTraceSource("MacRx",
+                            "A packet has been received by this device, has been passed up from "
+                            "the physical layer "
+                            "and is being forwarded up the local protocol stack.  This is a "
+                            "non-promiscuous trace,",
+                            MakeTraceSourceAccessor(&P4SwitchNetDevice::m_macRxTrace),
+                            "ns3::Packet::TracedCallback")
+
+            .AddTraceSource("MacRxDrop",
+                            "A received packet was dropped because the input buffer of the "
+                            "P4 pipeline was full (see SwitchRate)",
+                            MakeTraceSourceAccessor(&P4SwitchNetDevice::m_macRxDropTrace),
+                            "ns3::Packet::TracedCallback")
+            //
+            // Trace sources designed to simulate a packet sniffer facility (tcpdump).
+            //
+            .AddTraceSource("Sniffer",
+                            "Trace source simulating a non-promiscuous "
+                            "packet sniffer attached to the device",
+                            MakeTraceSourceAccessor(&P4SwitchNetDevice::m_snifferTrace),
+                            "ns3::Packet::TracedCallback")
+            .AddTraceSource("PromiscSniffer",
+                            "Trace source simulating a promiscuous "
+                            "packet sniffer attached to the device",
+                            MakeTraceSourceAccessor(&P4SwitchNetDevice::m_promiscSnifferTrace),
+                            "ns3::Packet::TracedCallback");
+
+    return tid;
 }
 
-P4SwitchNetDevice::P4SwitchNetDevice() : m_node(nullptr), m_ifIndex(0) {
-  NS_LOG_FUNCTION_NOARGS();
-  m_channel = CreateObject<P4BridgeChannel>();
+// ---------------------------------------------------------------------------
+// Construction / destruction
+// ---------------------------------------------------------------------------
+
+P4SwitchNetDevice::P4SwitchNetDevice()
+    : m_enableTracing(false),
+      m_enableSwap(false),
+      m_switchArch(P4SWITCH_ARCH_V1MODEL),
+      m_bmLogLevel("off"),
+      m_thriftPort(0),
+      m_v1modelSwitch(nullptr),
+      m_psaSwitch(nullptr),
+      m_pnaNic(nullptr),
+      m_InputBufferSizeLow(1024),
+      m_InputBufferSizeHigh(1024),
+      m_queueBufferSize(1024),
+      m_switchRate(0),
+      m_node(nullptr),
+      m_ifIndex(0),
+      m_mtu(1500)
+{
+    NS_LOG_FUNCTION_NOARGS();
 }
 
-P4SwitchNetDevice::~P4SwitchNetDevice() { NS_LOG_FUNCTION_NOARGS(); }
-
-void P4SwitchNetDevice::DoInitialize() {
-  NS_LOG_FUNCTION(this);
-  NS_LOG_DEBUG("P4 architecture: v1model");
-
-  switch (m_switchArch) {
-  case P4SWITCH_ARCH_V1MODEL:
-    NS_LOG_DEBUG("P4 architecture: v1model");
-    m_v1modelSwitch = std::make_unique<P4CoreV1model>(
-        this, m_enableSwap, m_enableTracing, m_switchRate, m_InputBufferSizeLow,
-        m_InputBufferSizeHigh, m_queueBufferSize);
-    ConfigureCore(*m_v1modelSwitch);
-    m_v1modelSwitch->InitializeSwitchFromP4Json(m_jsonPath);
-    m_v1modelSwitch->LoadFlowTableToSwitch(m_flowTablePath);
-    m_v1modelSwitch->start_and_return_();
-    break;
-
-  case P4SWITCH_ARCH_PSA:
-    NS_LOG_DEBUG("P4 architecture: PSA");
-    m_psaSwitch = std::make_unique<P4CorePsa>(
-        this, m_enableSwap, m_enableTracing, m_switchRate,
-        m_InputBufferSizeLow, // normal input queue size
-        m_queueBufferSize);
-    ConfigureCore(*m_psaSwitch);
-    m_psaSwitch->InitializeSwitchFromP4Json(m_jsonPath);
-    m_psaSwitch->LoadFlowTableToSwitch(m_flowTablePath);
-    m_psaSwitch->start_and_return_();
-    break;
-
-  case P4NIC_ARCH_PNA:
-    NS_LOG_DEBUG("P4 architecture: PNA");
-    m_pnaNic = std::make_unique<P4PnaNic>(this, m_enableSwap);
-    ConfigureCore(*m_pnaNic);
-    m_pnaNic->InitializeSwitchFromP4Json(m_jsonPath);
-    // m_pnaNic->LoadFlowTableToSwitch(m_flowTablePath); // Now not supported
-    m_pnaNic->start_and_return_();
-    break;
-
-  case P4SWITCH_ARCH_PIPELINE:
-
-    NS_LOG_DEBUG("P4 architecture: Pipeline");
-    m_p4Pipeline =
-        std::make_unique<P4CorePipeline>(this, m_enableSwap, m_enableTracing);
-    ConfigureCore(*m_p4Pipeline);
-    m_p4Pipeline->InitializeSwitchFromP4Json(m_jsonPath);
-    m_p4Pipeline->LoadFlowTableToSwitch(m_flowTablePath);
-    // m_p4Pipeline->InitSwitchWithP4(m_jsonPath, m_flowTablePath);
-    m_p4Pipeline->start_and_return_();
-    break;
-  }
-  NetDevice::DoInitialize();
+P4SwitchNetDevice::~P4SwitchNetDevice()
+{
+    NS_LOG_FUNCTION_NOARGS();
 }
 
-void P4SwitchNetDevice::ConfigureCore(P4SwitchCore &core) const {
-  core.SetBmLogLevel(m_bmLogLevel);
-  core.SetThriftPort(m_thriftPort);
-}
+// ---------------------------------------------------------------------------
+// Lifecycle
+// ---------------------------------------------------------------------------
 
-void P4SwitchNetDevice::DoDispose() {
-  NS_LOG_FUNCTION_NOARGS();
-  // Release the P4 core before the ports: it keeps a raw pointer to this
-  // device, and its destructor cancels the ns-3 events it still has pending.
-  m_v1modelSwitch.reset();
-  m_psaSwitch.reset();
-  m_pnaNic.reset();
-  m_p4Pipeline.reset();
+void
+P4SwitchNetDevice::DoInitialize()
+{
+    NS_LOG_FUNCTION(this);
 
-  for (auto iter = m_ports.begin(); iter != m_ports.end(); iter++) {
-    *iter = nullptr;
-  }
-  m_ports.clear();
-  m_channel = nullptr;
-  m_node = nullptr;
-  NetDevice::DoDispose();
-}
-
-void P4SwitchNetDevice::ReceiveFromDevice(Ptr<NetDevice> incomingPort,
-                                          Ptr<const Packet> packet,
-                                          uint16_t protocol, const Address &src,
-                                          const Address &dst,
-                                          PacketType packetType) {
-  NS_LOG_FUNCTION_NOARGS();
-  NS_LOG_DEBUG("UID is " << packet->GetUid());
-
-  Mac48Address src48 = Mac48Address::ConvertFrom(src);
-  Mac48Address dst48 = Mac48Address::ConvertFrom(dst);
-
-  if (!m_promiscRxCallback.IsNull()) {
-    m_promiscRxCallback(this, packet, protocol, src, dst, packetType);
-  }
-
-  if (dst48 == m_address) {
-    m_rxCallback(this, packet, protocol, src);
-  }
-
-  int inPort = GetPortNumber(incomingPort);
-
-  Ptr<ns3::Packet> ns3Packet((ns3::Packet *)PeekPointer(packet));
-
-  if (m_channelType == P4CHANNELCSMA) {
-    EthernetHeader eeh;
-    eeh.SetDestination(dst48);
-    eeh.SetSource(src48);
-    eeh.SetLengthType(protocol);
-
-    ns3Packet->AddHeader(eeh);
-  } else if (m_channelType == P4CHANNELP2P) {
-    // The P4 processing pipeline requires an Ethernet header at the front of
-    // the packet so that the P4 parser can extract hdr.ethernet.  When the
-    // P2P port device (CustomP2PNetDevice) delivers a packet to us via the
-    // registered protocol handler it has already stripped the wire-level
-    // Ethernet wrapper and passed its EtherType as the 'protocol' parameter.
-    // We must therefore build a fresh Ethernet header from the metadata
-    // (src, dst, protocol) rather than trying to re-parse packet bytes that
-    // are NOT an Ethernet header.  The previous approach of calling
-    // PeekHeader(eeh_1) here was incorrect: PeekHeader always succeeds on
-    // any packet >= 14 bytes, so it was silently consuming the first 14 bytes
-    // of the actual payload (IPv4 / tunnel header), corrupting the packet.
-    EthernetHeader eeh_1;
-    eeh_1.SetDestination(dst48);
-    eeh_1.SetSource(src48);
-    eeh_1.SetLengthType(protocol); // EtherType from the stripped wire header
-
-    NS_LOG_DEBUG("* Reconstructed Ethernet header: Source MAC: "
-                 << eeh_1.GetSource()
-                 << ", Destination MAC: " << eeh_1.GetDestination()
-                 << ", Protocol: 0x" << std::hex << eeh_1.GetLengthType()
-                 << std::dec);
-
-    ns3Packet->AddHeader(eeh_1);
-
-    // @debug
-    // std::cout << "* Switch Port *** Receive from Device: " << std::endl;
-    // ns3Packet->Print(std::cout);
-    // std::cout << ns3Packet->GetSize() << std::endl;
-  } else {
-    NS_LOG_ERROR("Unsupported channel type.");
-  }
-
-  if (!m_v1modelSwitch && !m_psaSwitch && !m_pnaNic && !m_p4Pipeline) {
-    // No core: DoDispose() has released it, or DoInitialize() has not run.
-    NS_LOG_WARN("No P4 core, dropping packet");
-    return;
-  }
-
-  switch (m_switchArch) {
-  case P4SWITCH_ARCH_V1MODEL:
-    // m_p4Switch->ReceivePacket(ns3Packet, inPort, protocol, dst48);
-    m_v1modelSwitch->ReceivePacket(ns3Packet, inPort, protocol, dst48);
-    break;
-
-  case P4SWITCH_ARCH_PSA:
-    m_psaSwitch->ReceivePacket(ns3Packet, inPort, protocol, dst48);
-    break;
-
-  case P4NIC_ARCH_PNA:
-    m_pnaNic->ReceivePacket(ns3Packet, inPort, protocol, dst48);
-    break;
-
-  case P4SWITCH_ARCH_PIPELINE:
-    m_p4Pipeline->ReceivePacket(ns3Packet, inPort, protocol, dst48);
-    break;
-  }
-}
-
-uint32_t P4SwitchNetDevice::GetNBridgePorts() const {
-  NS_LOG_FUNCTION_NOARGS();
-  return m_ports.size();
-}
-
-Ptr<NetDevice> P4SwitchNetDevice::GetBridgePort(uint32_t n) const {
-  NS_LOG_FUNCTION_NOARGS();
-  if (n >= m_ports.size())
-    return NULL;
-  return m_ports[n];
-}
-
-void P4SwitchNetDevice::AddBridgePort(Ptr<NetDevice> bridgePort) {
-  NS_LOG_FUNCTION_NOARGS();
-  NS_ASSERT(bridgePort != this);
-  if (!Mac48Address::IsMatchingType(bridgePort->GetAddress())) {
-    NS_FATAL_ERROR(
-        "Device does not support eui 48 addresses: cannot be added to bridge.");
-  }
-  if (!bridgePort->SupportsSendFrom()) {
-    NS_FATAL_ERROR(
-        "Device does not support SendFrom: cannot be added to bridge.");
-  }
-  if (m_address == Mac48Address()) {
-    m_address = Mac48Address::ConvertFrom(bridgePort->GetAddress());
-  }
-
-  NS_LOG_DEBUG("RegisterProtocolHandler for "
-               << bridgePort->GetInstanceTypeId().GetName());
-
-  m_node->RegisterProtocolHandler(
-      MakeCallback(&P4SwitchNetDevice::ReceiveFromDevice, this), 0, bridgePort,
-      true);
-  m_ports.push_back(bridgePort);
-  m_channel->AddChannel(bridgePort->GetChannel());
-}
-
-uint32_t P4SwitchNetDevice::GetPortNumber(Ptr<NetDevice> port) const {
-  int portsNum = GetNBridgePorts();
-  for (int i = 0; i < portsNum; i++) {
-    if (GetBridgePort(i) == port) {
-      NS_LOG_DEBUG("Port found: " << i);
-      return i;
-    }
-  }
-  NS_LOG_ERROR("Port not found");
-  return -1;
-}
-
-void P4SwitchNetDevice::SetIfIndex(const uint32_t index) {
-  NS_LOG_FUNCTION_NOARGS();
-  m_ifIndex = index;
-}
-
-uint32_t P4SwitchNetDevice::GetIfIndex() const {
-  NS_LOG_FUNCTION_NOARGS();
-  return m_ifIndex;
-}
-
-Ptr<Channel> P4SwitchNetDevice::GetChannel() const {
-  NS_LOG_FUNCTION_NOARGS();
-  return m_channel;
-}
-
-void P4SwitchNetDevice::SetAddress(Address address) {
-  NS_LOG_FUNCTION_NOARGS();
-  m_address = Mac48Address::ConvertFrom(address);
-}
-
-Address P4SwitchNetDevice::GetAddress() const {
-  NS_LOG_FUNCTION_NOARGS();
-  return m_address;
-}
-
-bool P4SwitchNetDevice::SetMtu(const uint16_t mtu) {
-  NS_LOG_FUNCTION_NOARGS();
-  m_mtu = mtu;
-  return true;
-}
-
-uint16_t P4SwitchNetDevice::GetMtu() const {
-  NS_LOG_FUNCTION_NOARGS();
-  return m_mtu;
-}
-
-void P4SwitchNetDevice::SetJsonPath(const std::string &jsonPath) {
-  m_jsonPath = jsonPath;
-}
-
-std::string P4SwitchNetDevice::GetJsonPath(void) const { return m_jsonPath; }
-
-void P4SwitchNetDevice::SetFlowTablePath(const std::string &flowTablePath) {
-  m_flowTablePath = flowTablePath;
-}
-
-std::string P4SwitchNetDevice::GetFlowTablePath(void) const {
-  return m_flowTablePath;
-}
-
-bool P4SwitchNetDevice::IsLinkUp() const {
-  NS_LOG_FUNCTION_NOARGS();
-  return true;
-}
-
-void P4SwitchNetDevice::AddLinkChangeCallback(Callback<void> callback) {}
-
-bool P4SwitchNetDevice::IsBroadcast() const {
-  NS_LOG_FUNCTION_NOARGS();
-  return true;
-}
-
-Address P4SwitchNetDevice::GetBroadcast() const {
-  NS_LOG_FUNCTION_NOARGS();
-  return Mac48Address::GetBroadcast();
-}
-
-bool P4SwitchNetDevice::IsMulticast() const {
-  NS_LOG_FUNCTION_NOARGS();
-  return true;
-}
-
-Address P4SwitchNetDevice::GetMulticast(Ipv4Address multicastGroup) const {
-  NS_LOG_FUNCTION(this << multicastGroup);
-  Mac48Address multicast = Mac48Address::GetMulticast(multicastGroup);
-  return multicast;
-}
-
-bool P4SwitchNetDevice::IsPointToPoint() const {
-  NS_LOG_FUNCTION_NOARGS();
-  return false;
-}
-
-bool P4SwitchNetDevice::IsBridge() const {
-  NS_LOG_FUNCTION_NOARGS();
-  return true;
-}
-
-bool P4SwitchNetDevice::Send(Ptr<Packet> packet, const Address &dest,
-                             uint16_t protocolNumber) {
-  NS_LOG_FUNCTION_NOARGS();
-  return SendFrom(packet, m_address, dest, protocolNumber);
-}
-
-bool P4SwitchNetDevice::SendFrom(Ptr<Packet> packet, const Address &src,
-                                 const Address &dest, uint16_t protocolNumber) {
-  /*
-   */
-  NS_LOG_FUNCTION_NOARGS();
-  Mac48Address dst = Mac48Address::ConvertFrom(dest);
-
-  // try to use the learned state if data is unicast
-  // if (!dst.IsGroup())
-  // {
-  //     Ptr<NetDevice> outPort = GetLearnedState(dst);
-  //     if (outPort)
-  //     {
-  //         outPort->SendFrom(packet, src, dest, protocolNumber);
-  //         return true;
-  //     }
-  // }
-
-  // data was not unicast or no state has been learned for that mac
-  // address => flood through all ports.
-  Ptr<Packet> pktCopy;
-  for (auto iter = m_ports.begin(); iter != m_ports.end(); iter++) {
-    pktCopy = packet->Copy();
-    Ptr<NetDevice> port = *iter;
-    port->SendFrom(pktCopy, src, dst, protocolNumber);
-  }
-
-  return true;
-}
-
-void P4SwitchNetDevice::SendPacket(Ptr<Packet> packetOut, int outPort,
-                                   uint16_t protocol,
-                                   const Address &destination) {
-  SendNs3Packet(packetOut, outPort, protocol, destination);
-}
-
-void P4SwitchNetDevice::SendNs3Packet(Ptr<Packet> packetOut, int outPort,
-                                      uint16_t protocol,
-                                      const Address &destination) {
-  NS_LOG_DEBUG("Sending ns3 packet to port " << outPort);
-
-  // std::cout << "* after p4 processing " << packetOut->GetSize() << "packet
-  // length" << std::endl; packetOut->Print(std::cout); std::cout << std::endl;
-
-  if (packetOut) {
-    // Print the packet's header
-    EthernetHeader eeh_1;
-
-    if (packetOut->PeekHeader(eeh_1)) {
-      NS_LOG_DEBUG("Ethernet packet");
-      protocol = eeh_1.GetLengthType(); // recover the protocol number
+    // NIC / passthrough mode: no JSON configured, no P4 core needed.
+    if (m_jsonPath.empty())
+    {
+        NS_LOG_INFO("P4SwitchNetDevice (NIC mode) on node " << (m_node ? m_node->GetId() : 0));
+        NetDevice::DoInitialize();
+        return;
     }
 
-    packetOut->RemoveHeader(eeh_1); // keep the ethernet header
+    // Switch mode: boot the requested P4 pipeline.
+    NS_LOG_INFO("P4SwitchNetDevice (switch mode, arch=" << m_switchArch << ", ports="
+                                                        << m_portChannels.size() << ") on node "
+                                                        << (m_node ? m_node->GetId() : 0));
 
-    // @debug
-    // std::cout << "* Switch Port (out)*** Send from Device: " << std::endl;
-    // packetOut->Print(std::cout);
-    // std::cout << "packet length: " << packetOut->GetSize() << std::endl;
-    Address src = eeh_1.GetSource();
-    Address dst = eeh_1.GetDestination();
-    NS_LOG_DEBUG("* Reconstructed Ethernet header: Source MAC: "
-                 << Mac48Address::ConvertFrom(src)
-                 << ", Destination MAC: " << Mac48Address::ConvertFrom(dst)
-                 << ", Protocol: 0x" << std::hex << protocol << std::dec);
+    switch (m_switchArch)
+    {
+    case P4SWITCH_ARCH_V1MODEL:
+        NS_LOG_DEBUG("Initialising V1model pipeline");
+        m_v1modelSwitch = std::make_unique<P4CoreV1model>(this,
+                                                          m_enableSwap,
+                                                          m_switchRate,
+                                                          m_InputBufferSizeLow,
+                                                          m_InputBufferSizeHigh,
+                                                          m_queueBufferSize);
+        ConfigureCore(*m_v1modelSwitch);
+        m_v1modelSwitch->InitializeSwitchFromP4Json(m_jsonPath);
+        m_v1modelSwitch->LoadFlowTableToSwitch(m_flowTablePath);
+        m_v1modelSwitch->SetEnableVoqFabric(m_enableVoqFabric);
+        SetPortTxDoneCallback(MakeCallback(&P4CoreV1model::PortTxComplete, m_v1modelSwitch.get()));
+        m_v1modelSwitch->start_and_return_();
+        break;
+
+    case P4SWITCH_ARCH_PSA:
+        NS_LOG_DEBUG("Initialising PSA pipeline");
+        m_psaSwitch = std::make_unique<P4CorePsa>(this,
+                                                  m_enableSwap,
+                                                  m_switchRate,
+                                                  m_InputBufferSizeLow,
+                                                  m_queueBufferSize);
+        ConfigureCore(*m_psaSwitch);
+        m_psaSwitch->InitializeSwitchFromP4Json(m_jsonPath);
+        m_psaSwitch->LoadFlowTableToSwitch(m_flowTablePath);
+        SetPortTxDoneCallback(MakeCallback(&P4CorePsa::PortTxComplete, m_psaSwitch.get()));
+        m_psaSwitch->start_and_return_();
+        break;
+
+    case P4NIC_ARCH_PNA:
+        NS_LOG_DEBUG("Initialising PNA NIC");
+        m_pnaNic = std::make_unique<P4PnaNic>(this, m_enableSwap, m_queueBufferSize);
+        ConfigureCore(*m_pnaNic);
+        m_pnaNic->InitializeSwitchFromP4Json(m_jsonPath);
+        SetPortTxDoneCallback(MakeCallback(&P4PnaNic::PortTxComplete, m_pnaNic.get()));
+        m_pnaNic->start_and_return_();
+        break;
+
+    case P4SWITCH_ARCH_PIPELINE:
+        NS_LOG_DEBUG("Initialising pipeline core");
+        m_p4Pipeline = std::make_unique<P4CorePipeline>(this, m_enableSwap);
+        ConfigureCore(*m_p4Pipeline);
+        m_p4Pipeline->InitializeSwitchFromP4Json(m_jsonPath);
+        m_p4Pipeline->LoadFlowTableToSwitch(m_flowTablePath);
+        m_p4Pipeline->start_and_return_();
+        break;
+
+    default:
+        NS_FATAL_ERROR("Unknown P4 switch architecture: " << m_switchArch);
+    }
+
+    NetDevice::DoInitialize();
+}
+
+void
+P4SwitchNetDevice::DoDispose()
+{
+    NS_LOG_FUNCTION_NOARGS();
+
+    // The callback points into the core deleted below.
+    m_portTxDone = MakeNullCallback<void, uint32_t>();
+    m_v1modelSwitch.reset();
+    m_psaSwitch.reset();
+    m_pnaNic.reset();
+    m_p4Pipeline.reset();
+
+    m_portChannels.clear();
+    m_portDeviceIds.clear();
+    m_bridgePorts.clear();
+    m_bridgePortTxEnd.clear();
+    m_bridgeChannel = nullptr;
+    m_node = nullptr;
+
+    NetDevice::DoDispose();
+}
+
+// ---------------------------------------------------------------------------
+// Channel attachment
+// ---------------------------------------------------------------------------
+
+void
+P4SwitchNetDevice::Attach(Ptr<SwitchedEthernetChannel> channel)
+{
+    NS_LOG_FUNCTION(this << channel);
+    NS_ASSERT_MSG(channel, "Attach: null channel");
+
+    int32_t devId = channel->Attach(this);
+    NS_ASSERT_MSG(devId >= 0, "Attach: channel rejected device (already full?)");
+
+    m_portChannels.push_back(channel);
+    m_portDeviceIds.push_back(static_cast<uint32_t>(devId));
+    m_bridgePorts.push_back(nullptr);
+    m_bridgePortTxEnd.push_back(false);
+
+    NS_LOG_INFO("Attached to channel as port " << (m_portChannels.size() - 1) << " (channel slot "
+                                               << devId << ")");
+}
+
+// ---------------------------------------------------------------------------
+// Ingress: called directly by SwitchedEthernetChannel
+// ---------------------------------------------------------------------------
+
+void
+P4SwitchNetDevice::Receive(Ptr<Packet> packet, Ptr<P4SwitchNetDevice> sender)
+{
+    NS_LOG_FUNCTION_NOARGS();
+    NS_LOG_DEBUG("UID=" << packet->GetUid());
+
+    // The packet arrives as a full Ethernet frame.  Peek at the header to
+    // recover src/dst/protocol for callbacks and P4 metadata.
+    EthernetHeader eth;
+    packet->PeekHeader(eth);
+
+    Mac48Address src48 = eth.GetSource();
+    Mac48Address dst48 = eth.GetDestination();
+    uint16_t proto = eth.GetLengthType();
+
+    // Promiscuous sniffer (e.g. pcap): fire for every frame.
+    if (!m_promiscRxCallback.IsNull())
+    {
+        m_promiscRxCallback(this, packet, proto, src48, dst48, PACKET_OTHERHOST);
+    }
+
+    // NIC / passthrough mode: no P4 core — deliver up the stack.
+    bool hasCore = (m_v1modelSwitch || m_psaSwitch || m_pnaNic || m_p4Pipeline);
+    if (!hasCore)
+    {
+        m_promiscSnifferTrace(packet);
+        m_snifferTrace(packet);
+        m_macRxTrace(packet);
+
+        // Strip the Ethernet header before handing to the IP stack.
+        Ptr<Packet> stripped = packet->Copy();
+        EthernetHeader hdr;
+        stripped->RemoveHeader(hdr);
+
+        if (!m_rxCallback.IsNull())
+        {
+            m_rxCallback(this, stripped, proto, src48);
+        }
+        return;
+    }
+
+    // Switch mode: find the ingress port from the sender device.
+    uint32_t inPort = GetPortNumber(sender);
+    if (inPort == UINT32_MAX)
+    {
+        NS_LOG_WARN("Receive: sender not found in port list — dropping");
+        return;
+    }
+
+    NS_LOG_DEBUG("Ingress port=" << inPort << " src=" << src48 << " dst=" << dst48 << " proto=0x"
+                                 << std::hex << proto << std::dec);
+
+    DeliverToCore(packet->Copy(), inPort, proto, dst48);
+}
+
+void
+P4SwitchNetDevice::DeliverToCore(Ptr<Packet> frame,
+                                 uint32_t inPort,
+                                 uint16_t protocol,
+                                 Mac48Address dst)
+{
+    if (!m_v1modelSwitch && !m_psaSwitch && !m_pnaNic && !m_p4Pipeline)
+    {
+        NS_LOG_WARN("No P4 core, dropping frame received on port " << inPort);
+        return;
+    }
+
+    m_promiscSnifferTrace(frame);
+    m_snifferTrace(frame);
+    m_macRxTrace(frame);
+
+    // While a swap of the P4 program waits for the switch to empty, the frame
+    // waits too (see P4SwitchCore::swap_configs())
+    if (GetCore()->HoldDuringSwap(frame, inPort, protocol, dst))
+    {
+        return;
+    }
+
+    // Feed the full Ethernet frame into the P4 pipeline.
+    switch (m_switchArch)
+    {
+    case P4SWITCH_ARCH_V1MODEL:
+        m_v1modelSwitch->ReceivePacket(frame, inPort, protocol, dst);
+        break;
+    case P4SWITCH_ARCH_PSA:
+        m_psaSwitch->ReceivePacket(frame, inPort, protocol, dst);
+        break;
+    case P4NIC_ARCH_PNA:
+        m_pnaNic->ReceivePacket(frame, inPort, protocol, dst);
+        break;
+    case P4SWITCH_ARCH_PIPELINE:
+        m_p4Pipeline->ReceivePacket(frame, inPort, protocol, dst);
+        break;
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Egress: called by P4 pipeline cores
+// ---------------------------------------------------------------------------
+
+void
+P4SwitchNetDevice::SendPacket(Ptr<Packet> packetOut,
+                              int outPort,
+                              uint16_t protocol,
+                              const Address& destination)
+{
+    SendNs3Packet(packetOut, outPort, protocol, destination);
+}
+
+bool
+P4SwitchNetDevice::SendNs3Packet(Ptr<Packet> packetOut,
+                                 int outPort,
+                                 uint16_t /*protocol*/,
+                                 const Address& /*destination*/,
+                                 Time* txTime)
+{
+    NS_LOG_DEBUG("SendNs3Packet: port=" << outPort);
+
+    if (!packetOut)
+    {
+        NS_LOG_DEBUG("Null packet — dropping");
+        return false;
+    }
 
     // A frame for the drop port is dropped without a warning. The pipeline
     // core, for example, passes the egress_spec of the ingress, which
     // mark_to_drop() sets to the drop port.
-    if (outPort != SSWITCH_DROP_PORT) {
-      NS_LOG_DEBUG("EgressPortNum: " << outPort);
-      Ptr<NetDevice> outNetDevice = GetBridgePort(outPort);
-      if (!outNetDevice) {
-        // The P4 program selected a port that does not exist on this switch
-        // (e.g. egress_spec / send_to_port() out of range). Drop the packet,
-        // as BMv2 does, instead of dereferencing a null pointer.
-        NS_LOG_WARN("Egress port " << outPort << " does not exist (switch has "
-                                   << GetNBridgePorts()
-                                   << " ports), dropping packet");
-        return;
-      }
-      outNetDevice->SendFrom(packetOut, src, dst, protocol);
+    if (outPort == SSWITCH_DROP_PORT)
+    {
+        NS_LOG_DEBUG("Drop port (511) — packet discarded");
+        m_macTxDropTrace(packetOut);
+        return false;
     }
-  } else
-    NS_LOG_DEBUG("Null Packet!");
+
+    if (outPort < 0 || static_cast<size_t>(outPort) >= m_portChannels.size())
+    {
+        NS_LOG_WARN("SendNs3Packet: invalid port " << outPort << " (" << m_portChannels.size()
+                                                   << " ports available)");
+        m_macTxDropTrace(packetOut);
+        return false;
+    }
+
+    m_macTxTrace(packetOut);
+    m_snifferTrace(packetOut);
+    m_promiscSnifferTrace(packetOut);
+
+    // The P4 pipeline delivers a full Ethernet frame.
+    if (m_bridgePorts[outPort])
+    {
+        return SendOnBridgePort(static_cast<uint32_t>(outPort), packetOut, txTime);
+    }
+    // Transmit it directly onto the channel.
+    return TransmitOn(static_cast<uint32_t>(outPort), packetOut, txTime);
 }
 
-Ptr<Node> P4SwitchNetDevice::GetNode() const {
-  NS_LOG_FUNCTION_NOARGS();
-  return m_node;
+bool
+P4SwitchNetDevice::TransmitOn(uint32_t port, Ptr<Packet> packet, Time* txTime)
+{
+    Ptr<SwitchedEthernetChannel> channel = m_portChannels[port];
+    // The channel computes the serialisation time from its data rate
+    Time serialisationTime;
+    if (!channel->TransmitStart(packet, m_portDeviceIds[port], &serialisationTime))
+    {
+        NS_LOG_WARN("TransmitOn: channel busy or device inactive — packet dropped");
+        m_macTxDropTrace(packet);
+        return false;
+    }
+
+    Simulator::Schedule(serialisationTime, &P4SwitchNetDevice::PortTransmitEnd, this, port);
+
+    if (txTime)
+    {
+        *txTime = serialisationTime;
+    }
+    return true;
 }
 
-void P4SwitchNetDevice::SetNode(Ptr<Node> node) {
-  NS_LOG_FUNCTION_NOARGS();
-  m_node = node;
+void
+P4SwitchNetDevice::PortTransmitEnd(uint32_t port)
+{
+    if (port >= m_portChannels.size())
+    {
+        return; // the device was disposed while the frame was on the wire
+    }
+    m_portChannels[port]->TransmitEnd(m_portDeviceIds[port]);
+    if (!m_portTxDone.IsNull())
+    {
+        m_portTxDone(port);
+    }
 }
 
-bool P4SwitchNetDevice::NeedsArp() const {
-  NS_LOG_FUNCTION_NOARGS();
-  return true;
+void
+P4SwitchNetDevice::SetPortTxDoneCallback(Callback<void, uint32_t> cb)
+{
+    m_portTxDone = cb;
 }
 
-void P4SwitchNetDevice::SetReceiveCallback(NetDevice::ReceiveCallback cb) {
-  NS_LOG_FUNCTION_NOARGS();
-  m_rxCallback = cb;
+// ---------------------------------------------------------------------------
+// Bridge ports
+// ---------------------------------------------------------------------------
+
+void
+P4SwitchNetDevice::AddBridgePort(Ptr<NetDevice> bridgePort)
+{
+    NS_LOG_FUNCTION(this << bridgePort);
+    NS_ASSERT_MSG(bridgePort && bridgePort != this, "AddBridgePort: invalid device");
+    NS_ASSERT_MSG(m_node, "AddBridgePort: add the switch device to its node first");
+    if (!Mac48Address::IsMatchingType(bridgePort->GetAddress()))
+    {
+        NS_FATAL_ERROR("Device does not support EUI-48 addresses: cannot be a bridge port.");
+    }
+    if (!bridgePort->SupportsSendFrom())
+    {
+        NS_FATAL_ERROR("Device does not support SendFrom: cannot be a bridge port.");
+    }
+    if (m_address == Mac48Address())
+    {
+        m_address = Mac48Address::ConvertFrom(bridgePort->GetAddress());
+    }
+
+    auto port = static_cast<uint32_t>(m_portChannels.size());
+    m_portChannels.push_back(nullptr);
+    m_portDeviceIds.push_back(UINT32_MAX);
+    m_bridgePorts.push_back(bridgePort);
+
+    m_node->RegisterProtocolHandler(MakeCallback(&P4SwitchNetDevice::ReceiveFromDevice, this),
+                                    0,
+                                    bridgePort,
+                                    true);
+    // The end of each transmission frees the port for the P4 core, as
+    // PortTransmitEnd() does for a switched-Ethernet port.
+    bool connected = false;
+    for (const char* trace : {"PhyTxEnd", "PhyTxDrop"})
+    {
+        connected |= bridgePort->TraceConnectWithoutContext(
+            trace,
+            MakeCallback(&P4SwitchNetDevice::BridgePortTxEnd, this).Bind(port));
+    }
+    // Without these traces the port is free again one transmission time after
+    // the device has taken a frame (see SendOnBridgePort()).
+    m_bridgePortTxEnd.push_back(connected);
+    if (!connected)
+    {
+        NS_LOG_INFO("AddBridgePort: " << bridgePort->GetInstanceTypeId().GetName()
+                                      << " reports no end of transmission; the port is free "
+                                         "again after the frame's transmission time");
+    }
+
+    if (!m_bridgeChannel)
+    {
+        m_bridgeChannel = CreateObject<P4BridgeChannel>();
+    }
+    if (bridgePort->GetChannel())
+    {
+        m_bridgeChannel->AddChannel(bridgePort->GetChannel());
+    }
+    NS_LOG_INFO("Added " << bridgePort->GetInstanceTypeId().GetName() << " as bridge port "
+                         << port);
 }
 
-void P4SwitchNetDevice::SetPromiscReceiveCallback(
-    NetDevice::PromiscReceiveCallback cb) {
-  NS_LOG_FUNCTION_NOARGS();
-  m_promiscRxCallback = cb;
+uint32_t
+P4SwitchNetDevice::GetNBridgePorts() const
+{
+    return GetNPorts();
 }
 
-bool P4SwitchNetDevice::SupportsSendFrom() const {
-  NS_LOG_FUNCTION_NOARGS();
-  return true;
+Ptr<NetDevice>
+P4SwitchNetDevice::GetBridgePort(uint32_t n) const
+{
+    if (n >= m_bridgePorts.size())
+    {
+        return nullptr;
+    }
+    return m_bridgePorts[n];
 }
 
-Address P4SwitchNetDevice::GetMulticast(Ipv6Address addr) const {
-  NS_LOG_FUNCTION(this << addr);
-  return Mac48Address::GetMulticast(addr);
+uint32_t
+P4SwitchNetDevice::GetBridgePortNumber(Ptr<NetDevice> device) const
+{
+    for (uint32_t i = 0; i < m_bridgePorts.size(); ++i)
+    {
+        if (m_bridgePorts[i] && m_bridgePorts[i] == device)
+        {
+            return i;
+        }
+    }
+    return UINT32_MAX;
 }
 
-P4CoreV1model *P4SwitchNetDevice::GetV1ModelCore() const {
-  return m_v1modelSwitch.get();
+DataRate
+P4SwitchNetDevice::GetPortDataRate(uint32_t n) const
+{
+    if (n < m_portChannels.size() && m_portChannels[n])
+    {
+        return m_portChannels[n]->GetDataRate();
+    }
+    if (n < m_bridgePorts.size() && m_bridgePorts[n])
+    {
+        DataRateValue rate;
+        if (m_bridgePorts[n]->GetAttributeFailSafe("DataRate", rate))
+        {
+            return rate.Get(); // point-to-point devices
+        }
+        Ptr<Channel> channel = m_bridgePorts[n]->GetChannel();
+        if (channel && channel->GetAttributeFailSafe("DataRate", rate))
+        {
+            return rate.Get(); // CSMA channels
+        }
+    }
+    return DataRate(0);
 }
 
-int P4SwitchNetDevice::GetThriftPort() const {
-  if (m_v1modelSwitch) {
-    return m_v1modelSwitch->GetThriftPort();
-  }
-  if (m_psaSwitch) {
-    return m_psaSwitch->GetThriftPort();
-  }
-  if (m_pnaNic) {
-    return m_pnaNic->GetThriftPort();
-  }
-  if (m_p4Pipeline) {
-    return m_p4Pipeline->GetThriftPort();
-  }
-  return 0;
+void
+P4SwitchNetDevice::ReceiveFromDevice(Ptr<NetDevice> incomingPort,
+                                     Ptr<const Packet> packet,
+                                     uint16_t protocol,
+                                     const Address& src,
+                                     const Address& dst,
+                                     PacketType packetType)
+{
+    NS_LOG_FUNCTION(this << incomingPort << packet);
+    uint32_t inPort = GetBridgePortNumber(incomingPort);
+    if (inPort == UINT32_MAX)
+    {
+        NS_LOG_WARN("ReceiveFromDevice: " << incomingPort << " is not a bridge port, dropping");
+        return;
+    }
+    Mac48Address src48 = Mac48Address::ConvertFrom(src);
+    Mac48Address dst48 = Mac48Address::ConvertFrom(dst);
+
+    if (!m_promiscRxCallback.IsNull())
+    {
+        m_promiscRxCallback(this, packet, protocol, src48, dst48, PACKET_OTHERHOST);
+    }
+
+    // The port device has removed the frame's Ethernet header, and the P4
+    // parser expects one: rebuild it from the frame's addresses and EtherType.
+    Ptr<Packet> frame = packet->Copy();
+    EthernetHeader eth;
+    eth.SetSource(src48);
+    eth.SetDestination(dst48);
+    eth.SetLengthType(protocol);
+    frame->AddHeader(eth);
+
+    DeliverToCore(frame, inPort, protocol, dst48);
 }
 
-P4SwitchCore *P4SwitchNetDevice::GetCore() const {
-  if (m_v1modelSwitch) {
+bool
+P4SwitchNetDevice::SendOnBridgePort(uint32_t port, Ptr<Packet> frame, Time* txTime)
+{
+    // The port device adds its own header, so hand it the frame's addresses
+    // and EtherType without the Ethernet header.
+    Ptr<Packet> payload = frame->Copy();
+    EthernetHeader eth;
+    if (payload->RemoveHeader(eth) == 0)
+    {
+        NS_LOG_WARN("SendOnBridgePort: frame without an Ethernet header, dropping");
+        m_macTxDropTrace(frame);
+        return false;
+    }
+    if (!m_bridgePorts[port]->SendFrom(payload,
+                                       eth.GetSource(),
+                                       eth.GetDestination(),
+                                       eth.GetLengthType()))
+    {
+        NS_LOG_WARN("SendOnBridgePort: port " << port << " did not take the frame, dropping");
+        m_macTxDropTrace(frame);
+        return false;
+    }
+    if (txTime)
+    {
+        // With the port's framing, if its device has one (the P4 point-to-point
+        // device; ns-3's CSMA device adds its FCS and gap itself)
+        EnumValue framing;
+        LinkFraming::Type type = LinkFraming::NONE;
+        if (m_bridgePorts[port]->GetAttributeFailSafe("Framing", framing))
+        {
+            type = static_cast<LinkFraming::Type>(framing.Get());
+        }
+        *txTime = GetPortDataRate(port).CalculateBytesTxTime(
+            LinkFraming(type).GetWireBytes(frame->GetSize()));
+    }
+    if (!m_bridgePortTxEnd[port])
+    {
+        // The device will not report the end of the transmission: the port is
+        // free again after the time the device needs for the frame at its data
+        // rate (SimpleNetDevice: the size it was given), or at once without one.
+        DataRate rate = GetPortDataRate(port);
+        Time wait = (rate.GetBitRate() > 0) ? rate.CalculateBytesTxTime(payload->GetSize())
+                                            : Time(0);
+        Simulator::Schedule(wait,
+                            &P4SwitchNetDevice::BridgePortTxEnd,
+                            this,
+                            port,
+                            Ptr<const Packet>());
+    }
+    return true;
+}
+
+void
+P4SwitchNetDevice::BridgePortTxEnd(uint32_t port, Ptr<const Packet> /*packet*/)
+{
+    if (!m_portTxDone.IsNull())
+    {
+        m_portTxDone(port);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Port accessors
+// ---------------------------------------------------------------------------
+
+uint32_t
+P4SwitchNetDevice::GetNPorts() const
+{
+    return static_cast<uint32_t>(m_portChannels.size());
+}
+
+Ptr<SwitchedEthernetChannel>
+P4SwitchNetDevice::GetPortChannel(uint32_t n) const
+{
+    if (n >= m_portChannels.size())
+    {
+        return nullptr;
+    }
+    return m_portChannels[n];
+}
+
+uint32_t
+P4SwitchNetDevice::GetPortNumber(Ptr<P4SwitchNetDevice> sender) const
+{
+    // Find the port whose far end is `sender`.
+    for (uint32_t i = 0; i < m_portChannels.size(); ++i)
+    {
+        if (!m_portChannels[i])
+        {
+            continue; // a bridge port
+        }
+        uint32_t mySlot = m_portDeviceIds[i];
+        uint32_t otherSlot = (mySlot == 0) ? 1 : 0;
+
+        if (m_portChannels[i]->GetNDevices() > otherSlot &&
+            m_portChannels[i]->GetP4SwitchDevice(otherSlot) == sender)
+        {
+            return i;
+        }
+    }
+    return UINT32_MAX;
+}
+
+uint32_t
+P4SwitchNetDevice::GetPortDeviceId(uint32_t n) const
+{
+    if (n<m_portDeviceIds.size())
+    {
+        return m_portDeviceIds[n];
+    }
+    return UINT32_MAX;
+}
+
+// ---------------------------------------------------------------------------
+// P4 core accessors / trace helpers
+// ---------------------------------------------------------------------------
+
+P4CoreV1model*
+P4SwitchNetDevice::GetV1ModelCore() const
+{
     return m_v1modelSwitch.get();
-  }
-  if (m_psaSwitch) {
-    return m_psaSwitch.get();
-  }
-  if (m_pnaNic) {
-    return m_pnaNic.get();
-  }
-  return m_p4Pipeline.get();
 }
 
-bool P4SwitchNetDevice::AddMirroringSession(uint32_t sessionId,
-                                            uint32_t egressPort) {
-  P4SwitchCore *core = GetCore();
-  if (!core) {
-    NS_LOG_WARN("Cannot add mirroring session "
-                << sessionId << ": the P4 core is not created yet");
+void
+P4SwitchNetDevice::ConfigureCore(P4SwitchCore& core) const
+{
+    core.SetBmLogLevel(m_bmLogLevel);
+    core.SetThriftPort(m_thriftPort);
+    core.SetPipelineDelay(m_pipelineDelay);
+}
+
+int
+P4SwitchNetDevice::GetThriftPort() const
+{
+    if (m_v1modelSwitch)
+    {
+        return m_v1modelSwitch->GetThriftPort();
+    }
+    if (m_psaSwitch)
+    {
+        return m_psaSwitch->GetThriftPort();
+    }
+    if (m_pnaNic)
+    {
+        return m_pnaNic->GetThriftPort();
+    }
+    if (m_p4Pipeline)
+    {
+        return m_p4Pipeline->GetThriftPort();
+    }
+    return 0;
+}
+
+P4SwitchCore*
+P4SwitchNetDevice::GetCore() const
+{
+    if (m_v1modelSwitch)
+    {
+        return m_v1modelSwitch.get();
+    }
+    if (m_psaSwitch)
+    {
+        return m_psaSwitch.get();
+    }
+    if (m_pnaNic)
+    {
+        return m_pnaNic.get();
+    }
+    return m_p4Pipeline.get();
+}
+
+bool
+P4SwitchNetDevice::AddMirroringSession(uint32_t sessionId, uint32_t egressPort)
+{
+    P4SwitchCore* core = GetCore();
+    if (!core)
+    {
+        NS_LOG_WARN("Cannot add mirroring session " << sessionId
+                                                    << ": the P4 core is not created yet");
+        return false;
+    }
+    P4SwitchCore::MirroringSessionConfig config{};
+    config.egress_port = egressPort;
+    config.egress_port_valid = true;
+    config.mgid_valid = false;
+    return core->AddMirroringSession(static_cast<int>(sessionId), config);
+}
+
+bool
+P4SwitchNetDevice::AddMulticastMirroringSession(uint32_t sessionId, uint32_t mgid)
+{
+    P4SwitchCore* core = GetCore();
+    if (!core)
+    {
+        NS_LOG_WARN("Cannot add mirroring session " << sessionId
+                                                    << ": the P4 core is not created yet");
+        return false;
+    }
+    P4SwitchCore::MirroringSessionConfig config{};
+    config.egress_port_valid = false;
+    config.mgid = mgid;
+    config.mgid_valid = true;
+    return core->AddMirroringSession(static_cast<int>(sessionId), config);
+}
+
+void
+P4SwitchNetDevice::EmitSwitchEvent(uint32_t id, const std::string& msg)
+{
+    m_switchEvent(id, msg);
+}
+
+void
+P4SwitchNetDevice::NotifyMacRxDrop(Ptr<const Packet> packet)
+{
+    m_macRxDropTrace(packet);
+}
+
+void
+P4SwitchNetDevice::ConnectCoreEvent()
+{
+    // Intentionally empty: override or call after DoInitialize() to wire
+    // pipeline-internal traces to m_switchEvent.
+}
+
+// ---------------------------------------------------------------------------
+// P4 config getters / setters
+// ---------------------------------------------------------------------------
+
+void
+P4SwitchNetDevice::SetJsonPath(const std::string& p)
+{
+    m_jsonPath = p;
+}
+
+std::string
+P4SwitchNetDevice::GetJsonPath() const
+{
+    return m_jsonPath;
+}
+
+void
+P4SwitchNetDevice::SetFlowTablePath(const std::string& p)
+{
+    m_flowTablePath = p;
+}
+
+std::string
+P4SwitchNetDevice::GetFlowTablePath() const
+{
+    return m_flowTablePath;
+}
+
+// ---------------------------------------------------------------------------
+// NetDevice interface
+// ---------------------------------------------------------------------------
+
+void
+P4SwitchNetDevice::SetIfIndex(const uint32_t index)
+{
+    m_ifIndex = index;
+}
+
+uint32_t
+P4SwitchNetDevice::GetIfIndex() const
+{
+    return m_ifIndex;
+}
+
+Ptr<Channel>
+P4SwitchNetDevice::GetChannel() const
+{
+    // Return the channel of port 0 as the representative channel.
+    if (!m_portChannels.empty() && m_portChannels[0])
+    {
+        return m_portChannels[0];
+    }
+    return m_bridgeChannel;
+}
+
+void
+P4SwitchNetDevice::SetAddress(Address address)
+{
+    m_address = Mac48Address::ConvertFrom(address);
+}
+
+Address
+P4SwitchNetDevice::GetAddress() const
+{
+    return m_address;
+}
+
+bool
+P4SwitchNetDevice::SetMtu(const uint16_t mtu)
+{
+    m_mtu = mtu;
+    return true;
+}
+
+uint16_t
+P4SwitchNetDevice::GetMtu() const
+{
+    return m_mtu;
+}
+
+bool
+P4SwitchNetDevice::IsLinkUp() const
+{
+    return !m_portChannels.empty();
+}
+
+void
+P4SwitchNetDevice::AddLinkChangeCallback(Callback<void> /*callback*/)
+{
+    // Not supported for a multi-port device.
+}
+
+bool
+P4SwitchNetDevice::IsBroadcast() const
+{
+    return true;
+}
+
+Address
+P4SwitchNetDevice::GetBroadcast() const
+{
+    return Mac48Address::GetBroadcast();
+}
+
+bool
+P4SwitchNetDevice::IsMulticast() const
+{
+    return true;
+}
+
+Address
+P4SwitchNetDevice::GetMulticast(Ipv4Address multicastGroup) const
+{
+    return Mac48Address::GetMulticast(multicastGroup);
+}
+
+Address
+P4SwitchNetDevice::GetMulticast(Ipv6Address addr) const
+{
+    return Mac48Address::GetMulticast(addr);
+}
+
+bool
+P4SwitchNetDevice::IsPointToPoint() const
+{
     return false;
-  }
-  P4SwitchCore::MirroringSessionConfig config{};
-  config.egress_port = egressPort;
-  config.egress_port_valid = true;
-  config.mgid_valid = false;
-  return core->AddMirroringSession(static_cast<int>(sessionId), config);
 }
 
-bool P4SwitchNetDevice::AddMulticastMirroringSession(uint32_t sessionId,
-                                                     uint32_t mgid) {
-  P4SwitchCore *core = GetCore();
-  if (!core) {
-    NS_LOG_WARN("Cannot add mirroring session "
-                << sessionId << ": the P4 core is not created yet");
+bool
+P4SwitchNetDevice::IsBridge() const
+{
     return false;
-  }
-  P4SwitchCore::MirroringSessionConfig config{};
-  config.egress_port_valid = false;
-  config.mgid = mgid;
-  config.mgid_valid = true;
-  return core->AddMirroringSession(static_cast<int>(sessionId), config);
 }
 
-void P4SwitchNetDevice::EmitSwitchEvent(uint32_t id, const std::string &msg) {
-  m_switchEvent(id, msg);
+bool
+P4SwitchNetDevice::Send(Ptr<Packet> packet, const Address& dest, uint16_t protocolNumber)
+{
+    return SendFrom(packet, m_address, dest, protocolNumber);
+}
+
+bool
+P4SwitchNetDevice::SendFrom(Ptr<Packet> packet,
+                            const Address& src,
+                            const Address& dest,
+                            uint16_t protocolNumber)
+{
+    NS_LOG_FUNCTION_NOARGS();
+
+    // Build an Ethernet frame and send it out on all attached channels
+    // (used for management / control-plane traffic from the node's IP stack).
+    EthernetHeader eth;
+    eth.SetSource(Mac48Address::ConvertFrom(src));
+    eth.SetDestination(Mac48Address::ConvertFrom(dest));
+    eth.SetLengthType(protocolNumber);
+
+    m_macTxTrace(packet);
+
+    for (std::size_t i = 0; i < m_portChannels.size(); ++i)
+    {
+        Ptr<Packet> frame = packet->Copy();
+        frame->AddHeader(eth);
+        m_promiscSnifferTrace(frame);
+        m_snifferTrace(frame);
+        if (m_bridgePorts[i])
+        {
+            SendOnBridgePort(static_cast<uint32_t>(i), frame, nullptr);
+        }
+        else
+        {
+            TransmitOn(static_cast<uint32_t>(i), frame);
+        }
+    }
+    return true;
+}
+
+Ptr<Node>
+P4SwitchNetDevice::GetNode() const
+{
+    return m_node;
+}
+
+void
+P4SwitchNetDevice::SetNode(Ptr<Node> n)
+{
+    m_node = n;
+}
+
+bool
+P4SwitchNetDevice::NeedsArp() const
+{
+    return true;
+}
+
+void
+P4SwitchNetDevice::SetReceiveCallback(NetDevice::ReceiveCallback cb)
+{
+    m_rxCallback = cb;
+}
+
+void
+P4SwitchNetDevice::SetPromiscReceiveCallback(NetDevice::PromiscReceiveCallback cb)
+{
+    m_promiscRxCallback = cb;
+}
+
+bool
+P4SwitchNetDevice::SupportsSendFrom() const
+{
+    return true;
 }
 
 } // namespace ns3

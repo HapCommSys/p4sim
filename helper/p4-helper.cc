@@ -17,70 +17,166 @@
  * Authors: Mingyu Ma <mingyu.ma@tu-dresden.de>
  */
 
-#include "ns3/log.h"
-#include "ns3/names.h"
-#include "ns3/net-device-container.h"
-#include "ns3/node.h"
-#include "ns3/p4-helper.h"
-#include "ns3/p4-switch-net-device.h"
+#include "p4-helper.h"
 
-namespace ns3
-{
+#include "ns3/config.h"
+#include "ns3/log.h"
+#include "ns3/mac48-address.h"
+#include "ns3/names.h"
+#include "ns3/p4-switch-net-device.h"
+#include "ns3/packet.h"
+#include "ns3/pcap-file-wrapper.h"
+#include "ns3/trace-helper.h"
+
+namespace ns3 {
 
 NS_LOG_COMPONENT_DEFINE("P4Helper");
 
+// ---------------------------------------------------------------------------
+// Construction
+// ---------------------------------------------------------------------------
+
 P4Helper::P4Helper()
 {
-    NS_LOG_FUNCTION(this);
-    // Set the default type of the device to P4SwitchNetDevice
     m_deviceFactory.SetTypeId("ns3::P4SwitchNetDevice");
 }
+
+// ---------------------------------------------------------------------------
+// Attribute configuration
+// ---------------------------------------------------------------------------
 
 void
 P4Helper::SetDeviceAttribute(const std::string& name, const AttributeValue& value)
 {
-    NS_LOG_FUNCTION(this << name);
     m_deviceFactory.Set(name, value);
 }
 
+// ---------------------------------------------------------------------------
+// Install
+// ---------------------------------------------------------------------------
+
 NetDeviceContainer
-P4Helper::Install(Ptr<Node> node, const NetDeviceContainer& netDevices) const
+P4Helper::Install(Ptr<Node> switchNode) const
 {
-    NS_ASSERT_MSG(node != nullptr, "Invalid node pointer passed to P4Helper::Install");
-    uint32_t deviceCount = netDevices.GetN();
-    if (deviceCount == 0)
-    {
-        NS_LOG_WARN("P4Helper::Install received an empty NetDeviceContainer. Returning without "
-                    "installing.");
-        return NetDeviceContainer();
-    }
-
-    NS_LOG_FUNCTION(this << node->GetId());
-    NS_LOG_LOGIC("Installing P4SwitchNetDevice on node: " << node->GetId());
-
-    // Create the P4 bridge device
-    Ptr<P4SwitchNetDevice> switchDevice = m_deviceFactory.Create<P4SwitchNetDevice>();
-    node->AddDevice(switchDevice);
-
-    // Attach each NetDevice in the container to the bridge
-    for (auto iter = netDevices.Begin(); iter != netDevices.End(); ++iter)
-    {
-        NS_LOG_LOGIC("Adding bridge port: " << *iter);
-        switchDevice->AddBridgePort(*iter);
-    }
-
-    // Return a container with the created device
-    NetDeviceContainer installedDevices;
-    installedDevices.Add(switchDevice);
-    return installedDevices;
+    NS_ASSERT_MSG(switchNode, "P4Helper::Install: null switch node");
+    NS_LOG_FUNCTION(this << switchNode->GetId());
+    return NetDeviceContainer(InstallSwitchPriv(switchNode));
 }
 
 NetDeviceContainer
-P4Helper::Install(const std::string& nodeName, const NetDeviceContainer& netDevices) const
+P4Helper::Install(const std::string& switchNodeName) const
 {
-    NS_LOG_FUNCTION(this << nodeName);
+    Ptr<Node> node = Names::Find<Node>(switchNodeName);
+    NS_ASSERT_MSG(node, "P4Helper::Install: node \"" << switchNodeName << "\" not found");
+    return Install(node);
+}
+
+NetDeviceContainer
+P4Helper::Install(Ptr<Node> node, const NetDeviceContainer& ports) const
+{
+    NS_ASSERT_MSG(node, "P4Helper::Install: null node");
+    NS_LOG_FUNCTION(this << node->GetId() << ports.GetN());
+    Ptr<P4SwitchNetDevice> sw = m_deviceFactory.Create<P4SwitchNetDevice>();
+    node->AddDevice(sw);
+    for (auto it = ports.Begin(); it != ports.End(); ++it)
+    {
+        sw->AddBridgePort(*it);
+    }
+    return NetDeviceContainer(sw);
+}
+
+NetDeviceContainer
+P4Helper::Install(const std::string& nodeName, const NetDeviceContainer& ports) const
+{
     Ptr<Node> node = Names::Find<Node>(nodeName);
-    return Install(node, netDevices);
+    NS_ASSERT_MSG(node, "P4Helper::Install: node \"" << nodeName << "\" not found");
+    return Install(node, ports);
+}
+
+// ---------------------------------------------------------------------------
+// Private helpers
+// ---------------------------------------------------------------------------
+
+Ptr<P4SwitchNetDevice>
+P4Helper::InstallSwitchPriv(Ptr<Node> node) const
+{
+    Ptr<P4SwitchNetDevice> sw = m_deviceFactory.Create<P4SwitchNetDevice>();
+    sw->SetAddress(Mac48Address::Allocate());
+    node->AddDevice(sw);
+    NS_LOG_DEBUG("Switch device installed on node " << node->GetId());
+    return sw;
+}
+
+// ---------------------------------------------------------------------------
+// Pcap tracing
+// ---------------------------------------------------------------------------
+
+void
+P4Helper::EnablePcapInternal(std::string    prefix,
+                              Ptr<NetDevice> nd,
+                              bool           promiscuous,
+                              bool           explicitFilename)
+{
+    Ptr<P4SwitchNetDevice> device = nd->GetObject<P4SwitchNetDevice>();
+    if (!device)
+    {
+        NS_LOG_INFO("P4Helper::EnablePcapInternal: not a P4SwitchNetDevice — skipping");
+        return;
+    }
+
+    PcapHelper pcapHelper;
+    std::string filename = explicitFilename ? prefix
+                                            : pcapHelper.GetFilenameFromDevice(prefix, device);
+
+    Ptr<PcapFileWrapper> file =
+        pcapHelper.CreateFile(filename, std::ios::out, PcapHelper::DLT_EN10MB);
+
+    if (promiscuous)
+    {
+        pcapHelper.HookDefaultSink<P4SwitchNetDevice>(device, "PromiscSniffer", file);
+    }
+    else
+    {
+        pcapHelper.HookDefaultSink<P4SwitchNetDevice>(device, "Sniffer", file);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Ascii tracing
+// ---------------------------------------------------------------------------
+
+void
+P4Helper::EnableAsciiInternal(Ptr<OutputStreamWrapper> stream,
+                               std::string              prefix,
+                               Ptr<NetDevice>           nd,
+                               bool                     explicitFilename)
+{
+    Ptr<P4SwitchNetDevice> device = nd->GetObject<P4SwitchNetDevice>();
+    if (!device)
+    {
+        NS_LOG_INFO("P4Helper::EnableAsciiInternal: not a P4SwitchNetDevice — skipping");
+        return;
+    }
+
+    Packet::EnablePrinting();
+
+    if (!stream)
+    {
+        AsciiTraceHelper asciiHelper;
+        std::string filename = explicitFilename ? prefix
+                                                : asciiHelper.GetFilenameFromDevice(prefix, device);
+        Ptr<OutputStreamWrapper> theStream = asciiHelper.CreateFileStream(filename);
+        asciiHelper.HookDefaultReceiveSinkWithoutContext<P4SwitchNetDevice>(
+            device, "SwitchEvent", theStream);
+        return;
+    }
+
+    std::ostringstream oss;
+    oss << "/NodeList/" << nd->GetNode()->GetId()
+        << "/DeviceList/" << nd->GetIfIndex()
+        << "/$ns3::P4SwitchNetDevice/SwitchEvent";
+    Config::Connect(oss.str(),
+                    MakeBoundCallback(&AsciiTraceHelper::DefaultReceiveSinkWithContext, stream));
 }
 
 } // namespace ns3

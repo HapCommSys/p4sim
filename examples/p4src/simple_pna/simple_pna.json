@@ -78,26 +78,26 @@
       "name" : "scalars_t",
       "id" : 6,
       "fields" : [
+        ["pna_pre_output_metadata_t.decrypt_start_offset", 16, false],
+        ["pna_pre_output_metadata_t.said", 32, false],
+        ["pna_pre_output_metadata_t.decrypt", 1, false],
         ["pna_pre_input_metadata_t.loopedback", 1, false],
         ["pna_pre_input_metadata_t.pass", 3, false],
         ["pna_pre_input_metadata_t.direction", 32, false],
-        [],
-        ["pna_pre_input_metadata_t.input_port", 32, false],
-        ["pna_pre_output_metadata_t.decrypt", 1, false],
+        ["pna_main_input_metadata_t.pass", 3, false],
+        ["pna_main_input_metadata_t.direction", 32, false],
         ["pna_main_parser_input_metadata_t.input_port", 32, false],
         ["pna_main_parser_input_metadata_t.loopedback", 1, false],
         ["pna_main_parser_input_metadata_t.pass", 3, false],
         ["pna_main_parser_input_metadata_t.direction", 32, false],
-        ["pna_pre_output_metadata_t.decrypt_start_offset", 16, false],
-        ["pna_pre_output_metadata_t.said", 32, false],
         ["pna_main_input_metadata_t.input_port", 32, false],
         ["pna_main_input_metadata_t.class_of_service", 8, false],
         [],
         ["pna_main_input_metadata_t.timestamp", 64, false],
         ["pna_main_input_metadata_t.loopedback", 1, false],
-        ["pna_main_input_metadata_t.pass", 3, false],
-        ["pna_main_input_metadata_t.direction", 32, false],
         ["pna_main_output_metadata_t.class_of_service", 8, false],
+        ["pna_pre_input_metadata_t.input_port", 32, false],
+        [],
         ["_padding_1", 3, false]
       ]
     }
@@ -281,7 +281,7 @@
       "id" : 0,
       "source_info" : {
         "filename" : "simple_pna_ipv4.p4",
-        "line" : 229,
+        "line" : 230,
         "column" : 8,
         "source_fragment" : "MainDeparserImpl"
       },
@@ -304,7 +304,7 @@
           "op" : "drop_packet",
           "source_info" : {
             "filename" : "simple_pna_ipv4.p4",
-            "line" : 151,
+            "line" : 152,
             "column" : 8,
             "source_fragment" : "drop_packet()"
           },
@@ -321,7 +321,7 @@
           "op" : "drop_packet",
           "source_info" : {
             "filename" : "simple_pna_ipv4.p4",
-            "line" : 151,
+            "line" : 152,
             "column" : 8,
             "source_fragment" : "drop_packet()"
           },
@@ -338,7 +338,7 @@
           "op" : "drop_packet",
           "source_info" : {
             "filename" : "simple_pna_ipv4.p4",
-            "line" : 151,
+            "line" : 152,
             "column" : 8,
             "source_fragment" : "drop_packet()"
           },
@@ -364,7 +364,7 @@
           "op" : "send_to_port",
           "source_info" : {
             "filename" : "simple_pna_ipv4.p4",
-            "line" : 159,
+            "line" : 160,
             "column" : 8,
             "source_fragment" : "send_to_port(port)"
           },
@@ -389,7 +389,7 @@
           ],
           "source_info" : {
             "filename" : "simple_pna_ipv4.p4",
-            "line" : 160,
+            "line" : 161,
             "column" : 8,
             "source_fragment" : "hdr.ethernet.srcAddr = hdr.ethernet.dstAddr"
           }
@@ -408,7 +408,7 @@
           ],
           "source_info" : {
             "filename" : "simple_pna_ipv4.p4",
-            "line" : 161,
+            "line" : 162,
             "column" : 8,
             "source_fragment" : "hdr.ethernet.dstAddr = dstMac"
           }
@@ -450,7 +450,7 @@
           ],
           "source_info" : {
             "filename" : "simple_pna_ipv4.p4",
-            "line" : 162,
+            "line" : 163,
             "column" : 8,
             "source_fragment" : "hdr.ipv4.ttl = hdr.ipv4.ttl - 1"
           }
@@ -471,7 +471,7 @@
           "op" : "send_to_port",
           "source_info" : {
             "filename" : "simple_pna_ipv4.p4",
-            "line" : 170,
+            "line" : 171,
             "column" : 8,
             "source_fragment" : "send_to_port(port)"
           },
@@ -491,7 +491,7 @@
       "id" : 0,
       "source_info" : {
         "filename" : "simple_pna_ipv4.p4",
-        "line" : 142,
+        "line" : 143,
         "column" : 8,
         "source_fragment" : "MainControlImpl"
       },
@@ -502,7 +502,7 @@
           "id" : 0,
           "source_info" : {
             "filename" : "simple_pna_ipv4.p4",
-            "line" : 182,
+            "line" : 183,
             "column" : 10,
             "source_fragment" : "ipv4_nhop"
           },
@@ -537,7 +537,7 @@
             {
               "source_info" : {
                 "filename" : "simple_pna_ipv4.p4",
-                "line" : 193,
+                "line" : 194,
                 "column" : 12,
                 "source_fragment" : "0x0a010101: ipv4_forward(0x000000000001, (PortId_t) 0)"
               },
@@ -556,7 +556,7 @@
             {
               "source_info" : {
                 "filename" : "simple_pna_ipv4.p4",
-                "line" : 195,
+                "line" : 196,
                 "column" : 12,
                 "source_fragment" : "0x0a010102: ipv4_forward(0x000000000003, (PortId_t) 1)"
               },
@@ -579,7 +579,7 @@
           "id" : 1,
           "source_info" : {
             "filename" : "simple_pna_ipv4.p4",
-            "line" : 199,
+            "line" : 200,
             "column" : 10,
             "source_fragment" : "arp_simple"
           },
@@ -614,7 +614,7 @@
             {
               "source_info" : {
                 "filename" : "simple_pna_ipv4.p4",
-                "line" : 209,
+                "line" : 210,
                 "column" : 12,
                 "source_fragment" : "0x0a010101: set_arp_nhop((PortId_t) 0)"
               },
@@ -633,7 +633,7 @@
             {
               "source_info" : {
                 "filename" : "simple_pna_ipv4.p4",
-                "line" : 210,
+                "line" : 211,
                 "column" : 12,
                 "source_fragment" : "0x0a010102: set_arp_nhop((PortId_t) 1)"
               },
@@ -656,7 +656,7 @@
           "id" : 2,
           "source_info" : {
             "filename" : "simple_pna_ipv4.p4",
-            "line" : 221,
+            "line" : 222,
             "column" : 12,
             "source_fragment" : "drop()"
           },
@@ -688,7 +688,7 @@
           "id" : 0,
           "source_info" : {
             "filename" : "simple_pna_ipv4.p4",
-            "line" : 216,
+            "line" : 217,
             "column" : 12,
             "source_fragment" : "hdr.ipv4.isValid() && hdr.ipv4.ttl > 0"
           },
@@ -731,7 +731,7 @@
           "id" : 1,
           "source_info" : {
             "filename" : "simple_pna_ipv4.p4",
-            "line" : 218,
+            "line" : 219,
             "column" : 19,
             "source_fragment" : "hdr.arp.isValid()"
           },

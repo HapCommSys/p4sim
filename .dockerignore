@@ -1,0 +1,11 @@
+# Not needed in the image
+.git
+.github
+.vscode
+.idea
+build
+cmake-cache
+*.pcap
+*.tr
+*.xml
+*.log
