@@ -27,7 +27,7 @@ A `P4SwitchNetDevice` runs a P4 program on BMv2 and has two kinds of port, which
 - **Bridge ports** (left in the figure): each port is an ordinary ns-3 device of the switch's node, such as a `CSMA` or a point-to-point device. P4sim 1.x had only these.
 - **Switched-Ethernet ports** (right): each port is a full-duplex `SwitchedEthernetChannel` of the switch itself, so the switch sees when a port has sent a frame and controls its queues and timing.
 
-![Two architectures](./doc/figures/p4sim_arch.drawio.png)
+![Architecture of P4sim 2.0: a P4SwitchNetDevice with bridge ports (left) and switched-Ethernet ports (right)](./doc/figures/p4sim_arch.drawio.png)
 
 Branches: `main` holds P4sim 2.0, which added the switched-Ethernet ports, the event-driven egress (v1model, PSA and PNA), the traffic manager and `PipelineDelay`. `main-deprecated` keeps the 1.x line (v1.0.0 and its later fixes, bridge ports only); it gets no more changes.
 
