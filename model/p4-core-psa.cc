@@ -20,6 +20,7 @@
 
 #include "ns3/data-rate.h"
 #include "ns3/p4-switch-net-device.h"
+#include "ns3/p4sim-ns3-compat.h"
 #include "ns3/switched-ethernet-channel.h"
 #include "ns3/register-access-v1model.h"
 #include "ns3/simulator.h"
@@ -182,7 +183,7 @@ P4CorePsa::ScheduleEgressIfNeeded(uint32_t port)
     }
 
     // Cancel any stale pending event and reschedule for the tightest time.
-    if (pstate.pendingEvent.IsRunning())
+    if (P4simIsPending(pstate.pendingEvent))
     {
         Simulator::Cancel(pstate.pendingEvent);
         pstate.pendingEvent = EventId();

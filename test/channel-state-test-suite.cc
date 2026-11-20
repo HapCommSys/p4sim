@@ -24,6 +24,7 @@
 #include "ns3/log.h"
 #include "ns3/node.h"
 #include "ns3/p4-switch-net-device.h"
+#include "ns3/p4sim-ns3-compat.h"
 #include "ns3/packet.h"
 #include "ns3/simulator.h"
 #include "ns3/switched-ethernet-channel.h"
@@ -455,10 +456,10 @@ public:
 
 ChannelStateTestSuite::ChannelStateTestSuite()
     : TestSuite("channel-state-test-suite", Type::UNIT) {
-  AddTestCase(new ChannelStateTransitionTest, TestCase::QUICK);
-  AddTestCase(new FullDuplexIndependenceTest, TestCase::QUICK);
-  AddTestCase(new PortDeviceIdAccessorTest, TestCase::QUICK);
-  AddTestCase(new TransmitStartBusyTest, TestCase::QUICK);
+  AddTestCase(new ChannelStateTransitionTest, P4SIM_TEST_QUICK);
+  AddTestCase(new FullDuplexIndependenceTest, P4SIM_TEST_QUICK);
+  AddTestCase(new PortDeviceIdAccessorTest, P4SIM_TEST_QUICK);
+  AddTestCase(new TransmitStartBusyTest, P4SIM_TEST_QUICK);
 }
 
 static ChannelStateTestSuite g_channelStateTestSuite;

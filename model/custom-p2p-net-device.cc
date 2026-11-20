@@ -23,6 +23,7 @@
 #include "ns3/llc-snap-header.h"
 #include "ns3/log.h"
 #include "ns3/mac48-address.h"
+#include "ns3/p4sim-ns3-compat.h"
 #include "ns3/pointer.h"
 #include "ns3/queue.h"
 #include "ns3/simulator.h"
@@ -80,7 +81,7 @@ CustomP2PNetDevice::GetTypeId(void)
                 "to the 64-byte minimum frame, and a 12-byte interframe gap. They "
                 "only take time; the far end receives the frame as it was sent.",
                 EnumValue(LinkFraming::NONE),
-                MakeEnumAccessor(&CustomP2PNetDevice::m_framing),
+                P4SIM_MAKE_ENUM_ACCESSOR(LinkFraming::Type, &CustomP2PNetDevice::m_framing),
                 MakeEnumChecker(LinkFraming::NONE, "None", LinkFraming::ETHERNET, "Ethernet"))
             //
             // Transmit queueing discipline for the device which includes its own set

@@ -23,6 +23,7 @@
 #include "ns3/boolean.h"
 #include "ns3/data-rate.h"
 #include "ns3/p4-switch-net-device.h"
+#include "ns3/p4sim-ns3-compat.h"
 #include "ns3/primitives-v1model.h"
 #include "ns3/register-access-v1model.h"
 #include "ns3/simulator.h"
@@ -257,7 +258,7 @@ P4CoreV1model::ScheduleEgressIfNeeded(uint32_t port)
 
     // If a dequeue event is already pending for this port, cancel it and
     // reschedule so we always use the tightest eligible time.
-    if (pstate.pendingEvent.IsRunning())
+    if (P4simIsPending(pstate.pendingEvent))
     {
         NS_LOG_DEBUG("Port " << port
                              << ": cancelling stale pending dequeue event and rescheduling");

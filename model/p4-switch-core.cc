@@ -36,6 +36,7 @@
 #include "ns3/log.h"
 #include "ns3/p4-switch-core.h"
 #include "ns3/p4-switch-net-device.h"
+#include "ns3/p4sim-ns3-compat.h"
 #include "ns3/simulator.h"
 
 #include <bm/bm_runtime/bm_runtime.h>
@@ -373,7 +374,7 @@ void
 P4SwitchCore::CheckPendingSwap()
 {
     // After the current event, which may still own the packet that leaves
-    if (m_swapPending && !m_swapEvent.IsRunning())
+    if (m_swapPending && !P4simIsPending(m_swapEvent))
     {
         m_swapEvent = Simulator::ScheduleNow(&P4SwitchCore::TrySwap, this);
     }
@@ -448,7 +449,7 @@ P4SwitchCore::Enqueue(uint32_t egress_port, std::unique_ptr<bm::Packet>&& packet
     // pipeline in the order in which they entered it
     Time leaves = Simulator::Now() + m_pipelineDelay;
     m_pipelinePackets.push_back({leaves, egress_port, std::move(packet)});
-    if (!m_pipelineEvent.IsRunning())
+    if (!P4simIsPending(m_pipelineEvent))
     {
         m_pipelineEvent =
             Simulator::Schedule(m_pipelineDelay, &P4SwitchCore::ReleaseFromPipeline, this);
@@ -487,7 +488,7 @@ P4SwitchCore::StartIngress()
         HandleIngressPipeline();
         return;
     }
-    if (m_ingressEvent.IsRunning())
+    if (P4simIsPending(m_ingressEvent))
     {
         return; // the pending ServeIngress() takes it
     }
@@ -515,7 +516,7 @@ P4SwitchCore::ServeIngress()
     // The pipeline is busy with this packet for one service time
     m_ingressFreeAt = Simulator::Now() + m_ingressServiceTime;
     HandleIngressPipeline();
-    if (GetNInputPackets() > 0 && !m_ingressEvent.IsRunning())
+    if (GetNInputPackets() > 0 && !P4simIsPending(m_ingressEvent))
     {
         m_ingressEvent =
             Simulator::Schedule(m_ingressServiceTime, &P4SwitchCore::ServeIngress, this);

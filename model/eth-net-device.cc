@@ -27,6 +27,7 @@
 #include "ns3/log.h"
 #include "ns3/mac48-address.h"
 #include "ns3/node.h"
+#include "ns3/p4sim-ns3-compat.h"
 #include "ns3/packet.h"
 #include "ns3/simulator.h"
 #include "ns3/uinteger.h"
@@ -243,7 +244,7 @@ SwitchedEthernetHostDevice::TransmitStart()
         NS_LOG_WARN("TransmitStart: channel refused the frame — drop");
         m_macTxDropTrace(packet);
         // One retry at a time: it drops the refused frames one by one
-        if (!m_txRetryEvent.IsRunning())
+        if (!P4simIsPending(m_txRetryEvent))
         {
             m_txRetryEvent =
                 Simulator::ScheduleNow(&SwitchedEthernetHostDevice::TransmitStart, this);

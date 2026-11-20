@@ -26,6 +26,7 @@
 #include "ns3/network-module.h"
 #include "ns3/p4-core-v1model.h"
 #include "ns3/p4-switch-net-device.h"
+#include "ns3/p4sim-ns3-compat.h"
 #include "ns3/test.h"
 
 #include <algorithm>
@@ -504,7 +505,7 @@ static class P4PacketTestSuite : public TestSuite
 {
   public:
     P4PacketTestSuite()
-        : TestSuite("p4-packet", UNIT)
+        : TestSuite("p4-packet", TestSuite::Type::UNIT)
     {
         // (test name, architecture, the JSON's architecture)
         const std::vector<std::tuple<std::string, uint32_t, std::string>> archs = {
@@ -517,35 +518,35 @@ static class P4PacketTestSuite : public TestSuite
         {
             for (const char* stf : {"ipv4.stf", "drop.stf", "ports.stf"})
             {
-                AddTestCase(new StfTestCase("forward", name, arch, stf, json), TestCase::QUICK);
+                AddTestCase(new StfTestCase("forward", name, arch, stf, json), P4SIM_TEST_QUICK);
             }
         }
         AddTestCase(new StfTestCase("drop", "v1model", P4SWITCH_ARCH_V1MODEL, "mark_to_drop.stf"),
-                    TestCase::QUICK);
+                    P4SIM_TEST_QUICK);
         AddTestCase(new StfTestCase("drop",
                                     "pipeline",
                                     P4SWITCH_ARCH_PIPELINE,
                                     "mark_to_drop.stf",
                                     "v1model"),
-                    TestCase::QUICK);
+                    P4SIM_TEST_QUICK);
         AddTestCase(new StfTestCase("priority", "v1model", P4SWITCH_ARCH_V1MODEL, "priority.stf"),
-                    TestCase::QUICK);
+                    P4SIM_TEST_QUICK);
         AddTestCase(new StfTestCase("resubmit", "v1model", P4SWITCH_ARCH_V1MODEL, "resubmit.stf"),
-                    TestCase::QUICK);
+                    P4SIM_TEST_QUICK);
         AddTestCase(
             new StfTestCase("recirculate", "v1model", P4SWITCH_ARCH_V1MODEL, "recirculate.stf"),
-            TestCase::QUICK);
+            P4SIM_TEST_QUICK);
         AddTestCase(new StfTestCase("clone", "v1model", P4SWITCH_ARCH_V1MODEL, "clone.stf"),
-                    TestCase::QUICK);
+                    P4SIM_TEST_QUICK);
         AddTestCase(new StfTestCase("clone", "v1model", P4SWITCH_ARCH_V1MODEL, "clone_mc.stf"),
-                    TestCase::QUICK);
+                    P4SIM_TEST_QUICK);
         // PSA clones and mirroring sessions
         AddTestCase(new StfTestCase("clone", "psa", P4SWITCH_ARCH_PSA, "clone_psa.stf"),
-                    TestCase::QUICK);
+                    P4SIM_TEST_QUICK);
         AddTestCase(
             new StfTestCase("primitives", "v1model", P4SWITCH_ARCH_V1MODEL, "primitives.stf"),
-            TestCase::QUICK);
+            P4SIM_TEST_QUICK);
         AddTestCase(new StfTestCase("lag", "v1model", P4SWITCH_ARCH_V1MODEL, "lag.stf"),
-                    TestCase::QUICK);
+                    P4SIM_TEST_QUICK);
     }
 } g_p4PacketTestSuite;
