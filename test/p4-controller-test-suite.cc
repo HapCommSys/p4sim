@@ -15,6 +15,7 @@
 #include "ns3/p4-controller.h"
 #include "ns3/p4-core-v1model.h"
 #include "ns3/p4-switch-net-device.h"
+#include "ns3/p4sim-ns3-compat.h"
 #include "ns3/test.h"
 
 #include <algorithm>
@@ -619,13 +620,13 @@ class P4ControllerTestSuite : public TestSuite
 {
   public:
     P4ControllerTestSuite()
-        : TestSuite("p4-controller", UNIT)
+        : TestSuite("p4-controller", TestSuite::Type::UNIT)
     {
-        AddTestCase(new P4ControllerFlowEntryTestCase, TestCase::QUICK);
-        AddTestCase(new P4ControllerActionProfileTestCase, TestCase::QUICK);
-        AddTestCase(new P4ControllerMirroringTestCase, TestCase::QUICK);
-        AddTestCase(new P4SimpleSwitchCliTestCase, TestCase::QUICK);
-        AddTestCase(new P4PsaSwitchCliTestCase, TestCase::QUICK);
+        AddTestCase(new P4ControllerFlowEntryTestCase, P4SIM_TEST_QUICK);
+        AddTestCase(new P4ControllerActionProfileTestCase, P4SIM_TEST_QUICK);
+        AddTestCase(new P4ControllerMirroringTestCase, P4SIM_TEST_QUICK);
+        AddTestCase(new P4SimpleSwitchCliTestCase, P4SIM_TEST_QUICK);
+        AddTestCase(new P4PsaSwitchCliTestCase, P4SIM_TEST_QUICK);
     }
 };
 

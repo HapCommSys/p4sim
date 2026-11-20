@@ -10,6 +10,7 @@
  */
 
 #include "ns3/p4-queue.h"
+#include "ns3/p4sim-ns3-compat.h"
 #include "ns3/simulator.h"
 #include "ns3/test.h"
 
@@ -208,11 +209,11 @@ class P4QueueTestSuite : public TestSuite
 {
   public:
     P4QueueTestSuite()
-        : TestSuite("p4-queue", UNIT)
+        : TestSuite("p4-queue", TestSuite::Type::UNIT)
     {
-        AddTestCase(new P4QueueCapacityTestCase, TestCase::QUICK);
-        AddTestCase(new P4QueueRateTestCase, TestCase::QUICK);
-        AddTestCase(new P4QueuePriorityTestCase, TestCase::QUICK);
+        AddTestCase(new P4QueueCapacityTestCase, P4SIM_TEST_QUICK);
+        AddTestCase(new P4QueueRateTestCase, P4SIM_TEST_QUICK);
+        AddTestCase(new P4QueuePriorityTestCase, P4SIM_TEST_QUICK);
     }
 };
 

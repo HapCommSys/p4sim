@@ -1,6 +1,6 @@
 # P4sim in Docker
 
-The `Dockerfile` of this repository builds ns-3.39 with P4sim on BMv2 1.15.8 and
+The `Dockerfile` of this repository builds ns-3 with P4sim on BMv2 1.15.8 and
 Thrift 0.16.0, with the P4 compiler p4c 1.2.5.19, on Ubuntu 24.04: the versions
 P4sim is tested with. Only Docker is needed; nothing else is installed on the host.
 
@@ -15,6 +15,9 @@ docker build -t p4sim .
 The build takes about 6 minutes on 32 cores and half an hour on 8 cores; the image
 takes about 2 GB. With little memory, limit the parallel jobs, for example
 `--build-arg JOBS=4`. There is no prebuilt image.
+
+The image uses ns-3.39; `--build-arg NS3_VERSION=ns-3.49` (or another release from
+ns-3.40 on) builds it with that ns-3 instead.
 
 - The image has the ns-3 modules that P4sim needs (and those that `netanim` needs),
   with tests and examples. BMv2 is built with optimisation, without PI.

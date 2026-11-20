@@ -13,6 +13,7 @@
 #include "ns3/internet-module.h"
 #include "ns3/network-module.h"
 #include "ns3/p4-switch-net-device.h"
+#include "ns3/p4sim-ns3-compat.h"
 #include "ns3/switched-ethernet-helper.h"
 #include "ns3/test.h"
 #include "ns3/traffic-control-module.h"
@@ -190,13 +191,13 @@ static class SwitchedEthernetTrafficControlTestSuite : public TestSuite
 {
   public:
     SwitchedEthernetTrafficControlTestSuite()
-        : TestSuite("switched-ethernet-traffic-control", UNIT)
+        : TestSuite("switched-ethernet-traffic-control", TestSuite::Type::UNIT)
     {
         AddTestCase(new HostTrafficControlTestCase(HostTrafficControlTestCase::SCHEDULE),
-                    TestCase::QUICK);
+                    P4SIM_TEST_QUICK);
         AddTestCase(new HostTrafficControlTestCase(HostTrafficControlTestCase::DEFAULT_QDISC),
-                    TestCase::QUICK);
+                    P4SIM_TEST_QUICK);
         AddTestCase(new HostTrafficControlTestCase(HostTrafficControlTestCase::NO_FLOW_CONTROL),
-                    TestCase::QUICK);
+                    P4SIM_TEST_QUICK);
     }
 } g_switchedEthernetTrafficControlTestSuite;

@@ -20,6 +20,7 @@
 #include "ns3/eth-net-device.h"
 #include "ns3/network-module.h"
 #include "ns3/p4-switch-net-device.h"
+#include "ns3/p4sim-ns3-compat.h"
 #include "ns3/switched-ethernet-channel.h"
 #include "ns3/test.h"
 
@@ -260,10 +261,10 @@ static class P4PnaTestSuite : public TestSuite
 {
   public:
     P4PnaTestSuite()
-        : TestSuite("p4-pna", UNIT)
+        : TestSuite("p4-pna", TestSuite::Type::UNIT)
     {
-        AddTestCase(new PnaForwardTestCase(), TestCase::QUICK);
-        AddTestCase(new PnaQueueFullTestCase(), TestCase::QUICK);
-        AddTestCase(new PnaRefusedTeardownTestCase(), TestCase::QUICK);
+        AddTestCase(new PnaForwardTestCase(), P4SIM_TEST_QUICK);
+        AddTestCase(new PnaQueueFullTestCase(), P4SIM_TEST_QUICK);
+        AddTestCase(new PnaRefusedTeardownTestCase(), P4SIM_TEST_QUICK);
     }
 } g_p4PnaTestSuite;

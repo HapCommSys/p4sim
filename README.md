@@ -45,13 +45,13 @@ Our implementation builds upon the P4-driven Network Simulator Module described 
 
 ## Installation & Setup
 
-The following steps set up a local environment to run P4sim with **ns-3.39** on **Ubuntu 24.04 LTS**. P4sim is tested with ns-3.39, BMv2 1.15.8 and p4c 1.2.5.19.
+The following steps set up a local environment to run P4sim with **ns-3.39** on **Ubuntu 24.04 LTS**. P4sim builds with ns-3.39 to ns-3.49 and is tested with ns-3.39 and ns-3.49, BMv2 1.15.8 and p4c 1.2.5.19.
 
 > **Note:** The BMv2 and P4 software installation will take **1–2 hours** and consume up to **15 GB** of disk space.
 
 > **Docker:** `docker build -t p4sim .` in this repository builds P4sim with the tested versions, p4c included, in 6 to 30 minutes (32 to 8 cores) and about 2 GB, without installing anything on the host; see [doc/docker.md](doc/docker.md).
 
-> **Why ns-3.39 or earlier?** Starting from ns-3.40, ns-3 requires C++20. However, BMv2 is currently built with C++17. P4sim therefore supports ns-3.39 and earlier versions. We plan to upgrade once a C++20-compatible BMv2 build becomes available.
+> **Other ns-3 releases:** for ns-3.40 to ns-3.49, check out that tag in Step 3 (for example `git checkout ns-3.49`). From ns-3.41 on, ns-3 builds as C++20 or C++23, and the spdlog that BMv2 bundles does not compile as C++20; P4sim then builds with a copy of these headers that has the fix ([patches/bmv2-spdlog-cxx20.patch](patches/bmv2-spdlog-cxx20.patch)). The installed BMv2 is not changed.
 
 ### Step 1: Initialize the Working Directory
 
@@ -213,7 +213,7 @@ The [paper](https://dl.acm.org/doi/10.1145/3747204.3747210) evaluates P4sim with
 
 - `SwitchRate` models only the throughput of the P4 pipeline, not its per-packet latency: a packet that finds the pipeline idle passes it without delay. Use `PipelineDelay` for the latency.
 - Every device stores a frame completely before it forwards it; P4sim does not forward cut-through, and it does not model the stages of a hardware pipeline.
-- ns-3.39 or earlier only, because BMv2 is built with C++17.
+- ns-3.39 to ns-3.49; tested with ns-3.39 and ns-3.49.
 - PNA ignores `PipelineDelay`, has no Thrift service of its own, and does not load its `FlowTablePath`.
 - `P4Controller` works on v1model switches only.
 - `digest()` sends its records to BMv2's notification socket; nothing in the simulation receives them.
@@ -245,6 +245,7 @@ P4sim is licensed under the [Apache License 2.0](LICENSE). The header of each fi
   - `p4-core-pipeline`;
   - files with code by Vineet Goel: `eth-net-device`, `p4-switch-net-device`, `p4-traffic-manager`; the tests `channel-state-test-suite.cc`, `p4-controller-test-suite.cc` and `p4-traffic-manager-test-suite.cc`; the examples `p4-basic-controller`, `p4-controller-action-profile`, `p4-source-routing` and `p4-voq-fabric-*`.
 - **Apache 2.0 with the notices of BMv2's authors**: the parts taken from BMv2 (`p4-core-v1model`, `p4-core-psa`, `p4-nic-pna`, `p4-queue`, `primitives-v1model.h`, `primitives-pna.h`, `register-access-v1model.h`, `patches/config.h`).
+- **MIT**: `patches/bmv2-spdlog-cxx20.patch`, a change to spdlog (Copyright (c) 2014 Gabi Melman) as bundled with BMv2.
 - Code taken from [P4Simulator](https://github.com/kphf1995cm/P4Simulator) (Apache 2.0) says so in its header.
 
 P4sim builds on ns-3, which is licensed under GPL-2.0-only, and on BMv2 (Apache 2.0).

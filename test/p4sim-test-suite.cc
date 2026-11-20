@@ -11,6 +11,7 @@
 #include "ns3/core-module.h"
 #include "ns3/network-module.h"
 #include "ns3/p4-switch-net-device.h"
+#include "ns3/p4sim-ns3-compat.h"
 #include "ns3/test.h"
 
 #include <bm/bm_sim/logger.h>
@@ -251,8 +252,8 @@ class P4DeprecatedAttributesTestCase : public P4TestCase
             for (std::size_t i = 0; i < tid.GetAttributeN(); i++)
             {
                 TypeId::AttributeInformation info = tid.GetAttribute(i);
-                deprecated =
-                    deprecated || (info.name == name && info.supportLevel == TypeId::DEPRECATED);
+                deprecated = deprecated || (info.name == name &&
+                                            info.supportLevel == TypeId::SupportLevel::DEPRECATED);
             }
             NS_TEST_EXPECT_MSG_EQ(deprecated, true, name << " is not deprecated");
         }
@@ -300,19 +301,19 @@ class P4simTestSuite : public TestSuite
 {
   public:
     P4simTestSuite()
-        : TestSuite("p4sim", UNIT)
+        : TestSuite("p4sim", TestSuite::Type::UNIT)
     {
         AddTestCase(
             new P4SwitchLoadTestCase("v1model", 0, "p4src/simple_v1model/simple_v1model.json"),
-            TestCase::QUICK);
+            P4SIM_TEST_QUICK);
         AddTestCase(new P4SwitchLoadTestCase("PSA", 1, "p4src/simple_psa/simple_psa.json"),
-                    TestCase::QUICK);
+                    P4SIM_TEST_QUICK);
         AddTestCase(new P4SwitchLoadTestCase("PNA", 2, "p4src/simple_pna/simple_pna.json"),
-                    TestCase::QUICK);
-        AddTestCase(new P4ThriftPortTestCase, TestCase::QUICK);
-        AddTestCase(new P4BmLogLevelTestCase, TestCase::QUICK);
-        AddTestCase(new P4BmLogLevelDefaultTestCase, TestCase::QUICK);
-        AddTestCase(new P4DeprecatedAttributesTestCase, TestCase::QUICK);
+                    P4SIM_TEST_QUICK);
+        AddTestCase(new P4ThriftPortTestCase, P4SIM_TEST_QUICK);
+        AddTestCase(new P4BmLogLevelTestCase, P4SIM_TEST_QUICK);
+        AddTestCase(new P4BmLogLevelDefaultTestCase, P4SIM_TEST_QUICK);
+        AddTestCase(new P4DeprecatedAttributesTestCase, P4SIM_TEST_QUICK);
     }
 };
 

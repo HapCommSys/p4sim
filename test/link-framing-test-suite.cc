@@ -25,6 +25,7 @@
 #include "ns3/p4-p2p-channel.h"
 #include "ns3/p4-p2p-helper.h"
 #include "ns3/p4-switch-net-device.h"
+#include "ns3/p4sim-ns3-compat.h"
 #include "ns3/switched-ethernet-channel.h"
 #include "ns3/test.h"
 
@@ -400,9 +401,9 @@ static class LinkFramingTestSuite : public TestSuite
 {
   public:
     LinkFramingTestSuite()
-        : TestSuite("link-framing", UNIT)
+        : TestSuite("link-framing", TestSuite::Type::UNIT)
     {
-        AddTestCase(new LinkFramingBytesTestCase, TestCase::QUICK);
+        AddTestCase(new LinkFramingBytesTestCase, P4SIM_TEST_QUICK);
         AddTestCase(
             new HostFramingTestCase("No framing (the default): a frame takes its bytes only",
                                     "",
@@ -410,21 +411,21 @@ static class LinkFramingTestSuite : public TestSuite
                                     1000,
                                     10,
                                     0),
-            TestCase::QUICK);
+            P4SIM_TEST_QUICK);
         AddTestCase(new HostFramingTestCase("Ethernet, 1 Gbps: 1026 bytes per frame, 12 between",
                                             "Ethernet",
                                             "1Gbps",
                                             1000,
                                             10,
                                             0),
-                    TestCase::QUICK);
+                    P4SIM_TEST_QUICK);
         AddTestCase(new HostFramingTestCase("Ethernet, 1 Gbps: a short frame is padded to 64 bytes",
                                             "Ethernet",
                                             "1Gbps",
                                             20,
                                             10,
                                             0),
-                    TestCase::QUICK);
+                    P4SIM_TEST_QUICK);
         AddTestCase(
             new HostFramingTestCase("Ethernet, 100 Gbps: 148.8 million minimum frames per second",
                                     "Ethernet",
@@ -432,19 +433,19 @@ static class LinkFramingTestSuite : public TestSuite
                                     46,
                                     100,
                                     100e9 / (84 * 8)),
-            TestCase::QUICK);
-        AddTestCase(new SwitchFramingTestCase, TestCase::QUICK);
+            P4SIM_TEST_QUICK);
+        AddTestCase(new SwitchFramingTestCase, P4SIM_TEST_QUICK);
         AddTestCase(new P2pFramingTestCase("P4 point-to-point, no framing (the default)", "", 1000),
-                    TestCase::QUICK);
+                    P4SIM_TEST_QUICK);
         AddTestCase(new P2pFramingTestCase("P4 point-to-point, Ethernet: 1026 bytes per frame",
                                            "Ethernet",
                                            1000),
-                    TestCase::QUICK);
+                    P4SIM_TEST_QUICK);
         AddTestCase(new P2pFramingTestCase("P4 point-to-point, Ethernet: a short frame is padded",
                                            "Ethernet",
                                            20),
-                    TestCase::QUICK);
-        AddTestCase(new BridgePortEstimateTestCase("None"), TestCase::QUICK);
-        AddTestCase(new BridgePortEstimateTestCase("Ethernet"), TestCase::QUICK);
+                    P4SIM_TEST_QUICK);
+        AddTestCase(new BridgePortEstimateTestCase("None"), P4SIM_TEST_QUICK);
+        AddTestCase(new BridgePortEstimateTestCase("Ethernet"), P4SIM_TEST_QUICK);
     }
 } g_linkFramingTestSuite;
