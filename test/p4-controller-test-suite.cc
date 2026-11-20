@@ -319,7 +319,7 @@ class P4ControllerMirroringTestCase : public P4TestCase
  * that the queues follow these settings. Then simple_switch_CLI reads the
  * sessions and the time of the switch.
  *
- * switch_channel: an idle port sends a frame at once, and a frame waits in the
+ * An idle port sends a frame at once, and a frame waits in the
  * queue only while the port is busy. So the switch's ports send at 1 Gbps, and
  * a first frame, L0, keeps port 1 busy: the first original then waits in the
  * queue, which is full, and the second one is dropped.
