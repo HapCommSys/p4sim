@@ -215,7 +215,6 @@ The [paper](https://dl.acm.org/doi/10.1145/3747204.3747210) evaluates P4sim with
 - Every device stores a frame completely before it forwards it; P4sim does not forward cut-through, and it does not model the stages of a hardware pipeline.
 - ns-3.39 to ns-3.49; tested with ns-3.39 and ns-3.49.
 - PNA ignores `PipelineDelay`, has no Thrift service of its own, and does not load its `FlowTablePath`.
-- `P4Controller` works on v1model switches only.
 - `digest()` sends its records to BMv2's notification socket; nothing in the simulation receives them.
 - The pipeline core (`P4SwitchArch` 3) has no output queue: a congested port can lose frames.
 - The Thrift server of a switch runs in its own thread: use the runtime CLIs before and after the simulation, and `P4Controller` during it.

@@ -2,18 +2,20 @@
 // Copyright (c) 2025 TU Dresden. Author: Mingyu Ma <mingyu.ma@tu-dresden.de>
 
 /*
- * P4Controller on a v1model switch: flow entries, action profiles and mirroring
- * sessions. Every change is read back from the switch through the BMv2 runtime
- * API or, for mirroring sessions, the API of the P4 core. Also the commands that
- * simple_switch_CLI adds to the runtime CLI, through the "simple_switch" Thrift
- * service, and those of psa_switch_CLI on a PSA switch, through the "psa_switch"
- * service.
+ * P4Controller: flow entries, action profiles, meter arrays and mirroring
+ * sessions on a v1model switch; flow entries on PSA, PNA and the pipeline core,
+ * and mirroring sessions on PSA. Every change is read back from the switch
+ * through the BMv2 runtime API or, for mirroring sessions, the API of the P4
+ * core. Also the commands that simple_switch_CLI adds to the runtime CLI, through
+ * the "simple_switch" Thrift service, and those of psa_switch_CLI on a PSA switch,
+ * through the "psa_switch" service.
  */
 
 #include "ns3/core-module.h"
 #include "ns3/network-module.h"
 #include "ns3/p4-controller.h"
 #include "ns3/p4-core-v1model.h"
+#include "ns3/p4-runtime-api.h"
 #include "ns3/p4-switch-net-device.h"
 #include "ns3/p4sim-ns3-compat.h"
 #include "ns3/test.h"
@@ -38,13 +40,16 @@ class P4TestCase : public TestCase
     }
 };
 
-/// An initialized v1model switch without ports. An empty \p flowTable loads none.
+/// An initialized switch without ports, of the architecture \p arch (P4SwitchArch).
+/// An empty \p flowTable loads none.
 Ptr<P4SwitchNetDevice>
-CreateV1modelSwitch(const std::string& json, const std::string& flowTable)
+CreateSwitch(const std::string& json,
+             const std::string& flowTable,
+             uint32_t arch = P4SWITCH_ARCH_V1MODEL)
 {
     Ptr<Node> node = CreateObject<Node>();
     Ptr<P4SwitchNetDevice> sw = CreateObject<P4SwitchNetDevice>();
-    sw->SetAttribute("P4SwitchArch", UintegerValue(0));
+    sw->SetAttribute("P4SwitchArch", UintegerValue(arch));
     sw->SetAttribute("JsonPath", StringValue(json));
     sw->SetAttribute("FlowTablePath", StringValue(flowTable));
     sw->SetAttribute("BmLogLevel", StringValue("off"));
@@ -151,8 +156,8 @@ class P4ControllerFlowEntryTestCase : public P4TestCase
     {
         SetDataDir(NS_TEST_SOURCEDIR);
         Ptr<P4SwitchNetDevice> sw =
-            CreateV1modelSwitch(CreateDataDirFilename("p4src/simple_v1model/simple_v1model.json"),
-                                CreateDataDirFilename("p4src/simple_v1model/flowtable_0.txt"));
+            CreateSwitch(CreateDataDirFilename("p4src/simple_v1model/simple_v1model.json"),
+                         CreateDataDirFilename("p4src/simple_v1model/flowtable_0.txt"));
         P4Controller controller;
         controller.RegisterSwitch(sw);
         const std::string table = "MyIngress.ipv4_nhop";
@@ -207,9 +212,9 @@ class P4ControllerActionProfileTestCase : public P4TestCase
     void DoRun() override
     {
         SetDataDir(NS_TEST_SOURCEDIR);
-        Ptr<P4SwitchNetDevice> sw = CreateV1modelSwitch(
-            CreateDataDirFilename("p4src/action_profile_v1model/action-profile.json"),
-            "");
+        Ptr<P4SwitchNetDevice> sw =
+            CreateSwitch(CreateDataDirFilename("p4src/action_profile_v1model/action-profile.json"),
+                         "");
         P4Controller controller;
         controller.RegisterSwitch(sw);
         P4CoreV1model* core = sw->GetV1ModelCore();
@@ -256,15 +261,27 @@ class P4ControllerActionProfileTestCase : public P4TestCase
 
 /**
  * \ingroup p4sim-tests
- * Mirroring sessions: added to a port and to a multicast group, read, and
- * deleted, like mirroring_add, mirroring_add_mc, mirroring_get and
- * mirroring_delete of simple_switch_CLI.
+ * Flow entries on a switch of another architecture: an entry is added, read
+ * back, modified and deleted. The controller programs of PSA and PNA have the
+ * table of the v1model one, which the pipeline core runs.
  */
-class P4ControllerMirroringTestCase : public P4TestCase
+class P4ControllerArchFlowEntryTestCase : public P4TestCase
 {
   public:
-    P4ControllerMirroringTestCase()
-        : P4TestCase("Mirroring sessions: add, get, delete")
+    /**
+     * \param archName the name of the architecture, for the test name
+     * \param arch the P4SwitchArch of the switch
+     * \param program the BMv2 JSON in p4src/controller
+     * \param control the control that holds the table
+     */
+    P4ControllerArchFlowEntryTestCase(const std::string& archName,
+                                      uint32_t arch,
+                                      const std::string& program,
+                                      const std::string& control)
+        : P4TestCase("Flow entries on " + archName + ": add, modify, delete"),
+          m_arch(arch),
+          m_program(program),
+          m_control(control)
     {
     }
 
@@ -273,10 +290,134 @@ class P4ControllerMirroringTestCase : public P4TestCase
     {
         SetDataDir(NS_TEST_SOURCEDIR);
         Ptr<P4SwitchNetDevice> sw =
-            CreateV1modelSwitch(CreateDataDirFilename("p4src/clone/clone_v1model.json"), "");
+            CreateSwitch(CreateDataDirFilename("p4src/controller/" + m_program), "", m_arch);
         P4Controller controller;
         controller.RegisterSwitch(sw);
-        P4CoreV1model* core = sw->GetV1ModelCore();
+        if (sw->GetCore() == nullptr)
+        {
+            NS_TEST_ASSERT_MSG_NE(sw->GetCore(), nullptr, "The switch has no core");
+            return;
+        }
+        P4RuntimeApi api(*sw->GetCore());
+        const std::string table = m_control + ".mac_port";
+        NS_TEST_ASSERT_MSG_EQ(controller.GetTableEntryCount(0, table), 0, "Table not empty");
+
+        // Add 00:00:00:00:00:02 -> to_port(2) and read it back
+        std::vector<bm::MatchKeyParam> key = {
+            bm::MatchKeyParam(bm::MatchKeyParam::Type::EXACT, std::string("\0\0\0\0\0\x02", 6))};
+        bm::entry_handle_t handle = 0;
+        controller.AddFlowEntry(0, table, key, m_control + ".to_port", OneValue(2), handle);
+        NS_TEST_ASSERT_MSG_EQ(controller.GetTableEntryCount(0, table), 1, "Entry not added");
+        bm::MatchTable::Entry e;
+        NS_TEST_ASSERT_MSG_EQ(api.GetEntry(table, handle, &e), 0, "Entry not found");
+        NS_TEST_EXPECT_MSG_EQ(e.action_fn && e.action_fn->get_name() == m_control + ".to_port",
+                              true,
+                              "Wrong action");
+        NS_TEST_EXPECT_MSG_EQ(
+            (e.action_data.size() == 1 && e.action_data.get(0).get<uint32_t>() == 2),
+            true,
+            "Wrong port");
+
+        // Modify it to drop, then delete it
+        controller.ModifyFlowEntry(0, table, handle, m_control + ".drop", bm::ActionData());
+        NS_TEST_ASSERT_MSG_EQ(api.GetEntry(table, handle, &e), 0, "Entry lost");
+        NS_TEST_EXPECT_MSG_EQ(e.action_fn && e.action_fn->get_name() == m_control + ".drop",
+                              true,
+                              "Action not modified");
+        controller.DeleteFlowEntry(0, table, handle);
+        NS_TEST_EXPECT_MSG_EQ(controller.GetTableEntryCount(0, table), 0, "Entry not deleted");
+    }
+
+    uint32_t m_arch;       ///< P4SwitchArch of the switch
+    std::string m_program; ///< BMv2 JSON in p4src/controller
+    std::string m_control; ///< the control that holds the table
+};
+
+/**
+ * \ingroup p4sim-tests
+ * Meter arrays: the rates of one meter are set, read and reset, and the other
+ * meters of the array keep no rates.
+ */
+class P4ControllerMeterTestCase : public P4TestCase
+{
+  public:
+    P4ControllerMeterTestCase()
+        : P4TestCase("Meter array: set, read, reset the rates of one meter")
+    {
+    }
+
+  private:
+    void DoRun() override
+    {
+        SetDataDir(NS_TEST_SOURCEDIR);
+        Ptr<P4SwitchNetDevice> sw =
+            CreateSwitch(CreateDataDirFilename("p4src/controller/controller_v1model.json"), "");
+        P4Controller controller;
+        controller.RegisterSwitch(sw);
+        P4RuntimeApi api(*sw->GetCore());
+        const std::string meter = "MyIngress.port_meter"; // 4 meters, packets
+
+        // Committed and peak rate (packets per microsecond) and burst sizes of meter 2
+        const std::vector<bm::Meter::rate_config_t> rates = {
+            bm::Meter::rate_config_t::make(0.001, 10),
+            bm::Meter::rate_config_t::make(0.002, 20)};
+        controller.SetMeterRates(0, meter, size_t{2}, rates);
+        std::vector<bm::Meter::rate_config_t> read;
+        NS_TEST_ASSERT_MSG_EQ(api.MeterGetRates(meter, 2, &read), 0, "Cannot read meter 2");
+        NS_TEST_ASSERT_MSG_EQ(read.size(), 2u, "Meter 2 has no rates");
+        if (read.size() == 2) // the test goes on after a failed check
+        {
+            NS_TEST_EXPECT_MSG_EQ((read[0].info_rate == 0.001 && read[0].burst_size == 10 &&
+                                   read[1].info_rate == 0.002 && read[1].burst_size == 20),
+                                  true,
+                                  "Meter 2 has other rates");
+        }
+        NS_TEST_ASSERT_MSG_EQ(api.MeterGetRates(meter, 1, &read), 0, "Cannot read meter 1");
+        NS_TEST_EXPECT_MSG_EQ(read.size(), 0u, "Meter 1 got rates too");
+
+        controller.ResetMeterRates(0, meter, size_t{2});
+        NS_TEST_ASSERT_MSG_EQ(api.MeterGetRates(meter, 2, &read), 0, "Cannot read meter 2");
+        NS_TEST_EXPECT_MSG_EQ(read.size(), 0u, "Meter 2 not reset");
+    }
+};
+
+/**
+ * \ingroup p4sim-tests
+ * Mirroring sessions: added to a port and to a multicast group, read, and
+ * deleted, like mirroring_add, mirroring_add_mc, mirroring_get and
+ * mirroring_delete of simple_switch_CLI.
+ */
+class P4ControllerMirroringTestCase : public P4TestCase
+{
+  public:
+    /**
+     * \param archName the name of the architecture, for the test name
+     * \param arch the P4SwitchArch of the switch
+     * \param program the BMv2 JSON in p4src/clone
+     */
+    P4ControllerMirroringTestCase(const std::string& archName,
+                                  uint32_t arch,
+                                  const std::string& program)
+        : P4TestCase("Mirroring sessions on " + archName + ": add, get, delete"),
+          m_arch(arch),
+          m_program(program)
+    {
+    }
+
+  private:
+    void DoRun() override
+    {
+        SetDataDir(NS_TEST_SOURCEDIR);
+        Ptr<P4SwitchNetDevice> sw =
+            CreateSwitch(CreateDataDirFilename("p4src/clone/" + m_program), "", m_arch);
+        P4Controller controller;
+        controller.RegisterSwitch(sw);
+        P4SwitchCore* core = sw->GetCore();
+        if (core == nullptr)
+        {
+            NS_TEST_ASSERT_MSG_NE(core, nullptr, "The switch has no core");
+            return;
+        }
 
         // Session 5 to port 2, read back from the core
         NS_TEST_ASSERT_MSG_EQ(controller.MirroringAdd(0, 5, 2), true, "Session 5 not added");
@@ -308,6 +449,9 @@ class P4ControllerMirroringTestCase : public P4TestCase
         NS_TEST_EXPECT_MSG_EQ(controller.MirroringDelete(0, 5), false, "Session 5 deleted twice");
         NS_TEST_EXPECT_MSG_EQ(controller.MirroringGet(0, 6), true, "Session 6 deleted too");
     }
+
+    uint32_t m_arch;       ///< P4SwitchArch of the switch
+    std::string m_program; ///< BMv2 JSON in p4src/clone
 };
 
 /**
@@ -624,7 +768,28 @@ class P4ControllerTestSuite : public TestSuite
     {
         AddTestCase(new P4ControllerFlowEntryTestCase, P4SIM_TEST_QUICK);
         AddTestCase(new P4ControllerActionProfileTestCase, P4SIM_TEST_QUICK);
-        AddTestCase(new P4ControllerMirroringTestCase, P4SIM_TEST_QUICK);
+        AddTestCase(new P4ControllerMeterTestCase, P4SIM_TEST_QUICK);
+        AddTestCase(new P4ControllerArchFlowEntryTestCase("PSA",
+                                                          P4SWITCH_ARCH_PSA,
+                                                          "controller_psa.json",
+                                                          "IngressImpl"),
+                    P4SIM_TEST_QUICK);
+        AddTestCase(new P4ControllerArchFlowEntryTestCase("PNA",
+                                                          P4NIC_ARCH_PNA,
+                                                          "controller_pna.json",
+                                                          "MainControlImpl"),
+                    P4SIM_TEST_QUICK);
+        AddTestCase(new P4ControllerArchFlowEntryTestCase("the pipeline core",
+                                                          P4SWITCH_ARCH_PIPELINE,
+                                                          "controller_v1model.json",
+                                                          "MyIngress"),
+                    P4SIM_TEST_QUICK);
+        AddTestCase(new P4ControllerMirroringTestCase("v1model",
+                                                      P4SWITCH_ARCH_V1MODEL,
+                                                      "clone_v1model.json"),
+                    P4SIM_TEST_QUICK);
+        AddTestCase(new P4ControllerMirroringTestCase("PSA", P4SWITCH_ARCH_PSA, "clone_psa.json"),
+                    P4SIM_TEST_QUICK);
         AddTestCase(new P4SimpleSwitchCliTestCase, P4SIM_TEST_QUICK);
         AddTestCase(new P4PsaSwitchCliTestCase, P4SIM_TEST_QUICK);
     }

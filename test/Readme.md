@@ -15,7 +15,7 @@ No environment variable is needed, and suites can run in parallel.
 
 ## Suites
 
-18 suites, 113 test cases. The first seven do not need BMv2.
+18 suites, 118 test cases. The first seven do not need BMv2.
 
 | Suite | Checks |
 |---|---|
@@ -28,7 +28,7 @@ No environment variable is needed, and suites can run in parallel.
 | `p4-traffic-manager` | the VOQ + fabric traffic manager |
 | `p4sim` | v1model, PSA and PNA load their program; Thrift ports; `BmLogLevel` and its default, `off`; the deprecated `ChannelType` and `EnableTracing` are still accepted |
 | `p4-packet` | frames sent into a switch and the frames that leave it, on v1model, PNA, PSA and the pipeline core |
-| `p4-controller` | flow entries, action profiles and mirroring sessions, read back from the switch; the mirroring, queue and time commands of `simple_switch_CLI` and `psa_switch_CLI` |
+| `p4-controller` | `P4Controller`, read back from the switch: flow entries on v1model, PSA, PNA and the pipeline core, action profiles and a meter array on v1model, mirroring sessions on v1model and PSA; the mirroring, queue and time commands of `simple_switch_CLI` and `psa_switch_CLI` |
 | `p4-config-swap` | `EnableSwap`: an idle switch swaps its program at once, a busy one when its last packet has left; frames that arrive meanwhile wait and use the new program (v1model through `P4Controller` and `simple_switch_CLI`, PSA); without `EnableSwap` the program stays |
 | `p4-egress` | a congested switched-Ethernet port sends back to back at its line rate; a switch with a full egress queue, or one whose port just refused a frame, can be destroyed |
 | `p4-switch-rate` | `SwitchRate` limits the whole pipeline, 0 means no limit, a full input buffer drops |
@@ -95,5 +95,8 @@ program goes in its own directory as `<dir>/<dir>_<arch>.p4`.
   so parallel runs never share a port.
 - Keep tests small: every packet runs through the BMv2 pipeline.
 - Call `Simulator::Destroy()` in `DoTeardown()`, which also runs after a failed check.
+- A failed `NS_TEST_ASSERT_*` check does not end the test case (the test runner
+  continues on failure unless it runs with `--stop-on-failure`): check a size or
+  a pointer with an `if` before you use it.
 - A P4 JSON that fails to load aborts the process (`NS_FATAL_ERROR`), so it can
   only be tested in a separate process.

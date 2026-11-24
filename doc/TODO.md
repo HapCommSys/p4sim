@@ -62,7 +62,6 @@ line (bridge ports only, the old timing model) and gets no more changes.
     `p4-packet` configure multicast on v1model only.
   - PNA has no Thrift service of its own (BMv2's `pna_nic` has one, for the
     time commands of `pna_nic_CLI`), and it does not load its `FlowTablePath`.
-  - `P4Controller` works on v1model switches only.
 - **`PipelineDelay` follow-ups (#59).**
   - Separate ingress and egress delays: needs the FIFO after the egress (see
     above).
@@ -103,6 +102,11 @@ line (bridge ports only, the old timing model) and gets no more changes.
     `mirroring_mapping_delete`, which the `psa_switch` service does not have;
     and the CLI does not import `InvalidMirroringOperation`, so any failed
     mirroring command raises a `NameError`. Both end the CLI.
+- **`P4Controller`'s meter functions.** `SetMeterRates()`, `GetMeterRates()`
+  and `ResetMeterRates()` each have an overload for a table entry
+  (`bm::entry_handle_t`) and one for a meter array (`size_t`): an `int` argument
+  does not compile, and the type of the variable picks the overload. Proposal:
+  name the meter-array ones `MeterSetRates()`, ... as `P4RuntimeApi` does.
 - **The last lost packet of the examples** (PDR 99.911 %) is ns-3's ARP: its
   pending queue holds 3 packets. Not p4sim; the examples could enlarge
   `ArpCache::PendingQueueSize`.
