@@ -101,6 +101,20 @@ build_lib_example(
   LIBRARIES_TO_LINK ${P4SIM_CSMA_LIBS}
 )
 
+# Strict-priority queues, with the classification in the P4 program
+build_lib_example(
+  NAME p4-priority-queues
+  SOURCE_FILES p4-priority-queues.cc
+  LIBRARIES_TO_LINK ${P4SIM_BASE_LIBS}
+)
+
+# What makes up the one-way delay through a P4 switch
+build_lib_example(
+  NAME p4-latency
+  SOURCE_FILES p4-latency.cc
+  LIBRARIES_TO_LINK ${P4SIM_BASE_LIBS}
+)
+
 # Controller with action profiles
 build_lib_example(
   NAME p4-controller-action-profile

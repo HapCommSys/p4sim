@@ -35,6 +35,8 @@ port, set up by `SwitchedEthernetHelper`; and **bridge** ports, ordinary ns-3 de
 | `p4-link-monitoring` | In-band probes that collect link utilisation (tutorial `link_monitor` [5]) | v1model | P4 point-to-point | `link_monitor` |
 | `p4-source-routing` | Source routing with a header stack; `--path` gives the egress ports (tutorial `source_routing` [6]) | v1model | CSMA | `source_routing` |
 | `p4-queue-test` | Three UDP flows with different priorities through one switch | v1model | P4 point-to-point | `qos` |
+| `p4-priority-queues` | Strict-priority queues: the P4 program maps a UDP port to priority 7, so a small flow passes a congested port without queueing delay; the egress counts time in the queue and queue depth per queue in registers. `--priority=0` puts both flows in one queue | v1model | switched Ethernet | `queueing` |
+| `p4-latency` | What makes up the one-way delay through a switch: serialisation, propagation, `PipelineDelay` and queueing, which the P4 program measures itself (`deq_timedelta`) | v1model | switched Ethernet | `queueing` |
 | `p4-spine-leaf-topo` | A spine-leaf network with ECMP load balancing (tutorial `load_balance` [7]) | v1model | CSMA and P4 point-to-point | `load_balance` |
 | `p4-topo-fattree` | A k-ary fat tree with generated flow tables (`FattreeTopoHelper`, `BuildFlowtableHelper`); `--model=1` runs ns-3 bridges instead | v1model | CSMA and P4 point-to-point | `fat-tree` |
 | `topo-fattree` | The same fat tree from plain ns-3 nodes, without P4, as a baseline | – | CSMA | – |
