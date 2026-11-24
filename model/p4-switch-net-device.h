@@ -25,6 +25,7 @@
 #include "ns3/mac48-address.h"
 #include "ns3/net-device.h"
 #include "ns3/nstime.h"
+#include "ns3/p4-digest.h"
 #include "ns3/traced-callback.h"
 
 #include <cstdint>
@@ -290,6 +291,20 @@ class P4SwitchNetDevice : public NetDevice
     void NotifyMacRxDrop(Ptr<const Packet> packet);
 
     /**
+     * \brief Fire Digest with \p digest, the record of a digest() that the P4 core
+     *        read at the end of the ingress. It fires in an event at the same
+     *        time, once the core is done with the packet, so that a trace sink
+     *        may change the tables of the switch or send a frame into it.
+     */
+    void NotifyDigest(const P4Digest& digest);
+
+    /**
+     * TracedCallback signature for the record of a digest().
+     * \param [in] digest the record
+     */
+    typedef void (*DigestTracedCallback)(const P4Digest& digest);
+
+    /**
      * \brief Connect the P4 core's internal event trace to this device's
      *        public SwitchEvent trace source.
      */
@@ -401,6 +416,9 @@ class P4SwitchNetDevice : public NetDevice
     /// Bridge port \p port has sent (PhyTxEnd) or given up (PhyTxDrop) a frame
     void BridgePortTxEnd(uint32_t port, Ptr<const Packet> packet);
 
+    /// Fire the Digest trace (see NotifyDigest())
+    void FireDigest(const P4Digest& digest);
+
     /// Runs when a port has finished serialising a frame (see SetPortTxDoneCallback())
     Callback<void, uint32_t> m_portTxDone;
 
@@ -504,6 +522,9 @@ class P4SwitchNetDevice : public NetDevice
      * not take because its input buffer was full (see SwitchRate).
      */
     TracedCallback<Ptr<const Packet>> m_macRxDropTrace;
+
+    /// The records of digest() in the P4 program (see NotifyDigest())
+    TracedCallback<const P4Digest&> m_digestTrace;
 
     /**
      * A trace source that emulates a non-promiscuous protocol sniffer connected

@@ -174,7 +174,7 @@ A switch has two kinds of port, which can be mixed. The port number is the order
 
 ## Examples
 
-[doc/examples.md](doc/examples.md) describes all 23 examples. A selection:
+[doc/examples.md](doc/examples.md) describes all 24 examples. A selection:
 
 | Example | Description |
 |---|---|
@@ -183,6 +183,7 @@ A switch has two kinds of port, which can be mixed. The port number is the order
 | `p4-psa-ipv4-forwarding`, `p4-pna-ipv4-forwarding` | The same with PSA and PNA |
 | `p4-basic-example` | Four hosts and four switches (p4lang tutorial `basic`) |
 | `p4-basic-controller` | Flow entries changed by `P4Controller` during the simulation |
+| `p4-l2-learning` | L2 learning: `P4Controller` fills the tables from the digests of the switch |
 | `p4-basic-tunnel` | A tunnel with a custom header |
 | `p4-firewall` | A stateful TCP firewall |
 | `p4-spine-leaf-topo` | A spine-leaf network with ECMP load balancing |
@@ -215,7 +216,7 @@ The [paper](https://dl.acm.org/doi/10.1145/3747204.3747210) evaluates P4sim with
 - Every device stores a frame completely before it forwards it; P4sim does not forward cut-through, and it does not model the stages of a hardware pipeline.
 - ns-3.39 to ns-3.49; tested with ns-3.39 and ns-3.49.
 - PNA ignores `PipelineDelay`, has no Thrift service of its own, and does not load its `FlowTablePath`.
-- `digest()` sends its records to BMv2's notification socket; nothing in the simulation receives them.
+- PSA and PNA programs give no digest records, as BMv2's `psa_switch` and `pna_nic` give none.
 - The pipeline core (`P4SwitchArch` 3) has no output queue: a congested port can lose frames.
 - The Thrift server of a switch runs in its own thread: use the runtime CLIs before and after the simulation, and `P4Controller` during it.
 

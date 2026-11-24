@@ -33,11 +33,39 @@ TypeId P4Controller::GetTypeId(void) {
 
 P4Controller::P4Controller() { NS_LOG_FUNCTION(this); }
 
-P4Controller::~P4Controller() { NS_LOG_FUNCTION(this); }
+P4Controller::~P4Controller() {
+  NS_LOG_FUNCTION(this);
+  // The switches may outlive the controller
+  for (uint32_t i = 0; i < m_connectedSwitches.size(); ++i) {
+    if (m_connectedSwitches[i]) {
+      m_connectedSwitches[i]->TraceDisconnect(
+          "Digest", std::to_string(i),
+          MakeCallback(&P4Controller::HandleDigest, this));
+    }
+  }
+}
 
 void P4Controller::RegisterSwitch(ns3::Ptr<ns3::P4SwitchNetDevice> sw) {
   m_connectedSwitches.push_back(sw);
+  if (sw) {
+    // The context of the digests is the index of the switch
+    sw->TraceConnect("Digest", std::to_string(m_connectedSwitches.size() - 1),
+                     MakeCallback(&P4Controller::HandleDigest, this));
+  }
   NS_LOG_INFO("Switch registered successfully");
+}
+
+void P4Controller::SetDigestCallback(
+    Callback<void, uint32_t, const P4Digest &> cb) {
+  m_digestCallback = cb;
+}
+
+void P4Controller::HandleDigest(std::string context, const P4Digest &digest) {
+  uint32_t index = static_cast<uint32_t>(std::stoul(context));
+  NS_LOG_INFO("Digest from switch " << index << ": " << digest);
+  if (!m_digestCallback.IsNull()) {
+    m_digestCallback(index, digest);
+  }
 }
 
 uint32_t P4Controller::GetN() { return m_connectedSwitches.size(); }

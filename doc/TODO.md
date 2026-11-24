@@ -62,6 +62,8 @@ line (bridge ports only, the old timing model) and gets no more changes.
     `p4-packet` configure multicast on v1model only.
   - PNA has no Thrift service of its own (BMv2's `pna_nic` has one, for the
     time commands of `pna_nic_CLI`), and it does not load its `FlowTablePath`.
+  - PSA and PNA give no digest records: BMv2's `psa_switch` and `pna_nic` do
+    not pass digests on either.
 - **`PipelineDelay` follow-ups (#59).**
   - Separate ingress and egress delays: needs the FIFO after the egress (see
     above).
@@ -70,10 +72,6 @@ line (bridge ports only, the old timing model) and gets no more changes.
     stage allocation, so p4sim cannot see the stages.
   - The default is 0. No published figure covers the whole pipeline; the
     attribute's help text gives a measured one for scale.
-- **Digests.** `digest()` sends its records to BMv2's notification socket, and
-  nothing in the simulation receives them. Proposal: pass learned records to an
-  ns-3 trace source that `P4Controller` can subscribe to, so that control-plane
-  experiments such as L2 learning can run inside the simulation.
 - **Thrift handlers.** The Thrift server thread runs until the process ends
   (BMv2 cannot stop it): a CLI that connects after its switch was destroyed uses
   a freed core. A CLI that runs during the simulation works from another thread,

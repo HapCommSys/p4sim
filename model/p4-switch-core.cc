@@ -36,7 +36,9 @@
 #include <cctype>
 #include <cstdlib>
 #include <fcntl.h>
+#include <json/json.h>
 #include <netinet/in.h>
+#include <sstream>
 #include <sys/file.h>
 #include <sys/socket.h>
 #include <unistd.h>
@@ -396,6 +398,7 @@ P4SwitchCore::TrySwap()
     bm::RuntimeInterface::ErrorCode rc = bm::SwitchWContexts::swap_configs();
     NS_ABORT_MSG_IF(rc != bm::RuntimeInterface::SUCCESS,
                     "Switch " << m_p4SwitchId << ": the swap failed (BMv2 error " << rc << ")");
+    m_learnListsRead = false; // those of the new program
     NS_LOG_INFO("Switch " << m_p4SwitchId << " swapped its P4 program; " << m_heldFrames.size()
                           << " held frames enter the pipeline");
     std::deque<HeldFrame> held;
@@ -403,6 +406,70 @@ P4SwitchCore::TrySwap()
     for (HeldFrame& f : held)
     {
         ReceivePacket(f.frame, f.inPort, f.protocol, f.destination);
+    }
+}
+
+void
+P4SwitchCore::Learn(int listId, const bm::Packet& packet)
+{
+    NS_LOG_FUNCTION(this << listId);
+    get_learn_engine()->learn(listId, packet);
+
+    ReadLearnLists();
+    auto list = m_learnLists.find(listId);
+    if (list == m_learnLists.end())
+    {
+        NS_LOG_WARN("Switch " << m_p4SwitchId << ": the P4 program has no learn list " << listId);
+        return;
+    }
+    P4Digest digest;
+    digest.listId = static_cast<uint32_t>(listId);
+    digest.listName = list->second.name;
+    const bm::PHV* phv = packet.get_phv();
+    for (const std::string& name : list->second.fields)
+    {
+        const bm::Field& field = phv->get_field(name);
+        const bm::ByteContainer& bytes = field.get_bytes();
+        digest.fields.push_back({name,
+                                 static_cast<uint32_t>(field.get_nbits()),
+                                 std::string(bytes.data(), bytes.size())});
+    }
+    NS_LOG_DEBUG("Switch " << m_p4SwitchId << ": digest " << digest);
+    m_switchNetDevice->NotifyDigest(digest);
+}
+
+void
+P4SwitchCore::ReadLearnLists()
+{
+    if (m_learnListsRead)
+    {
+        return;
+    }
+    m_learnListsRead = true;
+    m_learnLists.clear();
+    Json::Value root;
+    Json::CharReaderBuilder reader;
+    std::string errors;
+    std::istringstream config(get_config());
+    if (!Json::parseFromStream(reader, config, &root, &errors))
+    {
+        // BMv2 has loaded this JSON, so this does not happen
+        NS_LOG_WARN("Switch " << m_p4SwitchId << ": cannot read the learn lists: " << errors);
+        return;
+    }
+    for (const Json::Value& jsonList : root["learn_lists"])
+    {
+        LearnList& list = m_learnLists[jsonList["id"].asInt()];
+        list.name = jsonList["name"].asString();
+        for (const Json::Value& element : jsonList["elements"])
+        {
+            // BMv2 accepts only fields (P4Objects::init_learn_lists())
+            if (element["type"].asString() == "field")
+            {
+                list.fields.push_back(element["value"][0].asString() + "." +
+                                      element["value"][1].asString());
+            }
+        }
     }
 }
 

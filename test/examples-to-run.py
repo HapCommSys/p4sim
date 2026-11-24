@@ -19,6 +19,7 @@ cpp_examples = [
     ("p4-basic-example", "True", "False"),
     ("p4-basic-tunnel", "True", "False"),
     ("p4-basic-controller", "True", "False"),
+    ("p4-l2-learning", "True", "False"),
     ("p4-controller-action-profile", "True", "False"),
     ("p4-calc", "True", "False"),
     ("p4-firewall", "True", "False"),

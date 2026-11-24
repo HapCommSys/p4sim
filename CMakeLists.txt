@@ -167,6 +167,7 @@ build_lib(
         model/p4-core-psa.h
         model/p4-nic-pna.h
         model/p4-switch-net-device.h
+        model/p4-digest.h
         helper/p4-helper.h
         helper/switched-ethernet-helper.h
         helper/build-flowtable-helper.h
@@ -203,6 +204,7 @@ build_lib(
         test/switched-ethernet-tc-test-suite.cc
         test/link-framing-test-suite.cc
         test/p4-controller-test-suite.cc
+        test/p4-digest-test-suite.cc
         test/p4sim-test-suite.cc
         test/format-utils-test-suite.cc
         test/p4-topology-reader-test-suite.cc

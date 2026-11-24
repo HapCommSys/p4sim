@@ -227,6 +227,13 @@ P4SwitchNetDevice::GetTypeId()
                             "P4 pipeline was full (see SwitchRate)",
                             MakeTraceSourceAccessor(&P4SwitchNetDevice::m_macRxDropTrace),
                             "ns3::Packet::TracedCallback")
+
+            .AddTraceSource("Digest",
+                            "The record of a digest() in the P4 program (v1model and the "
+                            "pipeline core): the fields of its learn list at the end of the "
+                            "ingress of the packet, at that time",
+                            MakeTraceSourceAccessor(&P4SwitchNetDevice::m_digestTrace),
+                            "ns3::P4SwitchNetDevice::DigestTracedCallback")
             //
             // Trace sources designed to simulate a packet sniffer facility (tcpdump).
             //
@@ -976,6 +983,20 @@ void
 P4SwitchNetDevice::NotifyMacRxDrop(Ptr<const Packet> packet)
 {
     m_macRxDropTrace(packet);
+}
+
+void
+P4SwitchNetDevice::NotifyDigest(const P4Digest& digest)
+{
+    NS_LOG_FUNCTION(this << digest.listId);
+    Simulator::ScheduleNow(&P4SwitchNetDevice::FireDigest, Ptr<P4SwitchNetDevice>(this), digest);
+}
+
+void
+P4SwitchNetDevice::FireDigest(const P4Digest& digest)
+{
+    NS_LOG_FUNCTION(this << digest.listId);
+    m_digestTrace(digest);
 }
 
 void
