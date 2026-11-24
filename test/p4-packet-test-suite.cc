@@ -23,10 +23,12 @@
  */
 
 #include "ns3/core-module.h"
+#include "ns3/eth-net-device.h"
 #include "ns3/network-module.h"
 #include "ns3/p4-core-v1model.h"
 #include "ns3/p4-switch-net-device.h"
 #include "ns3/p4sim-ns3-compat.h"
+#include "ns3/switched-ethernet-channel.h"
 #include "ns3/test.h"
 
 #include <algorithm>
@@ -495,6 +497,97 @@ StfTestCase::DoRun()
     }
 }
 
+/**
+ * The ingress port of a frame from a host on a switched-Ethernet port: the .stf
+ * files send their frames through bridge ports. Each of three hosts, one per
+ * port, sends a broadcast frame that is not IPv4, which p4src/forward sends on
+ * by its ingress port, 0 -> 1 -> 2 -> 0: each host gets the frame of the host
+ * before it.
+ */
+class SwitchedPortTestCase : public TestCase
+{
+  public:
+    SwitchedPortTestCase(const std::string& archName, uint32_t arch, const std::string& jsonArch)
+        : TestCase(archName + ": a frame from a host on a switched-Ethernet port enters on that "
+                              "port"),
+          m_jsonArch(jsonArch),
+          m_arch(arch)
+    {
+    }
+
+  private:
+    void DoRun() override;
+
+    void DoTeardown() override
+    {
+        Simulator::Destroy();
+    }
+
+    /// Host \p host received a frame from \p from
+    bool Receive(uint32_t host,
+                 Ptr<NetDevice> device,
+                 Ptr<const Packet> packet,
+                 uint16_t protocol,
+                 const Address& from)
+    {
+        m_received[host].push_back(Mac48Address::ConvertFrom(from));
+        return true;
+    }
+
+    std::string m_jsonArch;
+    uint32_t m_arch;
+    std::vector<Mac48Address> m_received[N_PORTS]; ///< the sources of each host's frames
+};
+
+void
+SwitchedPortTestCase::DoRun()
+{
+    SetDataDir(NS_TEST_SOURCEDIR);
+    Ptr<Node> switchNode = CreateObject<Node>();
+    Ptr<Node> hostNode = CreateObject<Node>();
+    Ptr<P4SwitchNetDevice> sw = CreateObject<P4SwitchNetDevice>();
+    sw->SetAttribute("P4SwitchArch", UintegerValue(m_arch));
+    sw->SetAttribute(
+        "JsonPath",
+        StringValue(CreateDataDirFilename("p4src/forward/forward_" + m_jsonArch + ".json")));
+    sw->SetAttribute("FlowTablePath", StringValue(""));
+    switchNode->AddDevice(sw);
+    std::vector<Ptr<SwitchedEthernetHostDevice>> hosts;
+    for (uint32_t i = 0; i < N_PORTS; i++)
+    {
+        Ptr<SwitchedEthernetChannel> channel = CreateObject<SwitchedEthernetChannel>();
+        sw->Attach(channel);
+        Ptr<SwitchedEthernetHostDevice> host = CreateObject<SwitchedEthernetHostDevice>();
+        host->SetAddress(Mac48Address(("00:00:00:00:00:1" + std::to_string(i)).c_str()));
+        hostNode->AddDevice(host);
+        host->Attach(channel);
+        host->SetReceiveCallback(MakeCallback(&SwitchedPortTestCase::Receive, this).Bind(i));
+        hosts.push_back(host);
+    }
+    sw->Initialize();
+
+    for (uint32_t i = 0; i < N_PORTS; i++)
+    {
+        Simulator::Schedule(MilliSeconds(1 + i), [host = hosts[i]]() {
+            host->Send(Create<Packet>(46), Mac48Address::GetBroadcast(), 0x88b5);
+        });
+    }
+    Simulator::Stop(Seconds(1));
+    Simulator::Run();
+
+    for (uint32_t i = 0; i < N_PORTS; i++)
+    {
+        uint32_t from = (i + N_PORTS - 1) % N_PORTS;
+        NS_TEST_EXPECT_MSG_EQ(m_received[i].size(), 1u, "Host " << i << " should get one frame");
+        if (!m_received[i].empty())
+        {
+            NS_TEST_EXPECT_MSG_EQ(m_received[i][0],
+                                  Mac48Address::ConvertFrom(hosts[from]->GetAddress()),
+                                  "Host " << i << " should get the frame of host " << from);
+        }
+    }
+}
+
 /// Every architecture runs the same program, p4src/forward, with the same .stf
 /// files (the pipeline core runs forward_v1model); p4src/drop checks mark_to_drop()
 /// in the ingress and in the egress on v1model and the pipeline core; p4src/priority checks the
@@ -520,6 +613,7 @@ static class P4PacketTestSuite : public TestSuite
             {
                 AddTestCase(new StfTestCase("forward", name, arch, stf, json), P4SIM_TEST_QUICK);
             }
+            AddTestCase(new SwitchedPortTestCase(name, arch, json), P4SIM_TEST_QUICK);
         }
         AddTestCase(new StfTestCase("drop", "v1model", P4SWITCH_ARCH_V1MODEL, "mark_to_drop.stf"),
                     P4SIM_TEST_QUICK);
