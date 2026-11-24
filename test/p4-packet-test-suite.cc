@@ -409,7 +409,7 @@ StfTestCase::DoRun()
         Ptr<SimpleNetDevice> port = CreateObject<SimpleNetDevice>();
         Ptr<SimpleNetDevice> host = CreateObject<SimpleNetDevice>();
         port->SetAddress(Mac48Address::Allocate());
-        // switch_channel: the switch sends a frame on a port when the port is
+        // The switch sends a frame on a port when the port is
         // free, and a port is busy for the frame's transmission time at this
         // rate. So frames that arrive together wait in the switch's queues.
         port->SetAttribute("DataRate", DataRateValue(DataRate("1Gbps")));
