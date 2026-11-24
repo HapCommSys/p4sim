@@ -217,7 +217,7 @@ The [paper](https://dl.acm.org/doi/10.1145/3747204.3747210) evaluates P4sim with
 - PNA ignores `PipelineDelay`, has no Thrift service of its own, and does not load its `FlowTablePath`.
 - `P4Controller` works on v1model switches only.
 - `digest()` sends its records to BMv2's notification socket; nothing in the simulation receives them.
-- The pipeline core (`P4SwitchArch` 3) has no output queue: a congested port can lose frames.
+- The pipeline core (`P4SwitchArch` 3) has no output queue: a congested port can lose frames. It has no packet replication engine either: multicast (`mcast_grp`), clones, resubmit and recirculation have no effect, and the frame goes to `egress_spec` only.
 - The Thrift server of a switch runs in its own thread: use the runtime CLIs before and after the simulation, and `P4Controller` during it.
 
 [doc/TODO.md](doc/TODO.md) has the details and the other open items.

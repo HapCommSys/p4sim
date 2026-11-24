@@ -132,7 +132,9 @@ Scope and Limitations
 * ``digest()`` sends its records to the notification socket of BMv2; nothing in
   the simulation receives them.
 * The pipeline core (``P4SwitchArch`` 3) has no output queue: a congested port
-  can lose frames.
+  can lose frames.  It has no packet replication engine either: multicast
+  (``mcast_grp``), clones, resubmit and recirculation have no effect, and the
+  frame goes to ``egress_spec`` only.
 * The Thrift server of a switch runs in its own thread.  Use the runtime CLIs
   before and after the simulation, and ``P4Controller`` during it.
 
