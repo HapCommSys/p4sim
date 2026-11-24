@@ -1,0 +1,23 @@
+# Mirroring sessions whose clones go to a multicast group on PSA, as with
+# mirroring_add_mc of psa_switch_CLI: as in BMv2's psa_switch, the packet
+# replication engine makes one copy per port of the group. Session 5 sends its
+# clones to group 1, whose only node (rid 7) has the ports 0 and 2. The low 4
+# bits of the EtherType select the operation, and the egress marks the frames
+# (see clone_psa.p4 and clone_psa.stf): bits 15:8 of the destination MAC hold
+# the packet path (1 = normal unicast, 3 = ingress clone, 4 = egress clone).
+
+mc_mgrp_create 1
+mc_node_create 7 0 2
+mc_node_associate 1 0
+mirroring_add_mc 5 1
+
+packet 0 000000000001 000000000000 9001  00000002   # B, clone at the ingress
+packet 0 000000000001 000000000000 9002  00000003   # C, clone at the egress
+
+#        dst          src          type
+expect 1 000000ee0101 0000000000ab 9001  00000002   # the original frames
+expect 1 000000ee0101 0000000000ab 9002  00000003
+expect 0 000000000301 000000000000 9001  00000002   # B's clone: ingress clone, as received
+expect 0 000000ee0401 0000000000ab 9002  00000003   # C's clone: egress clone, as sent
+expect 2 000000000301 000000000000 9001  00000002   # the same clones on port 2
+expect 2 000000ee0401 0000000000ab 9002  00000003

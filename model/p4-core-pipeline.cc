@@ -222,7 +222,7 @@ P4CorePipeline::EnqueueNow(uint32_t egress_port, std::unique_ptr<bm::Packet>&& p
     m_switchNetDevice->SendNs3Packet(ns_packet,
                                      static_cast<int>(egress_port),
                                      protocol,
-                                     m_destinationList[addr_index]);
+                                     GetDestination(addr_index));
 }
 
 } // namespace ns3

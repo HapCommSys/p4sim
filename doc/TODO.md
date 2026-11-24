@@ -58,8 +58,6 @@ line (bridge ports only, the old timing model) and gets no more changes.
 
 - **PSA and PNA.**
   - PNA ignores `PipelineDelay`.
-  - PSA clones to a multicast group have no test: the `.stf` files of
-    `p4-packet` configure multicast on v1model only.
   - PNA has no Thrift service of its own (BMv2's `pna_nic` has one, for the
     time commands of `pna_nic_CLI`), and it does not load its `FlowTablePath`.
   - `P4Controller` works on v1model switches only.

@@ -257,7 +257,7 @@ P4PnaNic::ScheduleTxIfNeeded(uint32_t port)
     if (!m_switchNetDevice->SendNs3Packet(frame.packet,
                                           static_cast<int>(port),
                                           frame.protocol,
-                                          m_destinationList[frame.addrIndex]))
+                                          GetDestination(frame.addrIndex)))
     {
         // Dropped by the device: nothing is on the wire, free the port.
         pstate.txCompleteEvent = Simulator::ScheduleNow(&P4PnaNic::PortTxComplete, this, port);

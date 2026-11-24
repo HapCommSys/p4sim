@@ -15,7 +15,7 @@ No environment variable is needed, and suites can run in parallel.
 
 ## Suites
 
-18 suites, 113 test cases. The first seven do not need BMv2.
+18 suites, 114 test cases. The first seven do not need BMv2.
 
 | Suite | Checks |
 |---|---|
@@ -62,14 +62,14 @@ with three ports, once per architecture: `forward_v1model.p4`, `forward_pna.p4` 
 ingress and in the egress, on v1model and the pipeline core. [`p4src/priority`](p4src/priority) checks the
 priority queues of v1model, [`p4src/resubmit`](p4src/resubmit) and
 [`p4src/recirculate`](p4src/recirculate) its resubmit and recirculation,
-[`p4src/clone`](p4src/clone) its clones (also to a multicast group) and those of PSA, [`p4src/primitives`](p4src/primitives)
+[`p4src/clone`](p4src/clone) its clones and those of PSA (also to a multicast group), [`p4src/primitives`](p4src/primitives)
 `digest()`, `hash()` with max 0 and `random()` with lo > hi, and [`p4src/lag`](p4src/lag)
 the LAG member that its multicast picks. The format is a subset of p4c's STF:
 
 ```
 # comment
 mirroring_add 5 2                             # clones of mirroring session 5 leave port 2
-mirroring_add_mc 6 1                          # v1model: clones of session 6 go to multicast group 1
+mirroring_add_mc 6 1                          # clones of session 6 go to multicast group 1
 mc_set_lag_membership 3 1 2                   # v1model: LAG 3 has the ports 1 and 2
 mc_mgrp_create 1                              # multicast group 1
 mc_node_create 0 2 | 3                        # node 0 (rid 0): port 2 and LAG 3

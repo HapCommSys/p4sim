@@ -363,6 +363,14 @@ class P4SwitchCore : public bm::Switch
      */
     int GetAddressIndex(const Address& destination);
 
+    /**
+     * @brief The destination address with an index that GetAddressIndex() gave
+     * @param index the index, as the packet registers keep it
+     * @return the address; another index aborts in a build with asserts (a
+     *         packet copy whose registers were not set, for example)
+     */
+    const Address& GetDestination(int index) const;
+
     int m_p4SwitchId;                          //!< ID of the switch
     P4SwitchNetDevice* m_switchNetDevice;      //!< Pointer to the switch net device
     bool m_enableQueueingMetadata{false};      //!< Enable queueing metadata

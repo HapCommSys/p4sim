@@ -704,6 +704,15 @@ P4SwitchCore::GetAddressIndex(const Address& destination)
     }
 }
 
+const Address&
+P4SwitchCore::GetDestination(int index) const
+{
+    NS_ASSERT_MSG(index >= 0 && static_cast<size_t>(index) < m_destinationList.size(),
+                  "Switch " << m_p4SwitchId << ": no destination address " << index
+                            << " (a packet copy whose registers were not set?)");
+    return m_destinationList[index];
+}
+
 int
 P4SwitchCore::receive_(uint32_t port_num, const char* buffer, int len)
 {
