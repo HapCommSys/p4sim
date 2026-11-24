@@ -132,6 +132,7 @@ build_lib(
         model/link-framing.cc
         model/eth-net-device.cc
         model/p4-switch-core.cc
+        model/p4-switch-core-thrift.cc
         model/p4-core-v1model.cc
         model/p4-core-v1model-thrift.cc
         model/p4-core-psa.cc
