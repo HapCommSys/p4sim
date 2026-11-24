@@ -151,7 +151,7 @@ The P4 program and its flow tables define the forwarding. These attributes of `n
 > **Notes:**
 > 1. The P4 program sees every frame, ARP included, and must forward it.
 > 2. `SwitchRate` models a slower switch, such as a software switch: an idle pipeline takes a packet at once, and packets that arrive while it is busy wait in the input buffer, or are dropped (`MacRxDrop`) when it is full. Resubmitted and recirculated passes count too. With the default, 0, only the links limit the traffic, as in a hardware switch. `PipelineDelay` adds a fixed latency instead and does not change the throughput.
-> 3. The flow-table file runs in `simple_switch_CLI` (v1model) or `psa_switch_CLI` (PSA). Besides the table commands it can use `mirroring_add`, `mirroring_add_mc`, `set_queue_depth` and `set_queue_rate`, and on v1model `mirroring_delete`: BMv2 1.15.8's `psa_switch_CLI` stops at `mirroring_delete`, as at any failed mirroring command, and skips the rest of the file.
+> 3. The flow-table file runs in `simple_switch_CLI` (v1model), `psa_switch_CLI` (PSA) or `bm_CLI` (PNA). Besides the table commands it can use `mirroring_add`, `mirroring_add_mc`, `set_queue_depth` and `set_queue_rate`, and on v1model `mirroring_delete`: BMv2 1.15.8's `psa_switch_CLI` stops at `mirroring_delete`, as at any failed mirroring command, and skips the rest of the file.
 
 ### Switch ports
 
@@ -214,7 +214,7 @@ The [paper](https://dl.acm.org/doi/10.1145/3747204.3747210) evaluates P4sim with
 - `SwitchRate` models only the throughput of the P4 pipeline, not its per-packet latency: a packet that finds the pipeline idle passes it without delay. Use `PipelineDelay` for the latency.
 - Every device stores a frame completely before it forwards it; P4sim does not forward cut-through, and it does not model the stages of a hardware pipeline.
 - ns-3.39 to ns-3.49; tested with ns-3.39 and ns-3.49.
-- PNA ignores `PipelineDelay`, has no Thrift service of its own, and does not load its `FlowTablePath`.
+- PNA has no Thrift service of its own: its `FlowTablePath` runs in BMv2's generic `bm_CLI`, which has the table commands but not the time commands of `pna_nic_CLI`.
 - `P4Controller` works on v1model switches only.
 - `digest()` sends its records to BMv2's notification socket; nothing in the simulation receives them.
 - The pipeline core (`P4SwitchArch` 3) has no output queue: a congested port can lose frames.

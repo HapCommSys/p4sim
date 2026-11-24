@@ -126,8 +126,9 @@ Scope and Limitations
   (``patches/bmv2-spdlog-cxx20.patch``).
 * The P4 program sees every frame, ARP included, and must forward it; the
   example programs do.
-* PNA ignores ``PipelineDelay``, has no Thrift service of its own, and does not
-  load its ``FlowTablePath``.
+* PNA has no Thrift service of its own: its ``FlowTablePath`` runs in BMv2's
+  generic ``bm_CLI``, which has the table commands but not the time commands of
+  ``pna_nic_CLI``.
 * ``P4Controller`` works on v1model switches only.
 * ``digest()`` sends its records to the notification socket of BMv2; nothing in
   the simulation receives them.
@@ -366,7 +367,7 @@ Troubleshooting
 Validation
 **********
 
-The module has 18 test suites with 113 test cases, from unit tests of
+The module has 18 test suites with 115 test cases, from unit tests of
 single classes to packet tests that send frames through a switch and check the
 frames that leave it (``p4-packet``, with test files in the format of p4c's
 STF).  Among them:
