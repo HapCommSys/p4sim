@@ -6,6 +6,7 @@
 /* -*- Mode:C++; c-file-style:"gnu"; indent-tabs-mode:nil; -*- */
 
 #include "ns3/format-utils.h"
+#include "ns3/p4sim-ns3-compat.h"
 
 #include "ns3/log.h"
 #include "ns3/test.h"
@@ -298,10 +299,10 @@ public:
 };
 
 FormatUtilsTestSuite::FormatUtilsTestSuite ()
-    : TestSuite ("format-utils", UNIT) // Test suite name and type
+    : TestSuite ("format-utils", TestSuite::Type::UNIT) // Test suite name and type
 {
-  AddTestCase (new FormatUtilsTestCase, TestCase::QUICK);
-  AddTestCase (new P4SimDirTestCase, TestCase::QUICK);
+  AddTestCase (new FormatUtilsTestCase, P4SIM_TEST_QUICK);
+  AddTestCase (new P4SimDirTestCase, P4SIM_TEST_QUICK);
 }
 
 // Register the test suite with NS-3

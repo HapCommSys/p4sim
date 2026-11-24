@@ -25,6 +25,7 @@
 #include "ns3/net-device-queue-interface.h"
 #include "ns3/p4-p2p-channel.h"
 #include "ns3/p4-p2p-helper.h"
+#include "ns3/p4sim-ns3-compat.h"
 #include "ns3/packet.h"
 #include "ns3/queue.h"
 #include "ns3/simulator.h"
@@ -105,8 +106,7 @@ P4PointToPointHelper::EnablePcapInternal(std::string prefix,
         filename = pcapHelper.GetFilenameFromDevice(prefix, device);
     }
 
-    Ptr<PcapFileWrapper> file =
-        pcapHelper.CreateFile(filename, std::ios::out, PcapHelper::DLT_EN10MB);
+    Ptr<PcapFileWrapper> file = pcapHelper.CreateFile(filename, std::ios::out, P4SIM_PCAP_ETHERNET);
     pcapHelper.HookDefaultSink<CustomP2PNetDevice>(device, "PromiscSniffer", file);
 }
 

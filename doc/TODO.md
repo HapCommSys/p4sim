@@ -91,11 +91,12 @@ line (bridge ports only, the old timing model) and gets no more changes.
 
 ## Bugs and cleanups
 
-- **The branches `ns-3.39` and `ns-3.49`** are based on P4sim 1.x (main at #35)
-  and have none of 2.0. The `ns-3.49` port (C++23) has to be redone on 2.0.
+- **The branches `ns-3.39` and `ns-3.49`** are based on P4sim 1.x (main at #35).
+  `main` now builds with ns-3.39 to ns-3.49, so `ns-3.49` is no longer needed.
 - **BMv2.**
   - Upstream fix for BMv2's bundled spdlog (`registry.h`), which GCC rejects from
-    C++20 on; the `ns-3.49` README patches the installed header instead.
+    C++20 on; until then, P4sim builds with a fixed copy of these headers
+    (`CMakeLists.txt`, `patches/bmv2-spdlog-cxx20.patch`).
   - Build BMv2 with optimisation (-O2).
   - Find BMv2 with CMake imported targets instead of the fixed `/usr/local/lib`.
   - Upstream fix for `psa_switch_CLI` (1.15.8): `mirroring_delete` calls

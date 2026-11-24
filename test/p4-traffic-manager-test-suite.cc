@@ -21,6 +21,7 @@
 #include "ns3/data-rate.h"
 #include "ns3/nstime.h"
 #include "ns3/p4-traffic-manager.h"
+#include "ns3/p4sim-ns3-compat.h"
 #include "ns3/simulator.h"
 #include "ns3/test.h"
 #include "ns3/uinteger.h"
@@ -532,15 +533,15 @@ class P4TrafficManagerTestSuite : public TestSuite
     P4TrafficManagerTestSuite()
         : TestSuite("p4-traffic-manager", Type::UNIT)
     {
-        AddTestCase(new TmBasicEnqueueDequeueTest, TestCase::QUICK);
-        AddTestCase(new TmPrioritySchedulingTest, TestCase::QUICK);
-        AddTestCase(new TmVoqSameOutputTest, TestCase::QUICK);
-        AddTestCase(new TmFabricMatchingTest, TestCase::QUICK);
-        AddTestCase(new TmBufferDropTest, TestCase::QUICK);
-        AddTestCase(new TmDelayMeasurementTest, TestCase::QUICK);
-        AddTestCase(new TmEventDrivenDrainTest, TestCase::QUICK);
-        AddTestCase(new TmEgressStrictPriorityTest, TestCase::QUICK);
-        AddTestCase(new TmEgressDropTest, TestCase::QUICK);
+        AddTestCase(new TmBasicEnqueueDequeueTest, P4SIM_TEST_QUICK);
+        AddTestCase(new TmPrioritySchedulingTest, P4SIM_TEST_QUICK);
+        AddTestCase(new TmVoqSameOutputTest, P4SIM_TEST_QUICK);
+        AddTestCase(new TmFabricMatchingTest, P4SIM_TEST_QUICK);
+        AddTestCase(new TmBufferDropTest, P4SIM_TEST_QUICK);
+        AddTestCase(new TmDelayMeasurementTest, P4SIM_TEST_QUICK);
+        AddTestCase(new TmEventDrivenDrainTest, P4SIM_TEST_QUICK);
+        AddTestCase(new TmEgressStrictPriorityTest, P4SIM_TEST_QUICK);
+        AddTestCase(new TmEgressDropTest, P4SIM_TEST_QUICK);
     }
 };
 

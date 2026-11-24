@@ -1,5 +1,6 @@
-# Builds the Docker image of P4sim and runs all of its test suites and
-# examples in it (contrib/p4sim/test/run-tests.sh).
+# Builds the Docker image of P4sim with the oldest and the newest ns-3 release
+# it supports, and runs all of its test suites and examples in each
+# (contrib/p4sim/test/run-tests.sh).
 name: Docker build and tests
 
 on:
@@ -15,6 +16,11 @@ jobs:
   test:
     runs-on: ubuntu-24.04
     timeout-minutes: 150
+    strategy:
+      fail-fast: false
+      matrix:
+        ns3: [ns-3.39, ns-3.49]
+    name: test (${{ matrix.ns3 }})
     steps:
       - uses: actions/checkout@v5
 
@@ -25,7 +31,7 @@ jobs:
           df -h /
 
       - name: Build the image
-        run: docker build -t p4sim:ci .
+        run: docker build --build-arg NS3_VERSION=${{ matrix.ns3 }} -t p4sim:ci .
 
       - name: Run the tests
         run: docker run --rm p4sim:ci contrib/p4sim/test/run-tests.sh

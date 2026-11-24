@@ -1,7 +1,9 @@
-# P4sim in a container: ns-3.39 with P4sim, BMv2 1.15.8, Thrift 0.16.0 and the
+# P4sim in a container: ns-3 with P4sim, BMv2 1.15.8, Thrift 0.16.0 and the
 # P4 compiler p4c 1.2.5.19 on Ubuntu 24.04, the versions P4sim is tested with.
+# NS3_VERSION selects the ns-3 release, ns-3.39 (default) to ns-3.49.
 #
 #   docker build -t p4sim .
+#   docker build --build-arg NS3_VERSION=ns-3.49 -t p4sim:ns-3.49 .
 #   docker run --rm -it p4sim ./ns3 run p4-v1model-ipv4-forwarding
 
 ARG P4C_VERSION=1.2.5.19
@@ -65,17 +67,21 @@ COPY --from=p4c /usr/local/share/p4c /usr/local/share/p4c
 
 # ns-3 with P4sim from this repository. Without DEBUG_INFO=yes, the debug
 # information is stripped from the objects, libraries and programs; strip -p keeps
-# their times, so ./ns3 does not rebuild them.
+# their times, so ./ns3 does not rebuild them. ns-3 is configured twice because
+# ns-3.49 changes some compile flags the second time; otherwise the first program
+# added to scratch/ would rebuild about 200 objects of other modules.
 RUN git clone --depth 1 -b ${NS3_VERSION} https://github.com/nsnam/ns-3-dev-git.git /ns3
 COPY . /ns3/contrib/p4sim
 WORKDIR /ns3
 RUN bash contrib/p4sim/set_pkg_config_env.sh \
-    && ./ns3 configure --enable-tests --enable-examples \
-        --enable-modules="p4sim;netanim;nix-vector-routing" \
+    && for i in 1 2; do \
+           ./ns3 configure --enable-tests --enable-examples \
+               --enable-modules="p4sim;netanim;nix-vector-routing" || exit 1; \
+       done \
     && ./ns3 build -j ${JOBS:-$(nproc)} \
     && if [ "$DEBUG_INFO" != yes ]; then \
            find build cmake-cache -type f \
-               \( -name '*.o' -o -name '*.so' -o -name 'ns3.39-*-default' \) \
+               \( -name '*.o' -o -name '*.so' -o -name 'ns3.*-default' \) \
                -exec strip --strip-debug -p {} + ; \
        fi
 

@@ -3,14 +3,16 @@
 This guide installs P4sim with ns-3.39, on an Ubuntu 24.04 machine (recommended) or in
 a virtual machine.
 
-P4sim is tested with Ubuntu 24.04 LTS, ns-3.39, BMv2 1.15.8 and p4c 1.2.5.19.
+P4sim builds with ns-3.39 to ns-3.49. It is tested with Ubuntu 24.04 LTS, ns-3.39 and
+ns-3.49, BMv2 1.15.8 and p4c 1.2.5.19.
 
 > **Note:** Installing BMv2 and the P4 tools takes **1–2 hours** and up to **15 GB** of
 > disk space.
 
-> **Why ns-3.39?** Starting from ns-3.40, ns-3 requires C++20. The BMv2 library is built
-> with C++17, so P4sim supports ns-3.39 and earlier. We will upgrade once a
-> C++20-compatible BMv2 build is available.
+> **Other ns-3 releases:** check out that tag in step 3, for example `git checkout
+> ns-3.49`. From ns-3.41 on, ns-3 builds as C++20 or C++23; P4sim then builds with a copy
+> of BMv2's spdlog headers that has the fix C++20 needs, so the installed BMv2 is not
+> changed.
 
 - [Install on Ubuntu 24.04](#install-on-ubuntu-2404) *(recommended)*
 - [Install in a virtual machine](#install-in-a-virtual-machine)

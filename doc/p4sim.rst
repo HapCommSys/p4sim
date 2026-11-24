@@ -119,8 +119,11 @@ Scope and Limitations
 * P4sim runs P4 programs as BMv2 does.  Its timing model is that of the links
   and queues above; it does not model the stages of a hardware pipeline, and it
   does not forward cut-through.
-* BMv2 is built with C++17, so |ns3| must be too: ns-3.39 or earlier.  P4sim is
-  tested with ns-3.39, BMv2 1.15.8 and p4c 1.2.5.19 on Ubuntu 24.04.
+* P4sim builds with ns-3.39 to ns-3.49 and is tested with ns-3.39 and ns-3.49,
+  BMv2 1.15.8 and p4c 1.2.5.19 on Ubuntu 24.04.  From ns-3.41 on, |ns3| builds as
+  C++20 or C++23, and the spdlog that BMv2 bundles does not compile as C++20;
+  P4sim then uses a copy of these headers with the fix
+  (``patches/bmv2-spdlog-cxx20.patch``).
 * The P4 program sees every frame, ARP included, and must forward it; the
   example programs do.
 * PNA ignores ``PipelineDelay``, has no Thrift service of its own, and does not

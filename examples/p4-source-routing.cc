@@ -30,6 +30,7 @@
 #include "ns3/p4-helper.h"
 #include "ns3/p4-net-builder.h"
 #include "ns3/p4-topology-reader-helper.h"
+#include "ns3/p4sim-ns3-compat.h"
 #include "ns3/packet-socket-address.h"
 #include "ns3/packet-socket-factory.h"
 #include "ns3/packet-socket-helper.h"
@@ -164,7 +165,7 @@ class SourceRoutingApp : public Application
 
     void StopApplication() override
     {
-        if (m_event.IsRunning())
+        if (P4simIsPending(m_event))
         {
             m_event.Cancel();
         }
