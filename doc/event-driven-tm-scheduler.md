@@ -1,7 +1,7 @@
 # Event-Driven Egress Scheduler
 
 ```
-Ingress Pipeline → egress queues → Egress Pipeline → Output Port
+Ingress Pipeline → egress queues → Egress Pipeline → transfer buffer → Output Port
 ```
 
 This document describes the default egress path of v1model and PSA, and the
@@ -12,6 +12,13 @@ The egress queues (`NSQueueingLogicPriRL`) are per port and per priority. As in
 BMv2, a queue has no rate limit unless one is set (`set_queue_rate`,
 `SetEgressQueueRate()`); then a packet leaves only when the time since the
 previous one satisfies the rate. `SwitchRate` limits the ingress instead.
+
+After the egress pipeline, each port has a transfer buffer of
+`TransferBufferSize` frames (0 by default): a FIFO that stands for the port queue
+of a hardware switch. A port takes its next packet from the egress queues when it
+is idle or its transfer buffer has room; the packet passes the egress pipeline
+at once and waits in the buffer, in order, for the frames before it. With 0, a
+port takes a packet only when it is idle, and the buffer stays empty.
 
 ## Events
 
@@ -35,35 +42,47 @@ P4SwitchNetDevice::PortTransmitEnd(port)                     [channel: TransmitE
     → ScheduleEgressIfNeeded(port)
 ```
 
-When the device does not send a frame (the drop port, an invalid port, a busy
-channel), the core calls `PortTxComplete()` itself at once, so that the port is
-not left busy.
+When the egress drops or recirculates a packet, nothing goes to the port:
+`EgressDone()` lets the port take its next packet, and leaves it busy if it is
+sending. When the device refuses a frame (an invalid port, a busy channel), the
+core calls `PortTxComplete()` itself at once, so that the port is not left busy.
 
 ## Functions
 
-**`ScheduleEgressIfNeeded(port)`**, called from `Enqueue()` and `PortTxComplete()`:
-returns if the port is busy. Otherwise it cancels a pending dequeue of this port,
-asks `get_next_tp_for_port(port)` for the earliest time a packet of this port may
-leave, and schedules `EventDrivenEgressDequeue(port)` for then.
+**`ScheduleEgressIfNeeded(port)`**, called from `Enqueue()`, `PortTxComplete()`
+and after a frame is sent or buffered: returns if the port can take no packet (it
+is busy and its transfer buffer is full). Otherwise it cancels a pending dequeue
+of this port, asks `get_next_tp_for_port(port)` for the earliest time a packet of
+this port may leave, and schedules `EventDrivenEgressDequeue(port)` for then.
 
 **`EventDrivenEgressDequeue(port)`**:
-1. Returns if the port or its channel is busy; `PortTxComplete()` will retry.
+1. Returns if the port can take no packet; `PortTxComplete()` will retry.
 2. Takes one rate-eligible packet with `pop_back_for_port(port)`. If there is
    none, it reschedules itself at the next eligible time.
 3. Runs the egress pipeline (MAU, deparser, clone, recirculate).
-4. Marks the port busy and calls `SendNs3Packet()`.
+4. `SendOrBuffer()`: appends the frame to the port's transfer buffer and, if the
+   port is free, marks it busy and sends the oldest frame with `SendNs3Packet()`;
+   then asks for the next packet, which the port takes if its buffer has room.
 
-**`PortTxComplete(port)`**: clears `busy`, and calls `ScheduleEgressIfNeeded(port)`
-if the port's queues are not empty.
+**`PortTxComplete(port)`**: clears `busy`. If frames wait in the transfer buffer,
+it schedules `TransmitFromBuffer(port)` in the same instant, which sends the
+oldest one and then asks for the next packet (the device calls `PortTxComplete()`
+from its end of transmission and does not expect a new frame from there).
+Otherwise it calls `ScheduleEgressIfNeeded(port)` if the port's queues are not
+empty.
 
 The state of a port:
 
 ```cpp
 struct PortTxState {
-    bool    busy{false};      // true while a frame is on the wire
-    EventId pendingEvent{};   // the next scheduled dequeue attempt
+    bool    busy{false};       // true while a frame is on the wire
+    EventId pendingEvent{};    // the next scheduled dequeue attempt
+    EventId txCompleteEvent{}; // PortTxComplete() for a frame the device refused
+    EventId bufferEvent{};     // the pending TransmitFromBuffer()
 };
 std::unordered_map<uint32_t, PortTxState> m_portTxState;
+// in P4SwitchCore: the transfer buffer of each port, oldest frame first
+std::unordered_map<uint32_t, std::deque<TransferFrame>> m_transferBuffers;
 ```
 
 `m_linkRateBps` is read from port 0's channel when the switch starts. The VOQ
@@ -79,9 +98,14 @@ path uses it as the traffic manager's `PortRate`; the default path only logs it.
   egress queues (again for each recirculated pass). The other delays come from
   `SwitchRate`, the queue rates, the serialisation on the port's channel and the
   channel's propagation delay.
+- **Transfer buffer.** It never drops: a port takes a packet only while there is
+  room. A frame in it has passed the egress and is not overtaken any more, so a
+  high-priority packet that arrives later waits behind it. The backlog of a
+  congested port stays in the egress queues, and `enq_qdepth` and `deq_qdepth`
+  do not count the frames in the transfer buffer.
 - **Clones and recirculation.** Egress clones go through `Enqueue()`, like any
   packet. A recirculated packet goes back to the ingress input buffer
-  (`AdmitToIngress()`), and `PortTxComplete()` releases the port at once.
+  (`AdmitToIngress()`), and `EgressDone()` lets the port take its next packet.
 - **Queue rates.** `push_front()` stamps each packet with
   `send = max(now, prev_send + 1/rate)`, and `pop_back_for_port()` takes a packet
   only when `send <= now`: a leaky bucket without bursts.

@@ -426,6 +426,32 @@ P4SwitchCore::GetPipelineDelay() const
 }
 
 void
+P4SwitchCore::SetTransferBufferSize(uint32_t frames)
+{
+    m_transferBufferSize = frames;
+}
+
+uint32_t
+P4SwitchCore::GetTransferBufferSize() const
+{
+    return m_transferBufferSize;
+}
+
+uint32_t
+P4SwitchCore::GetTransferBufferLength(uint32_t port) const
+{
+    auto it = m_transferBuffers.find(port);
+    return it == m_transferBuffers.end() ? 0 : static_cast<uint32_t>(it->second.size());
+}
+
+bool
+P4SwitchCore::PortCanTakePacket(uint32_t port, bool transmitterFree) const
+{
+    uint32_t waiting = GetTransferBufferLength(port);
+    return (transmitterFree && waiting == 0) || waiting < m_transferBufferSize;
+}
+
+void
 P4SwitchCore::Enqueue(uint32_t egress_port, std::unique_ptr<bm::Packet>&& packet)
 {
     CheckPendingSwap(); // a full egress queue drops the packet

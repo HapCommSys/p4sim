@@ -15,7 +15,7 @@ No environment variable is needed, and suites can run in parallel.
 
 ## Suites
 
-18 suites, 113 test cases. The first seven do not need BMv2.
+19 suites, 121 test cases. The first seven do not need BMv2.
 
 | Suite | Checks |
 |---|---|
@@ -33,6 +33,7 @@ No environment variable is needed, and suites can run in parallel.
 | `p4-egress` | a congested switched-Ethernet port sends back to back at its line rate; a switch with a full egress queue, or one whose port just refused a frame, can be destroyed |
 | `p4-switch-rate` | `SwitchRate` limits the whole pipeline, 0 means no limit, a full input buffer drops |
 | `p4-pipeline-delay` | `PipelineDelay` delays every packet by the same time without lowering the throughput (default egress path, VOQ, PSA, pipeline core, with `SwitchRate`, on a congested port), once per pass for recirculated frames and clones; a switch with packets in its pipeline can be destroyed |
+| `p4-transfer-buffer` | `TransferBufferSize`: a congested port holds that many frames after the egress and still sends back to back (v1model, PSA; default 0); a high-priority frame does not overtake the frames in the buffer; a packet that the egress drops does not free a sending port |
 | `p4-bridge-port` | CSMA and point-to-point bridge ports next to a switched-Ethernet port |
 | `p4-pna` | a PNA switch forwards, and drops what its program does not send; a full output queue drops |
 | `link-framing` | Ethernet framing (preamble, FCS, padding, interframe gap) on the switched-Ethernet channel and the P4 point-to-point device; between two hosts, through a switch, and in a switch's estimate for a point-to-point bridge port |

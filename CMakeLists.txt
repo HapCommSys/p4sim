@@ -198,6 +198,7 @@ build_lib(
         test/p4-pna-test-suite.cc
         test/p4-switch-rate-test-suite.cc
         test/p4-pipeline-delay-test-suite.cc
+        test/p4-transfer-buffer-test-suite.cc
         test/p4-config-swap-test-suite.cc
         test/switched-ethernet-host-test-suite.cc
         test/switched-ethernet-tc-test-suite.cc

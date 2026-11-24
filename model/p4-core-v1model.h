@@ -873,16 +873,47 @@ class P4CoreV1model : public P4SwitchCore
      * when the device reports the end of serialisation via PortTxComplete().
      * pendingEvent allows cancellation of a stale dequeue timer;
      * txCompleteEvent is the PortTxComplete() scheduled for a frame that the
-     * device refused, cancelled with the core.
+     * device refused; bufferEvent is the TransmitFromBuffer() that PortTxComplete()
+     * schedules; both are cancelled with the core.
      */
     struct PortTxState
     {
         bool busy{false};
         EventId pendingEvent{};
         EventId txCompleteEvent{};
+        EventId bufferEvent{};
     };
 
     std::unordered_map<uint32_t, PortTxState> m_portTxState;
+
+    /// Whether port \p port could send a frame now: it sends none, and its channel is free
+    bool TransmitterFree(uint32_t port);
+
+    /**
+     * @brief A frame has passed the egress pipeline: append it to the port's
+     * transfer buffer, send the oldest frame if the port is free, and let the
+     * port take its next packet if there is room (see
+     * P4SwitchCore::SetTransferBufferSize()).
+     */
+    void SendOrBuffer(uint32_t port, TransferFrame&& frame);
+
+    /// Send the oldest frame of the port's transfer buffer; the port is busy until
+    /// the device calls PortTxComplete()
+    void TransmitNext(uint32_t port);
+
+    /**
+     * @brief Send the oldest frame of the port's transfer buffer if the port is
+     * free, then let the port take its next packet. PortTxComplete() schedules it
+     * in the same instant: the device calls PortTxComplete() from its end of
+     * transmission, and does not expect a new frame from there.
+     */
+    void TransmitFromBuffer(uint32_t port);
+
+    /**
+     * @brief The egress pipeline dropped or recirculated a packet of \p port:
+     * nothing goes to the port, which may take its next packet.
+     */
+    void EgressDone(uint32_t port);
 
     /// Link rate of port 0, read at startup: seeds the Traffic Manager's PortRate and
     /// appears in log messages. Serialisation is timed by each port's channel.

@@ -171,6 +171,7 @@ P4CoreV1model::~P4CoreV1model()
     {
         Simulator::Cancel(kv.second.pendingEvent);
         Simulator::Cancel(kv.second.txCompleteEvent);
+        Simulator::Cancel(kv.second.bufferEvent);
     }
 
     NS_LOG_INFO("P4CoreV1model destroyed successfully.");
@@ -248,9 +249,9 @@ P4CoreV1model::ScheduleEgressIfNeeded(uint32_t port)
 
     auto& pstate = m_portTxState[port];
 
-    // If the port is already busy transmitting, do nothing: PortTxComplete()
-    // will call EventDrivenEgressDequeue() when the link is free.
-    if (pstate.busy)
+    // If the port can take no packet (it is sending and its transfer buffer is
+    // full), do nothing: PortTxComplete() calls this again when the link is free.
+    if (!PortCanTakePacket(port, TransmitterFree(port)))
     {
         NS_LOG_DEBUG("Port " << port << " busy (awaiting PhyTxEnd) – deferring to PortTxComplete");
         return;
@@ -299,18 +300,12 @@ P4CoreV1model::EventDrivenEgressDequeue(uint32_t port)
     // Clear the pending event handle – we are now executing it.
     pstate.pendingEvent = EventId();
 
-    if (pstate.busy)
+    if (!PortCanTakePacket(port, TransmitterFree(port)))
     {
-        // Should not normally happen, but guard anyway.
+        // A frame is still being serialised on this port and its transfer
+        // buffer is full. The device calls PortTxComplete() when it is done,
+        // which retries the dequeue.
         NS_LOG_DEBUG("Port " << port << " still busy – PortTxComplete will retry");
-        return;
-    }
-    Ptr<SwitchedEthernetChannel> ch = m_switchNetDevice->GetPortChannel(port);
-    if (ch && ch->IsBusy(m_switchNetDevice->GetPortDeviceId(port)))
-    {
-        // Another frame is still being serialised on this port. The device
-        // calls PortTxComplete() when it is done, which retries the dequeue.
-        NS_LOG_DEBUG("Port " << port << ": channel busy, waiting for PortTxComplete");
         return;
     }
 
@@ -415,8 +410,8 @@ P4CoreV1model::EventDrivenEgressDequeue(uint32_t port)
     if (egress_spec == m_dropPort)
     {
         NS_LOG_DEBUG("Dropping packet at the end of egress");
-        // Port is still free; check for more packets.
-        PortTxComplete(static_cast<uint32_t>(out_port));
+        // Nothing goes to the port; check for more packets.
+        EgressDone(static_cast<uint32_t>(out_port));
         return;
     }
 
@@ -444,8 +439,8 @@ P4CoreV1model::EventDrivenEgressDequeue(uint32_t port)
         {
             NS_LOG_WARN("Input buffer full, recirculated packet dropped");
         }
-        // Port is free; try to serve the next queued packet.
-        PortTxComplete(static_cast<uint32_t>(out_port));
+        // Nothing goes to the port; try to serve the next queued packet.
+        EgressDone(static_cast<uint32_t>(out_port));
         return;
     }
 
@@ -458,20 +453,74 @@ P4CoreV1model::EventDrivenEgressDequeue(uint32_t port)
                                                               << ", Size: " << ns_packet->GetSize()
                                                               << " bytes, Port: " << out_port);
 
+    SendOrBuffer(static_cast<uint32_t>(out_port),
+                 TransferFrame{ns_packet, protocol, m_destinationList[addr_index]});
+}
+
+bool
+P4CoreV1model::TransmitterFree(uint32_t port)
+{
+    if (m_portTxState[port].busy)
+    {
+        return false;
+    }
+    Ptr<SwitchedEthernetChannel> ch = m_switchNetDevice->GetPortChannel(port);
+    return !(ch && ch->IsBusy(m_switchNetDevice->GetPortDeviceId(port)));
+}
+
+void
+P4CoreV1model::SendOrBuffer(uint32_t port, TransferFrame&& frame)
+{
+    m_transferBuffers[port].push_back(std::move(frame));
+    if (TransmitterFree(port))
+    {
+        TransmitNext(port);
+    }
+    // With a transfer buffer, the port can take its next packet while it sends
+    ScheduleEgressIfNeeded(port);
+}
+
+void
+P4CoreV1model::TransmitNext(uint32_t port)
+{
+    std::deque<TransferFrame>& buffer = m_transferBuffers[port];
+    TransferFrame frame = std::move(buffer.front());
+    buffer.pop_front();
+
     // Mark the port busy so that any re-entrant Enqueue() correctly sees it as
     // occupied, then transmit. The device calls PortTxComplete() once the
     // channel has serialised the frame.
+    auto& pstate = m_portTxState[port];
     pstate.busy = true;
-
-    if (!m_switchNetDevice->SendNs3Packet(ns_packet,
-                                          static_cast<int>(out_port),
-                                          protocol,
-                                          m_destinationList[addr_index]))
+    if (!m_switchNetDevice->SendNs3Packet(frame.packet,
+                                          static_cast<int>(port),
+                                          frame.protocol,
+                                          frame.destination))
     {
         // Dropped by the device: nothing is on the wire, free the port.
-        pstate.txCompleteEvent = Simulator::ScheduleNow(&P4CoreV1model::PortTxComplete,
-                                                        this,
-                                                        static_cast<uint32_t>(out_port));
+        pstate.txCompleteEvent = Simulator::ScheduleNow(&P4CoreV1model::PortTxComplete, this, port);
+    }
+}
+
+void
+P4CoreV1model::TransmitFromBuffer(uint32_t port)
+{
+    m_portTxState[port].bufferEvent = EventId();
+    if (GetTransferBufferLength(port) > 0 && TransmitterFree(port))
+    {
+        TransmitNext(port);
+    }
+    // The transfer buffer has room again
+    ScheduleEgressIfNeeded(port);
+}
+
+void
+P4CoreV1model::EgressDone(uint32_t port)
+{
+    CheckPendingSwap(); // the egress dropped the packet, or it left for ingress
+    if (egress_buffer.size(port) > 0)
+    {
+        ScheduleEgressIfNeeded(port);
     }
 }
 
@@ -483,12 +532,22 @@ void
 P4CoreV1model::PortTxComplete(uint32_t port)
 {
     NS_LOG_FUNCTION(this << port);
-    CheckPendingSwap(); // also called for a packet that the egress dropped
+    CheckPendingSwap(); // a frame left the port, or the device refused it
 
     auto& pstate = m_portTxState[port];
     pstate.busy = false;
 
-    if (egress_buffer.size(port) > 0)
+    if (GetTransferBufferLength(port) > 0)
+    {
+        // The next frame waits in the transfer buffer: send it in this instant,
+        // after the device has finished its end of transmission
+        if (!P4simIsPending(pstate.bufferEvent))
+        {
+            pstate.bufferEvent =
+                Simulator::ScheduleNow(&P4CoreV1model::TransmitFromBuffer, this, port);
+        }
+    }
+    else if (egress_buffer.size(port) > 0)
     {
         NS_LOG_DEBUG("Port " << port
                              << ": PortTxComplete – queued packets remain in egress_buffer,"
