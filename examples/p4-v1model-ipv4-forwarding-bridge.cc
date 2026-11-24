@@ -245,6 +245,11 @@ main(int argc, char* argv[])
     std::string topoInput = p4SrcDir + "/topo.txt";
     std::string topoFormat("p2pTopo"); // p2pTopo
 
+    // ns-3's ARP sends a request after a random delay of up to 10 ms and keeps
+    // only 3 packets waiting for the reply: at 3 Mbps a fourth one can come and
+    // is dropped. Keep up to 100, close to Linux (unres_qlen 101).
+    Config::SetDefault("ns3::ArpCache::PendingQueueSize", UintegerValue(100));
+
     // ============================  command line ============================
     CommandLine cmd;
     cmd.AddValue("pktSize", "Application payload size in bytes (default 1000)", pktSize);

@@ -103,6 +103,3 @@ line (bridge ports only, the old timing model) and gets no more changes.
     `mirroring_mapping_delete`, which the `psa_switch` service does not have;
     and the CLI does not import `InvalidMirroringOperation`, so any failed
     mirroring command raises a `NameError`. Both end the CLI.
-- **The last lost packet of the examples** (PDR 99.911 %) is ns-3's ARP: its
-  pending queue holds 3 packets. Not p4sim; the examples could enlarge
-  `ArpCache::PendingQueueSize`.
