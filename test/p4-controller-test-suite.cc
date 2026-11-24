@@ -383,6 +383,71 @@ class P4ControllerMeterTestCase : public P4TestCase
 
 /**
  * \ingroup p4sim-tests
+ * A call of P4RuntimeApi with a null output argument fails (-1) and leaves the
+ * switch as it was, also through P4Controller.
+ */
+class P4RuntimeApiNullOutputTestCase : public P4TestCase
+{
+  public:
+    P4RuntimeApiNullOutputTestCase()
+        : P4TestCase("P4RuntimeApi: a null output argument gives -1")
+    {
+    }
+
+  private:
+    void DoRun() override
+    {
+        SetDataDir(NS_TEST_SOURCEDIR);
+        Ptr<P4SwitchNetDevice> sw =
+            CreateSwitch(CreateDataDirFilename("p4src/controller/controller_v1model.json"), "");
+        Ptr<P4SwitchNetDevice> profileSw =
+            CreateSwitch(CreateDataDirFilename("p4src/action_profile_v1model/action-profile.json"),
+                         "");
+        P4RuntimeApi api(*sw->GetCore());
+        P4RuntimeApi profileApi(*profileSw->GetCore());
+        const std::string table = "MyIngress.mac_port";
+        std::vector<bm::MatchKeyParam> key = {
+            bm::MatchKeyParam(bm::MatchKeyParam::Type::EXACT, std::string("\0\0\0\0\0\x02", 6))};
+
+        NS_TEST_EXPECT_MSG_EQ(
+            api.AddFlowEntry(table, key, "MyIngress.to_port", OneValue(1), nullptr),
+            -1,
+            "AddFlowEntry");
+        NS_TEST_EXPECT_MSG_EQ(api.GetNumEntries(table), 0, "AddFlowEntry added an entry");
+        NS_TEST_EXPECT_MSG_EQ(api.GetEntry(table, 0, nullptr), -1, "GetEntry");
+        NS_TEST_EXPECT_MSG_EQ(api.GetDefaultEntry(table, nullptr), -1, "GetDefaultEntry");
+        NS_TEST_EXPECT_MSG_EQ(api.GetEntryFromKey(table, key, nullptr), -1, "GetEntryFromKey");
+        NS_TEST_EXPECT_MSG_EQ(api.MeterGetRates("MyIngress.port_meter", 0, nullptr),
+                              -1,
+                              "MeterGetRates");
+        NS_TEST_EXPECT_MSG_EQ(api.RegisterRead("MyIngress.none", 0, nullptr), -1, "RegisterRead");
+        NS_TEST_EXPECT_MSG_EQ(api.Serialize(nullptr), -1, "Serialize");
+        NS_TEST_EXPECT_MSG_EQ(api.GetConfig(nullptr), -1, "GetConfig");
+
+        const std::string profile = "action_profile_1";
+        NS_TEST_EXPECT_MSG_EQ(
+            profileApi.AddActionProfileMember(profile, "cIngress.foo1", OneValue(1), nullptr),
+            -1,
+            "AddActionProfileMember");
+        NS_TEST_EXPECT_MSG_EQ(profileApi.CreateActionProfileGroup(profile, nullptr),
+                              -1,
+                              "CreateActionProfileGroup");
+        NS_TEST_EXPECT_MSG_EQ(profileApi.GetActionProfileMembers(profile, nullptr),
+                              -1,
+                              "GetActionProfileMembers");
+        std::vector<bm::ActionProfile::Member> members;
+        profileApi.GetActionProfileMembers(profile, &members);
+        NS_TEST_EXPECT_MSG_EQ(members.size(), 0u, "AddActionProfileMember added a member");
+
+        // P4Controller passes the caller's stream on
+        P4Controller controller;
+        controller.RegisterSwitch(sw);
+        controller.Serialize(0, nullptr);
+    }
+};
+
+/**
+ * \ingroup p4sim-tests
  * Mirroring sessions: added to a port and to a multicast group, read, and
  * deleted, like mirroring_add, mirroring_add_mc, mirroring_get and
  * mirroring_delete of simple_switch_CLI.
@@ -769,6 +834,7 @@ class P4ControllerTestSuite : public TestSuite
         AddTestCase(new P4ControllerFlowEntryTestCase, P4SIM_TEST_QUICK);
         AddTestCase(new P4ControllerActionProfileTestCase, P4SIM_TEST_QUICK);
         AddTestCase(new P4ControllerMeterTestCase, P4SIM_TEST_QUICK);
+        AddTestCase(new P4RuntimeApiNullOutputTestCase, P4SIM_TEST_QUICK);
         AddTestCase(new P4ControllerArchFlowEntryTestCase("PSA",
                                                           P4SWITCH_ARCH_PSA,
                                                           "controller_psa.json",

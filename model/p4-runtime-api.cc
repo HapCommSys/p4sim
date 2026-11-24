@@ -163,6 +163,18 @@ RuntimeErrorCodeToStr(bm::RuntimeInterface::ErrorCode rc)
     }
 }
 
+/// Whether \p out, an output argument of \p call, is null; logs it if so
+static bool
+IsNullOutput(const void* out, const char* call)
+{
+    if (out == nullptr)
+    {
+        NS_LOG_WARN(call << ": the output argument is null");
+        return true;
+    }
+    return false;
+}
+
 P4RuntimeApi::P4RuntimeApi(bm::RuntimeInterface& sw)
     : m_sw(sw)
 {
@@ -201,6 +213,10 @@ P4RuntimeApi::AddFlowEntry(const std::string& tableName,
                            bm::entry_handle_t* handle,
                            int priority)
 {
+    if (IsNullOutput(handle, "AddFlowEntry"))
+    {
+        return -1;
+    }
     bm::MatchErrorCode rc = m_sw.mt_add_entry(0, // context ID
                                               tableName,
                                               matchKey,
@@ -211,8 +227,8 @@ P4RuntimeApi::AddFlowEntry(const std::string& tableName,
 
     if (rc != bm::MatchErrorCode::SUCCESS)
     {
-        std::cout << "AddFlowEntry failed for table " << tableName << " with error code "
-                  << MatchErrorCodeToStr(rc);
+        NS_LOG_WARN("AddFlowEntry failed for table " << tableName << " with error code "
+                                                     << MatchErrorCodeToStr(rc));
         return -1;
     }
 
@@ -262,9 +278,9 @@ P4RuntimeApi::DeleteFlowEntry(const std::string& tableName, bm::entry_handle_t h
 
     if (rc != bm::MatchErrorCode::SUCCESS)
     {
-        std::cout << "DeleteFlowEntry failed for table " << tableName << " and handle " << handle
-                  << " with code " << static_cast<int>(rc) << " (" << MatchErrorCodeToStr(rc)
-                  << ")";
+        NS_LOG_WARN("DeleteFlowEntry failed for table " << tableName << " and handle " << handle
+                                                        << " with code " << static_cast<int>(rc)
+                                                        << " (" << MatchErrorCodeToStr(rc) << ")");
         return -1;
     }
 
@@ -300,9 +316,9 @@ P4RuntimeApi::SetEntryTtl(const std::string& tableName,
 
     if (rc != bm::MatchErrorCode::SUCCESS)
     {
-        std::cout << "SetEntryTtl failed for table " << tableName << ", handle " << handle
-                  << " with code " << static_cast<int>(rc) << " (" << MatchErrorCodeToStr(rc)
-                  << ")";
+        NS_LOG_WARN("SetEntryTtl failed for table " << tableName << ", handle " << handle
+                                                    << " with code " << static_cast<int>(rc) << " ("
+                                                    << MatchErrorCodeToStr(rc) << ")");
         return -1;
     }
 
@@ -317,6 +333,10 @@ P4RuntimeApi::AddActionProfileMember(const std::string& profileName,
                                      bm::ActionData&& actionData,
                                      bm::ActionProfile::mbr_hdl_t* outHandle)
 {
+    if (IsNullOutput(outHandle, "AddActionProfileMember"))
+    {
+        return -1;
+    }
     bm::MatchErrorCode rc =
         m_sw.mt_act_prof_add_member(0, profileName, actionName, std::move(actionData), outHandle);
 
@@ -376,6 +396,10 @@ int
 P4RuntimeApi::CreateActionProfileGroup(const std::string& profileName,
                                        bm::ActionProfile::grp_hdl_t* outHandle)
 {
+    if (IsNullOutput(outHandle, "CreateActionProfileGroup"))
+    {
+        return -1;
+    }
     bm::MatchErrorCode rc = m_sw.mt_act_prof_create_group(0, profileName, outHandle);
     if (rc != bm::MatchErrorCode::SUCCESS)
     {
@@ -439,6 +463,10 @@ int
 P4RuntimeApi::GetActionProfileMembers(const std::string& profileName,
                                       std::vector<bm::ActionProfile::Member>* members)
 {
+    if (IsNullOutput(members, "GetActionProfileMembers"))
+    {
+        return -1;
+    }
     *members = m_sw.mt_act_prof_get_members(0, profileName);
     return 0;
 }
@@ -448,6 +476,10 @@ P4RuntimeApi::GetActionProfileMember(const std::string& profileName,
                                      bm::ActionProfile::mbr_hdl_t memberHandle,
                                      bm::ActionProfile::Member* member)
 {
+    if (IsNullOutput(member, "GetActionProfileMember"))
+    {
+        return -1;
+    }
     bm::MatchErrorCode rc = m_sw.mt_act_prof_get_member(0, profileName, memberHandle, member);
 
     if (rc != bm::MatchErrorCode::SUCCESS)
@@ -463,6 +495,10 @@ int
 P4RuntimeApi::GetActionProfileGroups(const std::string& profileName,
                                      std::vector<bm::ActionProfile::Group>* groups)
 {
+    if (IsNullOutput(groups, "GetActionProfileGroups"))
+    {
+        return -1;
+    }
     *groups = m_sw.mt_act_prof_get_groups(0, profileName);
     return 0;
 }
@@ -472,6 +508,10 @@ P4RuntimeApi::GetActionProfileGroup(const std::string& profileName,
                                     bm::ActionProfile::grp_hdl_t groupHandle,
                                     bm::ActionProfile::Group* group)
 {
+    if (IsNullOutput(group, "GetActionProfileGroup"))
+    {
+        return -1;
+    }
     bm::MatchErrorCode rc = m_sw.mt_act_prof_get_group(0, profileName, groupHandle, group);
 
     if (rc != bm::MatchErrorCode::SUCCESS)
@@ -493,6 +533,10 @@ P4RuntimeApi::AddIndirectEntry(const std::string& tableName,
                                bm::entry_handle_t* outHandle,
                                int priority)
 {
+    if (IsNullOutput(outHandle, "AddIndirectEntry"))
+    {
+        return -1;
+    }
     bm::MatchErrorCode rc =
         m_sw.mt_indirect_add_entry(0, tableName, matchKey, memberHandle, outHandle, priority);
 
@@ -602,6 +646,10 @@ P4RuntimeApi::AddIndirectWsEntry(const std::string& tableName,
                                  bm::entry_handle_t* outHandle,
                                  int priority)
 {
+    if (IsNullOutput(outHandle, "AddIndirectWsEntry"))
+    {
+        return -1;
+    }
     bm::MatchErrorCode rc =
         m_sw.mt_indirect_ws_add_entry(0, tableName, matchKey, groupHandle, outHandle, priority);
 
@@ -702,6 +750,10 @@ P4RuntimeApi::GetEntry(const std::string& tableName,
                        bm::entry_handle_t handle,
                        bm::MatchTable::Entry* entry)
 {
+    if (IsNullOutput(entry, "GetEntry"))
+    {
+        return -1;
+    }
     bm::MatchErrorCode rc = m_sw.mt_get_entry(0, tableName, handle, entry);
     if (rc != bm::MatchErrorCode::SUCCESS)
     {
@@ -717,6 +769,10 @@ P4RuntimeApi::GetIndirectEntry(const std::string& tableName,
                                bm::entry_handle_t handle,
                                bm::MatchTableIndirect::Entry* entry)
 {
+    if (IsNullOutput(entry, "GetIndirectEntry"))
+    {
+        return -1;
+    }
     bm::MatchErrorCode rc = m_sw.mt_indirect_get_entry(0, tableName, handle, entry);
     if (rc != bm::MatchErrorCode::SUCCESS)
     {
@@ -732,6 +788,10 @@ P4RuntimeApi::GetIndirectWsEntry(const std::string& tableName,
                                  bm::entry_handle_t handle,
                                  bm::MatchTableIndirectWS::Entry* entry)
 {
+    if (IsNullOutput(entry, "GetIndirectWsEntry"))
+    {
+        return -1;
+    }
     bm::MatchErrorCode rc = m_sw.mt_indirect_ws_get_entry(0, tableName, handle, entry);
     if (rc != bm::MatchErrorCode::SUCCESS)
     {
@@ -745,6 +805,10 @@ P4RuntimeApi::GetIndirectWsEntry(const std::string& tableName,
 int
 P4RuntimeApi::GetDefaultEntry(const std::string& tableName, bm::MatchTable::Entry* entry)
 {
+    if (IsNullOutput(entry, "GetDefaultEntry"))
+    {
+        return -1;
+    }
     bm::MatchErrorCode rc = m_sw.mt_get_default_entry(0, tableName, entry);
     if (rc != bm::MatchErrorCode::SUCCESS)
     {
@@ -759,6 +823,10 @@ int
 P4RuntimeApi::GetIndirectDefaultEntry(const std::string& tableName,
                                       bm::MatchTableIndirect::Entry* entry)
 {
+    if (IsNullOutput(entry, "GetIndirectDefaultEntry"))
+    {
+        return -1;
+    }
     bm::MatchErrorCode rc = m_sw.mt_indirect_get_default_entry(0, tableName, entry);
     if (rc != bm::MatchErrorCode::SUCCESS)
     {
@@ -773,6 +841,10 @@ int
 P4RuntimeApi::GetIndirectWsDefaultEntry(const std::string& tableName,
                                         bm::MatchTableIndirectWS::Entry* entry)
 {
+    if (IsNullOutput(entry, "GetIndirectWsDefaultEntry"))
+    {
+        return -1;
+    }
     bm::MatchErrorCode rc = m_sw.mt_indirect_ws_get_default_entry(0, tableName, entry);
     if (rc != bm::MatchErrorCode::SUCCESS)
     {
@@ -789,6 +861,10 @@ P4RuntimeApi::GetEntryFromKey(const std::string& tableName,
                               bm::MatchTable::Entry* entry,
                               int priority)
 {
+    if (IsNullOutput(entry, "GetEntryFromKey"))
+    {
+        return -1;
+    }
     bm::MatchErrorCode rc = m_sw.mt_get_entry_from_key(0, tableName, matchKey, entry, priority);
     if (rc != bm::MatchErrorCode::SUCCESS)
     {
@@ -805,6 +881,10 @@ P4RuntimeApi::GetIndirectEntryFromKey(const std::string& tableName,
                                       bm::MatchTableIndirect::Entry* entry,
                                       int priority)
 {
+    if (IsNullOutput(entry, "GetIndirectEntryFromKey"))
+    {
+        return -1;
+    }
     bm::MatchErrorCode rc =
         m_sw.mt_indirect_get_entry_from_key(0, tableName, matchKey, entry, priority);
     if (rc != bm::MatchErrorCode::SUCCESS)
@@ -822,6 +902,10 @@ P4RuntimeApi::GetIndirectWsEntryFromKey(const std::string& tableName,
                                         bm::MatchTableIndirectWS::Entry* entry,
                                         int priority)
 {
+    if (IsNullOutput(entry, "GetIndirectWsEntryFromKey"))
+    {
+        return -1;
+    }
     bm::MatchErrorCode rc =
         m_sw.mt_indirect_ws_get_entry_from_key(0, tableName, matchKey, entry, priority);
     if (rc != bm::MatchErrorCode::SUCCESS)
@@ -840,6 +924,10 @@ P4RuntimeApi::ReadTableCounters(const std::string& tableName,
                                 uint64_t* bytes,
                                 uint64_t* packets)
 {
+    if (IsNullOutput(bytes, "ReadTableCounters") || IsNullOutput(packets, "ReadTableCounters"))
+    {
+        return -1;
+    }
     bm::MatchErrorCode rc = m_sw.mt_read_counters(0, tableName, handle, bytes, packets);
     if (rc != bm::MatchErrorCode::SUCCESS)
     {
@@ -887,6 +975,10 @@ P4RuntimeApi::ReadCounter(const std::string& counterName,
                           bm::MatchTableAbstract::counter_value_t* bytes,
                           bm::MatchTableAbstract::counter_value_t* packets)
 {
+    if (IsNullOutput(bytes, "ReadCounter") || IsNullOutput(packets, "ReadCounter"))
+    {
+        return -1;
+    }
     auto rc = m_sw.read_counters(0, counterName, index, bytes, packets); // cxt_id = 0
     if (rc == bm::Counter::CounterErrorCode::SUCCESS)
     {
@@ -968,6 +1060,10 @@ P4RuntimeApi::GetMeterRates(const std::string& tableName,
                             bm::entry_handle_t handle,
                             std::vector<bm::Meter::rate_config_t>* configs)
 {
+    if (IsNullOutput(configs, "GetMeterRates"))
+    {
+        return -1;
+    }
     bm::MatchErrorCode rc = m_sw.mt_get_meter_rates(0, tableName, handle, configs);
 
     if (rc != bm::MatchErrorCode::SUCCESS)
@@ -1033,6 +1129,10 @@ P4RuntimeApi::MeterGetRates(const std::string& meterName,
                             size_t idx,
                             std::vector<bm::Meter::rate_config_t>* configs)
 {
+    if (IsNullOutput(configs, "MeterGetRates"))
+    {
+        return -1;
+    }
     bm::Meter::MeterErrorCode rc = m_sw.meter_get_rates(0, meterName, idx, configs);
 
     if (rc != bm::Meter::MeterErrorCode::SUCCESS)
@@ -1064,6 +1164,10 @@ P4RuntimeApi::MeterResetRates(const std::string& meterName, size_t idx)
 int
 P4RuntimeApi::RegisterRead(const std::string& registerName, size_t index, bm::Data* value)
 {
+    if (IsNullOutput(value, "RegisterRead"))
+    {
+        return -1;
+    }
     bm::Register::RegisterErrorCode rc = m_sw.register_read(0, registerName, index, value);
     if (rc != bm::Register::RegisterErrorCode::SUCCESS)
     {
@@ -1153,6 +1257,10 @@ P4RuntimeApi::ParseVsetRemove(const std::string& vsetName, const bm::ByteContain
 int
 P4RuntimeApi::ParseVsetGet(const std::string& vsetName, std::vector<bm::ByteContainer>* values)
 {
+    if (IsNullOutput(values, "ParseVsetGet"))
+    {
+        return -1;
+    }
     bm::ParseVSet::ErrorCode rc = m_sw.parse_vset_get(0, vsetName, values);
     if (rc != bm::ParseVSet::SUCCESS)
     {
@@ -1189,6 +1297,10 @@ P4RuntimeApi::ResetState()
 int
 P4RuntimeApi::Serialize(std::ostream* out)
 {
+    if (IsNullOutput(out, "Serialize"))
+    {
+        return -1;
+    }
     bm::RuntimeInterface::ErrorCode rc = m_sw.serialize(out);
     if (rc != bm::RuntimeInterface::SUCCESS)
     {

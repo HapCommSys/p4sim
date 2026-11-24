@@ -31,7 +31,8 @@ namespace ns3
  * It works on the core of any architecture (v1model, PSA, PNA, pipeline),
  * through BMv2's bm::RuntimeInterface, on context 0. A call that returns an int
  * returns -1 on failure (GetNumEntries() the number of entries, the others 0 on
- * success) and reports the BMv2 error code. P4Controller uses it; a simulation
+ * success) and logs the BMv2 error code; a null output argument is a failure
+ * too. P4Controller uses it; a simulation
  * can also use it directly:
  *
  * @code
