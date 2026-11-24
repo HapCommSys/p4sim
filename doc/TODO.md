@@ -82,8 +82,6 @@ line (bridge ports only, the old timing model) and gets no more changes.
   handlers check; document that the CLI is for before and after the simulation,
   and `P4Controller` for changes during it.
 - **Smaller gaps, to do when a test or user needs them:**
-  - byte queue limits on host devices (`TrafficControlHelper::SetQueueLimits()`)
-    should work since #42, but are not tested;
   - a configurable drop port (all switches of a simulation would share it);
   - a mirroring session with both a port and a multicast group;
   - the other PRE commands of `simple_switch_CLI` in the STF harness

@@ -15,7 +15,7 @@ No environment variable is needed, and suites can run in parallel.
 
 ## Suites
 
-18 suites, 113 test cases. The first seven do not need BMv2.
+18 suites, 115 test cases. The first seven do not need BMv2.
 
 | Suite | Checks |
 |---|---|
@@ -36,7 +36,7 @@ No environment variable is needed, and suites can run in parallel.
 | `p4-bridge-port` | CSMA and point-to-point bridge ports next to a switched-Ethernet port |
 | `p4-pna` | a PNA switch forwards, and drops what its program does not send; a full output queue drops |
 | `link-framing` | Ethernet framing (preamble, FCS, padding, interframe gap) on the switched-Ethernet channel and the P4 point-to-point device; between two hosts, through a switch, and in a switch's estimate for a point-to-point bridge port |
-| `switched-ethernet-traffic-control` | flow control on host devices: a queue disc schedules the backlog of a host, `FqCoDelQueueDisc` is the default, `DisableFlowControl()` installs none |
+| `switched-ethernet-traffic-control` | flow control on host devices: a queue disc schedules the backlog of a host, `FqCoDelQueueDisc` is the default, `DisableFlowControl()` installs none; byte queue limits (`SetQueueLimits()`) keep the backlog in the queue disc even when the device queue has room |
 
 `p4-controller` also needs `simple_switch_CLI` and `psa_switch_CLI`, `p4-config-swap`
 `simple_switch_CLI`.

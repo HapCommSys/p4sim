@@ -366,7 +366,7 @@ Troubleshooting
 Validation
 **********
 
-The module has 18 test suites with 113 test cases, from unit tests of
+The module has 18 test suites with 115 test cases, from unit tests of
 single classes to packet tests that send frames through a switch and check the
 frames that leave it (``p4-packet``, with test files in the format of p4c's
 STF).  Among them:
