@@ -2,6 +2,7 @@
 
 #include "ns3/core-module.h"
 #include "ns3/log.h"
+#include <algorithm>
 #include <iostream>
 #include <optional>
 
@@ -37,22 +38,33 @@ P4Controller::~P4Controller() {
   NS_LOG_FUNCTION(this);
   // The switches may outlive the controller
   for (uint32_t i = 0; i < m_connectedSwitches.size(); ++i) {
-    if (m_connectedSwitches[i]) {
-      m_connectedSwitches[i]->TraceDisconnect(
-          "Digest", std::to_string(i),
-          MakeCallback(&P4Controller::HandleDigest, this));
-    }
+    m_connectedSwitches[i]->TraceDisconnectWithoutContext("Digest",
+                                                          DigestSink(i));
   }
 }
 
 void P4Controller::RegisterSwitch(ns3::Ptr<ns3::P4SwitchNetDevice> sw) {
-  m_connectedSwitches.push_back(sw);
-  if (sw) {
-    // The context of the digests is the index of the switch
-    sw->TraceConnect("Digest", std::to_string(m_connectedSwitches.size() - 1),
-                     MakeCallback(&P4Controller::HandleDigest, this));
+  if (!sw) {
+    NS_LOG_WARN("RegisterSwitch: a null switch is not registered");
+    return;
   }
+  if (std::find(m_connectedSwitches.begin(), m_connectedSwitches.end(), sw) !=
+      m_connectedSwitches.end()) {
+    NS_LOG_WARN("RegisterSwitch: the switch is already registered");
+    return;
+  }
+  m_connectedSwitches.push_back(sw);
+  sw->TraceConnectWithoutContext("Digest",
+                                 DigestSink(m_connectedSwitches.size() - 1));
   NS_LOG_INFO("Switch registered successfully");
+}
+
+Callback<void, const P4Digest &> P4Controller::DigestSink(uint32_t index) {
+  // The index is bound as a value: ns-3.39's Callback::Bind() compares a bound
+  // variable by reference, so a callback bound to one (or connected with a
+  // context string) never compares equal again, and TraceDisconnect() would
+  // leave it connected (fixed in later ns-3 releases)
+  return MakeCallback(&P4Controller::HandleDigest, this).Bind(uint32_t{index});
 }
 
 void P4Controller::SetDigestCallback(
@@ -60,8 +72,7 @@ void P4Controller::SetDigestCallback(
   m_digestCallback = cb;
 }
 
-void P4Controller::HandleDigest(std::string context, const P4Digest &digest) {
-  uint32_t index = static_cast<uint32_t>(std::stoul(context));
+void P4Controller::HandleDigest(uint32_t index, const P4Digest &digest) {
   NS_LOG_INFO("Digest from switch " << index << ": " << digest);
   if (!m_digestCallback.IsNull()) {
     m_digestCallback(index, digest);

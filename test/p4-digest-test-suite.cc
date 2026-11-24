@@ -319,6 +319,52 @@ class DigestSwapTestCase : public DigestTestCase
     }
 };
 
+/**
+ * \ingroup p4sim-tests
+ * A controller that is destroyed before its switch gets none of the switch's
+ * later digests. A switch registered twice, or a null switch, is registered
+ * once, or not at all.
+ */
+class DigestControllerLifetimeTestCase : public DigestTestCase
+{
+  public:
+    DigestControllerLifetimeTestCase()
+        : DigestTestCase("P4Controller: a destroyed controller gets no digests; each switch is "
+                         "registered once")
+    {
+    }
+
+  private:
+    /// The digest callback: counts the calls
+    static void Count(uint32_t* calls, uint32_t, const P4Digest&)
+    {
+        (*calls)++;
+    }
+
+    void DoRun() override
+    {
+        CreateSwitch("l2_learning", P4SWITCH_ARCH_V1MODEL);
+        uint32_t calls = 0;
+        {
+            P4Controller controller;
+            controller.RegisterSwitch(m_sw);
+            controller.RegisterSwitch(m_sw);    // already registered
+            controller.RegisterSwitch(nullptr); // null
+            NS_TEST_EXPECT_MSG_EQ(controller.GetN(), 1u, "The switch should be registered once");
+            controller.SetDigestCallback(MakeBoundCallback(&Count, &calls));
+            Send(MilliSeconds(1), 1, HostMac(0));
+            Simulator::Stop(MilliSeconds(5));
+            Simulator::Run();
+            NS_TEST_EXPECT_MSG_EQ(calls, 1u, "One digest() should reach the callback once");
+        } // the controller is destroyed, the switch is not
+        Send(MilliSeconds(1), 2, HostMac(0));
+        Simulator::Stop(MilliSeconds(5));
+        Simulator::Run();
+        NS_TEST_EXPECT_MSG_EQ(m_digests.size(), 2u, "The switch should send its second digest");
+        NS_TEST_EXPECT_MSG_EQ(calls, 1u, "The destroyed controller should get no digest");
+    }
+};
+
 } // namespace
 
 /**
@@ -335,5 +381,6 @@ static class P4DigestTestSuite : public TestSuite
         AddTestCase(new DigestRecordTestCase("pipeline", P4SWITCH_ARCH_PIPELINE), P4SIM_TEST_QUICK);
         AddTestCase(new DigestLearningTestCase, P4SIM_TEST_QUICK);
         AddTestCase(new DigestSwapTestCase, P4SIM_TEST_QUICK);
+        AddTestCase(new DigestControllerLifetimeTestCase, P4SIM_TEST_QUICK);
     }
 } g_p4DigestTestSuite; //!< Static variable for test initialization

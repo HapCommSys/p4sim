@@ -50,6 +50,8 @@ public:
   /**
    * @brief Register P4 Switch with the controller. Its index is the number of
    * switches registered before it. Its digests reach the digest callback.
+   * A null switch, or one that is already registered, is not registered (a
+   * warning is logged).
    */
   void RegisterSwitch(ns3::Ptr<ns3::P4SwitchNetDevice> sw);
 
@@ -829,8 +831,11 @@ private:
 
   std::vector<ns3::Ptr<ns3::P4SwitchNetDevice>> m_connectedSwitches;
 
-  /// A registered switch sent a digest; \p context is its index
-  void HandleDigest(std::string context, const P4Digest &digest);
+  /// Registered switch \p index sent a digest
+  void HandleDigest(uint32_t index, const P4Digest &digest);
+
+  /// The sink of the Digest trace of registered switch \p index
+  Callback<void, const P4Digest &> DigestSink(uint32_t index);
 
   /// Gets the digests of the registered switches (see SetDigestCallback())
   Callback<void, uint32_t, const P4Digest &> m_digestCallback;
