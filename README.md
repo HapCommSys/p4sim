@@ -53,6 +53,8 @@ The following steps set up a local environment to run P4sim with **ns-3.39** on 
 
 > **Other ns-3 releases:** for ns-3.40 to ns-3.49, check out that tag in Step 3 (for example `git checkout ns-3.49`). From ns-3.41 on, ns-3 builds as C++20 or C++23, and the spdlog that BMv2 bundles does not compile as C++20; P4sim then builds with a copy of these headers that has the fix ([patches/bmv2-spdlog-cxx20.patch](patches/bmv2-spdlog-cxx20.patch)). The installed BMv2 is not changed.
 
+> **Ubuntu 26.04:** P4sim runs there with BMv2 1.15.8 built from source and ns-3.49 (tested). ns-3.39's `./ns3` script does not run on Python 3.14, the Python of Ubuntu 26.04.
+
 ### Step 1: Initialize the Working Directory
 
 ```bash
