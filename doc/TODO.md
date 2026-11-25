@@ -61,6 +61,12 @@ line (bridge ports only, the old timing model) and gets no more changes.
   - PNA has no Thrift service of its own (BMv2's `pna_nic` has one, for the
     time commands of `pna_nic_CLI`); its `FlowTablePath` runs in `bm_CLI`.
   - `P4Controller` works on v1model switches only.
+- **The pipeline core** (`P4SwitchArch` 3) ignores `mcast_grp`, clones,
+  resubmit and recirculation, without a warning: a v1model program that floods
+  (L2 learning, for example) sends nothing. Proposal: give it the packet
+  replication engine of v1model (the `McSimplePreLAG` component, so that the
+  `mc_*` commands of `simple_switch_CLI` work) and an egress pass per copy;
+  meanwhile, log a warning when a packet asks for one of them.
 - **`PipelineDelay` follow-ups (#59).**
   - No separate egress delay (decided November 2026): one delay before the TM is
     enough. With the same total and a port that takes its packets early enough
