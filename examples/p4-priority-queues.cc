@@ -15,22 +15,19 @@
  *   host1 (10.1.1.2) ──1 Gbps──┘
  *
  * host0 sends a small flow (2 Mbps) to UDP port 5000, host1 a bulk flow
- * (140 Mbps) to UDP port 6000, so the port to host2 is congested. The P4
- * program (queueing.p4) maps UDP port 5000 to priority 7, which the switch
- * serves first: the small flow passes the congestion with almost no queueing
- * delay, while the bulk flow fills queue 0 and loses what does not fit. A
- * packet of the small flow only waits for the bulk packet on the wire, at most
- * 83 us (1042 bytes at 100 Mbps): strict priority does not pre-empt. With
- * --priority=0 the classification table is emptied before the simulation
- * starts: both flows share queue 0, and the small flow waits behind the bulk
- * and loses packets too. How many is a matter of timing, not of the queue: both
- * sources send at a constant rate, so whether a packet of the small flow finds
- * the queue full depends on when it arrives relative to the bulk packets. With
- * the defaults the small flow loses 35% of its packets, close to the bulk
- * flow's 32%, but only because both flows start at the same time: starting it 3
- * to 79 us later gives 38% to 96%, while the bulk flow still loses 31% to 32%.
- * Other rates vary in the same way. With the priority, the small flow loses
- * nothing.
+ * (140 Mbps) to UDP port 6000, so the port to host2 is congested. Both send
+ * with random times between the packets (Poisson arrivals). The P4 program
+ * (queueing.p4) maps UDP port 5000 to priority 7, which the switch serves
+ * first: the small flow passes the congestion with almost no queueing delay,
+ * while the bulk flow fills queue 0 and loses what does not fit. A packet of
+ * the small flow waits only for the packet on the wire, at most 83 us (1042
+ * bytes at 100 Mbps; strict priority does not pre-empt), and for packets of its
+ * own flow that came just before it. With --priority=0 the classification table
+ * is emptied before the simulation starts: both flows share queue 0, so the
+ * small flow waits behind the bulk and loses about the same share of its
+ * packets. (With constant rates instead of random times, all its packets would
+ * arrive at nearly the same point between two bulk packets, and its loss would
+ * depend on where that point is.) --RngRun changes the random times.
  *
  * The receiver measures the one-way delay of every packet from the time its
  * sender wrote into it (SeqTsSizeHeader). The P4 program counts, per queue,
@@ -67,11 +64,61 @@ struct Flow
     std::vector<Time> delay; ///< one-way delay of each packet received
 };
 
-void
-Sent(Flow* flow, Ptr<const Packet>)
+/// Sends UDP packets of 1000 bytes with random times between them (Poisson
+/// arrivals). Each packet carries the time it was sent (SeqTsSizeHeader).
+class PoissonSource : public Application
 {
-    flow->sent++;
-}
+  public:
+    PoissonSource(const Address& to, DataRate rate, int64_t stream, Flow* flow)
+        : m_to(to),
+          m_meanInterval(rate.CalculateBytesTxTime(PACKET_SIZE)),
+          m_flow(flow),
+          m_interval(CreateObject<ExponentialRandomVariable>())
+    {
+        m_interval->SetStream(stream);
+    }
+
+  private:
+    static constexpr uint32_t PACKET_SIZE = 1000; ///< bytes, UDP payload
+
+    void StartApplication() override
+    {
+        m_socket = Socket::CreateSocket(GetNode(), UdpSocketFactory::GetTypeId());
+        m_socket->Connect(m_to);
+        ScheduleNext();
+    }
+
+    void StopApplication() override
+    {
+        m_next.Cancel();
+        m_socket->Close();
+    }
+
+    void ScheduleNext()
+    {
+        Time wait = Seconds(m_interval->GetValue(m_meanInterval.GetSeconds(), 0));
+        m_next = Simulator::Schedule(wait, &PoissonSource::Send, this);
+    }
+
+    void Send()
+    {
+        SeqTsSizeHeader header;
+        header.SetSeq(m_flow->sent);
+        header.SetSize(PACKET_SIZE);
+        Ptr<Packet> packet = Create<Packet>(PACKET_SIZE - header.GetSerializedSize());
+        packet->AddHeader(header);
+        m_socket->Send(packet);
+        m_flow->sent++;
+        ScheduleNext();
+    }
+
+    Address m_to;                              ///< destination
+    Time m_meanInterval;                       ///< mean time between two packets
+    Flow* m_flow;                              ///< counts the packets
+    Ptr<ExponentialRandomVariable> m_interval; ///< time between two packets
+    Ptr<Socket> m_socket;                      ///< UDP socket
+    EventId m_next;                            ///< the next packet
+};
 
 void
 Received(Flow* flow, Ptr<const Packet>, const Address&, const Address&, const SeqTsSizeHeader& h)
@@ -118,7 +165,7 @@ main(int argc, char* argv[])
 {
     bool priority = true;
     std::string bulkRate = "140Mbps";
-    double seconds = 1.0;
+    double seconds = 4.0;
     CommandLine cmd;
     cmd.AddValue("priority",
                  "Map UDP port 5000 to priority 7 (0: all packets in queue 0)",
@@ -171,14 +218,14 @@ main(int argc, char* argv[])
         sinkApp.Get(0)->TraceConnectWithoutContext("RxWithSeqTsSize",
                                                    MakeBoundCallback(&Received, &flows[f]));
 
-        OnOffHelper source("ns3::UdpSocketFactory",
-                           InetSocketAddress(interfaces.GetAddress(2), ports[f]));
-        source.SetConstantRate(DataRate(rates[f]), 1000);
-        source.SetAttribute("EnableSeqTsSizeHeader", BooleanValue(true));
-        ApplicationContainer sourceApp = source.Install(hosts.Get(f));
-        sourceApp.Start(Seconds(0.1));
-        sourceApp.Stop(Seconds(0.1 + seconds));
-        sourceApp.Get(0)->TraceConnectWithoutContext("Tx", MakeBoundCallback(&Sent, &flows[f]));
+        Ptr<PoissonSource> source =
+            CreateObject<PoissonSource>(InetSocketAddress(interfaces.GetAddress(2), ports[f]),
+                                        DataRate(rates[f]),
+                                        f,
+                                        &flows[f]);
+        hosts.Get(f)->AddApplication(source);
+        source->SetStartTime(Seconds(0.1));
+        source->SetStopTime(Seconds(0.1 + seconds));
     }
 
     Simulator::Stop(Seconds(seconds + 1));
