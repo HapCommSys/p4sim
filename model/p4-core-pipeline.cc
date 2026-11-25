@@ -135,7 +135,7 @@ P4CorePipeline::ReceivePacket(Ptr<Packet> packetIn,
     int learn_id = RegisterAccess::get_lf_field_list(bm_packet.get());
     if (learn_id > 0)
     {
-        get_learn_engine()->learn(learn_id, *bm_packet.get());
+        Learn(learn_id, *bm_packet);
     }
 
     // The ingress dropped the packet (mark_to_drop()): no egress, as in simple_switch

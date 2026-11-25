@@ -748,7 +748,7 @@ P4CoreV1model::HandleIngressPipeline()
     // LEARNING
     if (learn_id > 0)
     {
-        get_learn_engine()->learn(learn_id, *bm_packet.get());
+        Learn(learn_id, *bm_packet);
     }
 
     // RESUBMIT

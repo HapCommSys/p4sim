@@ -410,6 +410,18 @@ class P4SwitchCore : public bm::Switch
     void CheckPendingSwap();
 
     /**
+     * @brief Pass on the digest of \p packet: digest() in the ingress chose the
+     *        learn list \p listId. Call it at the end of the ingress, where
+     *        simple_switch calls learn(). As there, the fields are read now, from
+     *        the PHV of the packet. BMv2's learn engine gets the packet (for its
+     *        notification socket), and the device the record (see
+     *        P4SwitchNetDevice::NotifyDigest()); every call gives one record.
+     * @param listId the learn list
+     * @param packet the packet
+     */
+    void Learn(int listId, const bm::Packet& packet);
+
+    /**
      * @brief Retrieves the index of the given destination address.
      *
      * This function checks if the specified destination address already exists
@@ -534,6 +546,19 @@ class P4SwitchCore : public bm::Switch
     std::thread::id m_simulationThread;         //!< the thread that runs the simulation
     std::deque<HeldFrame> m_heldFrames;         //!< frames that arrived while a swap waited
     EventId m_swapEvent;                        //!< the pending TrySwap()
+
+    /// A learn list of the P4 program ("learn_lists" in the BMv2 JSON)
+    struct LearnList
+    {
+        std::string name;                ///< its name
+        std::vector<std::string> fields; ///< its fields, "header.field", in their order
+    };
+
+    /// Read the learn lists of the P4 program, unless they are read since the last swap
+    void ReadLearnLists();
+
+    std::map<int, LearnList> m_learnLists; //!< the learn lists of the P4 program, by ID
+    bool m_learnListsRead{false};          //!< m_learnLists holds those of the current program
 };
 
 } // namespace ns3

@@ -28,6 +28,7 @@ port, set up by `SwitchedEthernetHelper`; and **bridge** ports, ordinary ns-3 de
 | `p4-basic-example` | Four hosts and four switches with IPv4 forwarding and ARP (tutorial `basic` [1]) | v1model | CSMA | `p4_basic` |
 | `p4-basic-controller` | `p4-basic-example` with flow entries that `P4Controller` changes during the simulation | v1model | CSMA | `p4_basic` |
 | `p4-controller-action-profile` | `P4Controller` with an action profile (indirect table) | v1model | CSMA | `action_profile` |
+| `p4-l2-learning` | L2 learning: the switch floods frames to unknown addresses and sends a digest for each unknown source; `P4Controller` learns the ports from the digests and fills the tables. `--learn=0` ignores the digests | v1model | switched Ethernet | `l2_learning` |
 | `p4-basic-tunnel` | A tunnel with a custom header (tutorial `basic_tunnel` [2]) | v1model | P4 point-to-point | `basic_tunnel` |
 | `p4-firewall` | A stateful TCP firewall: connections opened from inside pass, those opened from outside are dropped (tutorial `firewall` [3]) | v1model | CSMA | `firewall` |
 | `p4-calc` | The switch answers calculator requests (tutorial `calc` [4]) | v1model | CSMA | `calc` |

@@ -58,6 +58,8 @@ line (bridge ports only, the old timing model) and gets no more changes.
 - **PSA and PNA.**
   - PNA has no Thrift service of its own (BMv2's `pna_nic` has one, for the
     time commands of `pna_nic_CLI`); its `FlowTablePath` runs in `bm_CLI`.
+  - PSA and PNA give no digest records: BMv2's `psa_switch` and `pna_nic` do
+    not pass digests on either.
 - **The pipeline core** (`P4SwitchArch` 3) ignores `mcast_grp`, clones,
   resubmit and recirculation, without a warning: a v1model program that floods
   (L2 learning, for example) sends nothing. Proposal: give it the packet
@@ -76,10 +78,6 @@ line (bridge ports only, the old timing model) and gets no more changes.
     stage allocation, so p4sim cannot see the stages.
   - The default is 0. No published figure covers the whole pipeline; the
     attribute's help text gives a measured one for scale.
-- **Digests.** `digest()` sends its records to BMv2's notification socket, and
-  nothing in the simulation receives them. Proposal: pass learned records to an
-  ns-3 trace source that `P4Controller` can subscribe to, so that control-plane
-  experiments such as L2 learning can run inside the simulation.
 - **Runtime CLI during the simulation.** The Thrift server of a switch runs in
   its own thread, so a CLI that runs during the simulation changes the switch
   without synchronisation with it. The CLIs are for before and after the
