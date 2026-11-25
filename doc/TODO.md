@@ -58,7 +58,6 @@ line (bridge ports only, the old timing model) and gets no more changes.
 - **PSA and PNA.**
   - PNA has no Thrift service of its own (BMv2's `pna_nic` has one, for the
     time commands of `pna_nic_CLI`); its `FlowTablePath` runs in `bm_CLI`.
-  - `P4Controller` works on v1model switches only.
 - **The pipeline core** (`P4SwitchArch` 3) ignores `mcast_grp`, clones,
   resubmit and recirculation, without a warning: a v1model program that floods
   (L2 learning, for example) sends nothing. Proposal: give it the packet
@@ -111,3 +110,8 @@ line (bridge ports only, the old timing model) and gets no more changes.
     manager's thread even when the manager was never started, which crashes
     with glibc 2.43 (Ubuntu 26.04). P4sim is not affected: its switches have a
     device manager without ports instead of BMI.
+- **`P4Controller`'s meter functions.** `SetMeterRates()`, `GetMeterRates()`
+  and `ResetMeterRates()` each have an overload for a table entry
+  (`bm::entry_handle_t`) and one for a meter array (`size_t`): an `int` argument
+  does not compile, and the type of the variable picks the overload. Proposal:
+  name the meter-array ones `MeterSetRates()`, ... as `P4RuntimeApi` does.

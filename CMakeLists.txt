@@ -136,7 +136,6 @@ build_lib(
     LIBNAME p4sim
     SOURCE_FILES # equivalent to module.source        utils/format-utils.cc
         utils/format-utils.cc
-        utils/switch-api.cc
         utils/p4-queue.cc
         utils/p4-traffic-manager.cc
         utils/fattree-topo-helper.cc
@@ -161,13 +160,13 @@ build_lib(
         model/p4-core-pipeline.cc
         model/custom-p2p-net-device.cc
         model/p4-controller.cc
+        model/p4-runtime-api.cc
         helper/p4-topology-reader-helper.cc
         helper/p4-p2p-helper.cc
     HEADER_FILES # equivalent to headers.source
         utils/p4-queue.h
         utils/p4-traffic-manager.h
         utils/format-utils.h
-        utils/switch-api.h
         utils/register-access-v1model.h
         utils/primitives-v1model.h
         utils/primitives-pna.h
@@ -191,6 +190,7 @@ build_lib(
         model/p4-core-pipeline.h
         model/custom-p2p-net-device.h
         model/p4-controller.h
+        model/p4-runtime-api.h
         helper/p4-topology-reader-helper.h
         helper/p4-p2p-helper.h
         helper/p4-net-builder.h

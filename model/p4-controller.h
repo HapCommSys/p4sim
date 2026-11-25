@@ -4,15 +4,14 @@
 #include "p4-switch-net-device.h"
 
 #include "ns3/object.h"
-#include "ns3/p4-core-v1model.h"
+#include "ns3/p4-runtime-api.h"
+#include "ns3/p4-switch-core.h"
 #include <ns3/network-module.h>
 
 #include <string>
 #include <vector>
 
 namespace ns3 {
-
-class P4CoreV1model;
 
 /**
  * @brief Controller for managing multiple P4 switches in an NS-3 simulation.
@@ -22,6 +21,10 @@ class P4CoreV1model;
  * - Setting paths for flow table configuration and viewing.
  * - Managing a collection of P4 switches, including adding and retrieving
  * switches.
+ *
+ * The table, action profile, counter, meter, register, parse value set,
+ * program swap and mirroring functions work on switches of every architecture
+ * (v1model, PSA, PNA and the pipeline core), through P4RuntimeApi.
  */
 class P4Controller : public Object {
 public:

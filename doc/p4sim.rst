@@ -95,9 +95,11 @@ number is the order in which the ports are added.
    serialise every frame at their data rate, and every device stores a frame
    completely before it forwards it.
 
-**Control plane.**  Besides the flow-table file, the tables of a v1model switch
-can be changed during the simulation with ``P4Controller`` (flow entries, action
-profiles, counters, meters, registers, mirroring sessions).  The runtime CLIs of
+**Control plane.**  Besides the flow-table file, the tables of a switch can be
+changed during the simulation with ``P4Controller`` (flow entries, action
+profiles, counters, meters, registers, mirroring sessions), on every
+architecture.  It calls the BMv2 runtime API of the switch through
+``P4RuntimeApi``, which a simulation can also use directly.  The runtime CLIs of
 BMv2 connect to the Thrift port of a switch (attribute ``ThriftPort``; by
 default the first free port from ``$P4SIM_THRIFT_PORT_BASE``, 9090).
 
@@ -107,13 +109,14 @@ The main classes are:
   ``P4CoreV1model``, ``P4CorePsa``, ``P4PnaNic`` and ``P4CorePipeline``;
   ``SwitchedEthernetChannel`` and ``SwitchedEthernetHostDevice``;
   ``CustomP2PNetDevice``, ``P4P2PChannel`` and ``P4BridgeChannel``;
-  ``LinkFraming``; ``CustomHeader``; ``P4Controller``; ``P4TopologyReader``.
+  ``LinkFraming``; ``CustomHeader``; ``P4Controller`` and ``P4RuntimeApi``;
+  ``P4TopologyReader``.
 * **Helpers** -- ``P4Helper``, ``SwitchedEthernetHelper``,
   ``P4PointToPointHelper``, ``P4TopologyReaderHelper``,
   ``BuildNetworkFromTopology()`` (``p4-net-builder.h``), ``BuildFlowtableHelper``.
 * **Utilities** -- ``format-utils`` (paths of the P4 files, conversions),
-  ``SwitchApi`` (BMv2 runtime API), the input buffer and output queues
-  (``p4-queue.h``), ``P4TrafficManager``, ``FattreeTopoHelper``.
+  the input buffer and output queues (``p4-queue.h``), ``P4TrafficManager``,
+  ``FattreeTopoHelper``.
 
 ``doc/switch.md`` describes the switched-Ethernet devices and their timing, and
 ``doc/traffic-manager.md`` the traffic manager.
@@ -134,7 +137,6 @@ Scope and Limitations
 * PNA has no Thrift service of its own: its ``FlowTablePath`` runs in BMv2's
   generic ``bm_CLI``, which has the table commands but not the time commands of
   ``pna_nic_CLI``.
-* ``P4Controller`` works on v1model switches only.
 * ``digest()`` sends its records to the notification socket of BMv2; nothing in
   the simulation receives them.
 * The pipeline core (``P4SwitchArch`` 3) has no output queue: a congested port
