@@ -20,6 +20,7 @@
 
 #include <algorithm>
 #include <cstdio>
+#include <fstream>
 
 using namespace ns3;
 
@@ -120,6 +121,48 @@ for rpc in [client.mirroring_session_delete, client.mirroring_session_get,
 )py";
     return RunCommand("python3 -c '" + script + "' " + std::to_string(thriftPort) + " " +
                       std::to_string(session) + " 2>&1");
+}
+
+/**
+ * Calls one RPC of a Thrift service on \p thriftPort: bm_get_config of
+ * "standard" (what the runtime CLIs call first), or get_time_elapsed_us of
+ * "simple_switch" or "psa_switch"; returns "ok" or "error <message>". The client
+ * finds BMv2's Python modules as \p cli does (see DeletePsaMirroringSession()).
+ */
+std::string
+CallThrift(const std::string& cli, int thriftPort, const std::string& service)
+{
+    const std::string script = R"py(
+import re, shutil, sys
+for line in open(shutil.which(sys.argv[1]) or "/dev/null"):
+    folder = re.match(r"sys\.path\.append\(.(.+).\)", line.strip())
+    if folder:
+        sys.path.append(folder.group(1))
+from thrift.Thrift import TApplicationException
+from thrift.protocol import TBinaryProtocol, TMultiplexedProtocol
+from thrift.transport import TSocket, TTransport
+service = sys.argv[3]
+if service == "standard":
+    from bm_runtime.standard import Standard as Service
+    call = lambda client: client.bm_get_config()
+elif service == "simple_switch":
+    from sswitch_runtime import SimpleSwitch as Service
+    call = lambda client: client.get_time_elapsed_us()
+else:
+    from pswitch_runtime import PsaSwitch as Service
+    call = lambda client: client.get_time_elapsed_us()
+transport = TTransport.TBufferedTransport(TSocket.TSocket("localhost", int(sys.argv[2])))
+transport.open()
+client = Service.Client(TMultiplexedProtocol.TMultiplexedProtocol(
+    TBinaryProtocol.TBinaryProtocol(transport), service))
+try:
+    call(client)
+    print("ok")
+except TApplicationException as e:
+    print("error", e.message)
+)py";
+    return RunCommand("python3 -c '" + script + "' " + cli + " " + std::to_string(thriftPort) +
+                      " " + service + " 2>&1");
 }
 
 /// Action data with a single value
@@ -614,6 +657,90 @@ class P4PsaSwitchCliTestCase : public P4TestCase
 
 /**
  * \ingroup p4sim-tests
+ * The Thrift server of a switch runs until the process ends: BMv2 cannot stop
+ * it. A runtime CLI that connects after the switch was destroyed must get an
+ * error and not reach the freed switch (before the fix, the test runner died
+ * with SIGSEGV). Before, the CLI reads the clock of the switch, and a Thrift call
+ * of the "standard" service succeeds; after, the CLI cannot get the P4 program
+ * of the switch, and the call fails with "... destroyed".
+ */
+class P4DestroyedSwitchThriftTestCase : public P4TestCase
+{
+  public:
+    /**
+     * \param archName "v1model" or "psa"
+     * \param arch P4SwitchArch
+     * \param cli the runtime CLI of the architecture
+     * \param service the Thrift service of the architecture
+     * \param json the P4 program, relative to the test directory
+     */
+    P4DestroyedSwitchThriftTestCase(const std::string& archName,
+                                    uint32_t arch,
+                                    const std::string& cli,
+                                    const std::string& service,
+                                    const std::string& json)
+        : P4TestCase(cli + ": the Thrift port of a destroyed " + archName +
+                     " switch answers with an error"),
+          m_arch(arch),
+          m_cli(cli),
+          m_service(service),
+          m_json(json)
+    {
+    }
+
+  private:
+    void DoRun() override
+    {
+        SetDataDir(NS_TEST_SOURCEDIR);
+        // An empty flow table file starts the Thrift server and adds nothing
+        std::string flowTable = CreateTempDirFilename("empty-flowtable.txt");
+        std::ofstream(flowTable).close();
+        Ptr<Node> node = CreateObject<Node>();
+        Ptr<P4SwitchNetDevice> sw = CreateObject<P4SwitchNetDevice>();
+        sw->SetAttribute("P4SwitchArch", UintegerValue(m_arch));
+        sw->SetAttribute("JsonPath", StringValue(CreateDataDirFilename(m_json)));
+        sw->SetAttribute("FlowTablePath", StringValue(flowTable));
+        sw->SetAttribute("BmLogLevel", StringValue("off"));
+        node->AddDevice(sw);
+        sw->Initialize();
+        const int port = sw->GetThriftPort();
+
+        std::string out = RunCli(m_cli, port, {"get_time_elapsed"});
+        NS_TEST_EXPECT_MSG_NE(out.find("RuntimeCmd: 0\n"),
+                              std::string::npos,
+                              m_cli << " should read the clock of the switch:\n"
+                                    << out);
+        for (const std::string& service : {std::string("standard"), m_service})
+        {
+            NS_TEST_EXPECT_MSG_EQ(CallThrift(m_cli, port, service),
+                                  "ok\n",
+                                  "The " << service << " service should answer");
+        }
+
+        sw->Dispose(); // deletes the P4 core; its Thrift server keeps running
+        NS_TEST_ASSERT_MSG_EQ((sw->GetCore() == nullptr), true, "The switch was not destroyed");
+
+        out = RunCli(m_cli, port, {"get_time_elapsed"});
+        NS_TEST_EXPECT_MSG_NE(out.find("Error when requesting JSON config from switch"),
+                              std::string::npos,
+                              m_cli << " should fail on the destroyed switch:\n"
+                                    << out);
+        for (const std::string& service : {std::string("standard"), m_service})
+        {
+            NS_TEST_EXPECT_MSG_EQ(CallThrift(m_cli, port, service),
+                                  "error the P4sim switch of this Thrift port was destroyed\n",
+                                  "The " << service << " service should refuse the call");
+        }
+    }
+
+    uint32_t m_arch;       ///< P4SwitchArch
+    std::string m_cli;     ///< the runtime CLI
+    std::string m_service; ///< the Thrift service of the architecture
+    std::string m_json;    ///< the P4 program
+};
+
+/**
+ * \ingroup p4sim-tests
  * P4Controller tests.
  */
 class P4ControllerTestSuite : public TestSuite
@@ -627,6 +754,18 @@ class P4ControllerTestSuite : public TestSuite
         AddTestCase(new P4ControllerMirroringTestCase, P4SIM_TEST_QUICK);
         AddTestCase(new P4SimpleSwitchCliTestCase, P4SIM_TEST_QUICK);
         AddTestCase(new P4PsaSwitchCliTestCase, P4SIM_TEST_QUICK);
+        AddTestCase(new P4DestroyedSwitchThriftTestCase("v1model",
+                                                        0,
+                                                        "simple_switch_CLI",
+                                                        "simple_switch",
+                                                        "p4src/simple_v1model/simple_v1model.json"),
+                    P4SIM_TEST_QUICK);
+        AddTestCase(new P4DestroyedSwitchThriftTestCase("PSA",
+                                                        1,
+                                                        "psa_switch_CLI",
+                                                        "psa_switch",
+                                                        "p4src/simple_psa/simple_psa.json"),
+                    P4SIM_TEST_QUICK);
     }
 };
 
