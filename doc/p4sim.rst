@@ -354,6 +354,10 @@ Run any built-in example with::
      - Spine-leaf network with ECMP load balancing
    * - ``p4-topo-fattree``
      - Generated k-ary fat tree with its flow tables
+   * - ``p4-priority-queues``
+     - Strict-priority queues, with the classification in the P4 program
+   * - ``p4-latency``
+     - What makes up the one-way delay through a P4 switch
    * - ``p4-voq-fabric-throughput``
      - Throughput of the VOQ + fabric traffic manager
 

@@ -178,7 +178,7 @@ A switch has two kinds of port, which can be mixed. The port number is the order
 
 ## Examples
 
-[doc/examples.md](doc/examples.md) describes all 23 examples. A selection:
+[doc/examples.md](doc/examples.md) describes all 25 examples. A selection:
 
 | Example | Description |
 |---|---|
@@ -191,6 +191,8 @@ A switch has two kinds of port, which can be mixed. The port number is the order
 | `p4-firewall` | A stateful TCP firewall |
 | `p4-spine-leaf-topo` | A spine-leaf network with ECMP load balancing |
 | `p4-topo-fattree` | A generated k-ary fat tree with its flow tables |
+| `p4-priority-queues` | Strict-priority queues, with the classification in the P4 program |
+| `p4-latency` | What makes up the one-way delay through a P4 switch |
 | `p4-voq-fabric-throughput` | Throughput of the VOQ + fabric traffic manager |
 
 The [paper](https://dl.acm.org/doi/10.1145/3747204.3747210) evaluates P4sim with tunnelling (a custom header) and load balancing over several paths.
