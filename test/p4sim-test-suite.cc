@@ -19,6 +19,7 @@
 #include <bm/bm_sim/dev_mgr.h>
 #include <bm/bm_sim/logger.h>
 #include <cstdlib>
+#include <fcntl.h>
 #include <filesystem>
 #include <fstream>
 #include <map>
@@ -280,7 +281,9 @@ class P4BmLogLevelDefaultTestCase : public P4TestCase
  * CLI reports as an error is printed with its file and line, and the rest of the
  * file still runs, unless the CLI stops, as at the line EOF. A CLI that cannot run
  * is reported, too. The byte order mark that some editors write at the start of a
- * file is no error. (A flow table that cannot be opened ends the process.)
+ * file is no error. The CLI gets no descriptor of the simulation, which would keep
+ * it waiting for a Thrift server that has gone. (A flow table that cannot be opened
+ * ends the process.)
  */
 class P4FlowTableErrorsTestCase : public P4TestCase
 {
@@ -315,9 +318,23 @@ class P4FlowTableErrorsTestCase : public P4TestCase
             << "table_add ipv4_nhop ipv4_forward 0x0a010101 => 00:00:00:00:00:01 0\n";
         Ptr<P4SwitchNetDevice> bom = CreateSwitch(0, dir + "simple_v1model.json");
         int bomStatus = bom->GetCore()->ExecuteCliCommands(bomTable);
+        // The CLI's command shell lists the descriptors of the CLI, its parent
+        std::ostringstream inheritErrors;
+        std::cerr.rdbuf(inheritErrors.rdbuf());
+        std::string marker = CreateTempDirFilename("p4sim-descriptor-marker");
+        int markerFd = open(marker.c_str(), O_CREAT | O_RDONLY, 0600);
+        std::string inheritTable = CreateTempDirFilename("flowtable_inherit.txt");
+        std::ofstream(inheritTable) << "shell ls -l /proc/$PPID/fd | grep -q descriptor-marker"
+                                    << " && echo 'Error: the CLI holds a descriptor'\n";
+        Ptr<P4SwitchNetDevice> inherit = CreateSwitch(0, dir + "simple_v1model.json");
+        int inheritStatus = inherit->GetCore()->ExecuteCliCommands(inheritTable);
+        close(markerFd);
         std::cerr.rdbuf(cerrBuffer);
 
         NS_TEST_EXPECT_MSG_EQ(status, 1, "The status must tell that commands failed");
+        NS_TEST_EXPECT_MSG_EQ(inheritStatus,
+                              0,
+                              "The CLI holds a descriptor: " << inheritErrors.str());
         NS_TEST_EXPECT_MSG_EQ(bomStatus, 0, "No command of the second table fails");
 
         NS_TEST_EXPECT_MSG_EQ(bomErrors.str(), "", "The byte order mark is no error");

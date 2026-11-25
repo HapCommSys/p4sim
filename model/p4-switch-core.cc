@@ -36,8 +36,8 @@
 #include <bm/bm_sim/port_monitor.h>
 #include <cctype>
 #include <cerrno>
-#include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <fcntl.h>
 #include <filesystem>
 #include <fstream>
@@ -46,10 +46,12 @@
 #include <map>
 #include <memory>
 #include <netinet/in.h>
+#include <spawn.h>
 #include <sstream>
 #include <sys/file.h>
 #include <sys/mman.h>
 #include <sys/socket.h>
+#include <sys/wait.h>
 #include <unistd.h>
 
 #ifndef MFD_NOEXEC_SEAL // glibc before 2.39
@@ -60,6 +62,62 @@ NS_LOG_COMPONENT_DEFINE("P4SwitchCore");
 
 namespace
 {
+
+/**
+ * Run a shell command with this standard input and return what it writes to its
+ * standard output and error. The command gets no other descriptor of this process:
+ * a runtime CLI that held the listening Thrift sockets of the switches would wait
+ * for itself forever if this process ended while it runs. (With glibc before 2.34,
+ * which cannot close them, it inherits them as before.)
+ */
+std::string
+RunWithInput(const std::string& command, int input)
+{
+    int out[2];
+    if (pipe2(out, O_CLOEXEC) != 0)
+    {
+        return std::string("cannot create a pipe: ") + std::strerror(errno);
+    }
+    posix_spawn_file_actions_t actions;
+    posix_spawn_file_actions_init(&actions);
+    posix_spawn_file_actions_adddup2(&actions, input, STDIN_FILENO);
+    posix_spawn_file_actions_adddup2(&actions, out[1], STDOUT_FILENO);
+    posix_spawn_file_actions_adddup2(&actions, out[1], STDERR_FILENO);
+#if defined(__GLIBC__) && __GLIBC_PREREQ(2, 34)
+    posix_spawn_file_actions_addclosefrom_np(&actions, STDERR_FILENO + 1);
+#endif
+    const char* argv[] = {"sh", "-c", command.c_str(), nullptr};
+    pid_t pid;
+    int rc =
+        posix_spawn(&pid, "/bin/sh", &actions, nullptr, const_cast<char* const*>(argv), environ);
+    posix_spawn_file_actions_destroy(&actions);
+    close(out[1]);
+    std::string output;
+    if (rc != 0)
+    {
+        output = std::string("cannot run /bin/sh: ") + std::strerror(rc);
+    }
+    else
+    {
+        std::array<char, 4096> buffer;
+        for (ssize_t n; (n = read(out[0], buffer.data(), buffer.size())) != 0;)
+        {
+            if (n > 0)
+            {
+                output.append(buffer.data(), n);
+            }
+            else if (errno != EINTR)
+            {
+                break;
+            }
+        }
+        while (waitpid(pid, nullptr, 0) < 0 && errno == EINTR)
+        {
+        }
+    }
+    close(out[0]);
+    return output;
+}
 
 /**
  * BMv2 swaps the P4 program only when no packet of the switch holds a PHV
@@ -911,16 +969,17 @@ P4SwitchCore::ExecuteCliCommands(const std::string& commandsFile)
                                      "of the target (e.g. mirroring_add) are not available");
     }
 
-    // The CLI inherits the commands in a file in memory, which leaves nothing on the
-    // disk if this process is killed, and its output comes back through a pipe. Hosts
-    // with vm.memfd_noexec=2 want the flag, and Linux before 6.3 does not know it.
+    // The CLI reads the commands from a file in memory, which leaves nothing on the
+    // disk if this process is killed. Hosts with vm.memfd_noexec=2 want the flag,
+    // and Linux before 6.3 does not know it.
     int fd = memfd_create("p4sim-cli", MFD_NOEXEC_SEAL);
     if (fd < 0 && errno == EINVAL)
     {
         fd = memfd_create("p4sim-cli", 0);
     }
     std::string text = input.str();
-    if (fd < 0 || write(fd, text.data(), text.size()) != static_cast<ssize_t>(text.size()))
+    if (fd < 0 || write(fd, text.data(), text.size()) != static_cast<ssize_t>(text.size()) ||
+        lseek(fd, 0, SEEK_SET) != 0)
     {
         NS_FATAL_ERROR("Switch ID " << m_p4SwitchId
                                     << ": cannot pass the flow table to the runtime CLI");
@@ -928,21 +987,9 @@ P4SwitchCore::ExecuteCliCommands(const std::string& commandsFile)
     // The encoding lets the CLI read bytes that are not UTF-8: it reads the commands
     // in blocks, so such a byte would end it before the commands above run
     std::string cmd = "PYTHONIOENCODING=utf-8:surrogateescape " + m_thriftCommand +
-                      " --thrift-port " + std::to_string(port) + " < /proc/self/fd/" +
-                      std::to_string(fd) + " 2>&1";
+                      " --thrift-port " + std::to_string(port);
     NS_LOG_DEBUG("Executing CLI command: " << cmd);
-
-    std::string output;
-    FILE* cli = popen(cmd.c_str(), "r");
-    std::array<char, 4096> buffer;
-    for (size_t n = 0; cli && (n = fread(buffer.data(), 1, buffer.size(), cli)) > 0;)
-    {
-        output.append(buffer.data(), n);
-    }
-    if (cli)
-    {
-        pclose(cli);
-    }
+    std::string output = RunWithInput(cmd, fd);
     close(fd);
     return ReportCliErrors(commandsFile, commands, output) ? 1 : 0;
 }
