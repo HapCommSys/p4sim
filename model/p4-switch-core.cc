@@ -29,14 +29,18 @@
 #include "ns3/simulator.h"
 
 #include <algorithm>
+#include <array>
 #include <bm/bm_runtime/bm_runtime.h>
 #include <bm/bm_sim/dev_mgr.h>
 #include <bm/bm_sim/options_parse.h>
 #include <bm/bm_sim/port_monitor.h>
 #include <cctype>
+#include <cstdio>
 #include <cstdlib>
 #include <fcntl.h>
+#include <filesystem>
 #include <fstream>
+#include <iostream>
 #include <json/json.h>
 #include <map>
 #include <memory>
@@ -777,6 +781,52 @@ P4SwitchCore::LoadFlowTableToSwitch(const std::string& flowTablePath)
     return ExecuteCliCommands(flowTablePath);
 }
 
+void
+P4SwitchCore::ReportCliErrors(const std::string& file,
+                              const std::vector<std::pair<uint32_t, std::string>>& commands,
+                              const std::string& output,
+                              int status) const
+{
+    // The CLI prints its prompt before the output of each command
+    const std::string prompt = "RuntimeCmd: ";
+    const std::vector<std::string> signs = {"Error: ", "Invalid ", "*** Unknown syntax"};
+    size_t command = 0;
+    std::string last; // the last line that is not empty
+    auto report = [&](const std::string& error) {
+        std::cerr << file;
+        if (command >= 1 && command <= commands.size())
+        {
+            const auto& [number, text] = commands[command - 1];
+            std::cerr << ":" << number << ": " << text;
+        }
+        std::cerr << "\n    " << error << std::endl;
+    };
+
+    std::istringstream lines(output);
+    for (std::string line; std::getline(lines, line);)
+    {
+        while (line.rfind(prompt, 0) == 0)
+        {
+            command++;
+            line.erase(0, prompt.size());
+        }
+        if (std::any_of(signs.begin(), signs.end(), [&line](const std::string& sign) {
+                return line.rfind(sign, 0) == 0;
+            }))
+        {
+            report(line);
+        }
+        if (!line.empty())
+        {
+            last = line;
+        }
+    }
+    if (status != 0)
+    {
+        report(m_thriftCommand + " failed, the rest of the file is skipped: " + last);
+    }
+}
+
 int
 P4SwitchCore::ExecuteCliCommands(const std::string& commandsFile)
 {
@@ -789,12 +839,34 @@ P4SwitchCore::ExecuteCliCommands(const std::string& commandsFile)
         return 1;
     }
 
-    // Check if the commands file exists
-    std::ifstream infile(commandsFile);
-    if (!infile.good())
+    // Without a flow table the tables keep the entries of the P4 program
+    if (commandsFile.empty())
     {
-        NS_LOG_ERROR("Commands file not found: " << commandsFile);
         return 1;
+    }
+    std::vector<std::pair<uint32_t, std::string>> commands; // (line number, command)
+    std::ostringstream input;
+    {
+        std::ifstream file(commandsFile);
+        if (!file || std::filesystem::is_directory(commandsFile))
+        {
+            NS_FATAL_ERROR("Switch ID " << m_p4SwitchId << ": cannot open the flow table "
+                                        << commandsFile);
+        }
+        // The CLI repeats the last command for an empty line and does not know
+        // comments, so it gets neither
+        uint32_t number = 0;
+        for (std::string line; std::getline(file, line);)
+        {
+            number++;
+            size_t start = line.find_first_not_of(" \t\r");
+            if (start != std::string::npos && line[start] != '#')
+            {
+                line.erase(line.find_last_not_of(" \t\r") + 1);
+                commands.emplace_back(number, line);
+                input << line << "\n";
+            }
+        }
     }
 
     // Get runtime port and start the server
@@ -822,21 +894,29 @@ P4SwitchCore::ExecuteCliCommands(const std::string& commandsFile)
                                      "of the target (e.g. mirroring_add) are not available");
     }
 
-    // Construct the CLI command
-    std::ostringstream cmdStream;
-    cmdStream << m_thriftCommand << " --thrift-port " << port << " < " << commandsFile
-              << " > /dev/null 2>&1";
-    std::string cmd = cmdStream.str();
-
+    // The CLI reads the commands from a file and its output comes back through a pipe
+    char inputFile[] = "/tmp/p4sim-cli-XXXXXX";
+    int fd = mkstemp(inputFile);
+    std::string text = input.str();
+    if (fd < 0 || write(fd, text.data(), text.size()) != static_cast<ssize_t>(text.size()))
+    {
+        NS_FATAL_ERROR("Cannot write " << inputFile << " for the runtime CLI");
+    }
+    close(fd);
+    std::string cmd =
+        m_thriftCommand + " --thrift-port " + std::to_string(port) + " < " + inputFile + " 2>&1";
     NS_LOG_DEBUG("Executing CLI command: " << cmd);
 
-    // Run the CLI command to populate table entries
-    int result = std::system(cmd.c_str());
-    if (result != 0)
+    std::string output;
+    FILE* cli = popen(cmd.c_str(), "r");
+    std::array<char, 4096> buffer;
+    for (size_t n = 0; cli && (n = fread(buffer.data(), 1, buffer.size(), cli)) > 0;)
     {
-        NS_LOG_WARN("CLI command returned non-zero exit code: " << result);
+        output.append(buffer.data(), n);
     }
-
+    int result = cli ? pclose(cli) : -1;
+    unlink(inputFile);
+    ReportCliErrors(commandsFile, commands, output, result);
     return result;
 }
 

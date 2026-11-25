@@ -4,9 +4,9 @@
 /*
  * Switch set-up: every architecture loads its P4 program and uses no BMv2 port
  * manager, Thrift ports never collide, BmLogLevel controls the BMv2 pipeline log
- * (off by default), and the deprecated attributes are still accepted. The
- * switches have no ports and no flow table, so no Thrift server starts and no
- * packet is sent.
+ * (off by default), the deprecated attributes are still accepted, and errors in
+ * a flow table are reported. The switches have no ports, so no packet is sent, and
+ * only the last one has a flow table and so a Thrift server.
  */
 
 #include "ns3/core-module.h"
@@ -42,15 +42,18 @@ class P4TestCase : public TestCase
     }
 };
 
-/// An initialized switch without ports and flow table
+/// An initialized switch without ports
 Ptr<P4SwitchNetDevice>
-CreateSwitch(uint32_t arch, const std::string& json, const std::string& logLevel = "off")
+CreateSwitch(uint32_t arch,
+             const std::string& json,
+             const std::string& logLevel = "off",
+             const std::string& flowTable = "")
 {
     Ptr<Node> node = CreateObject<Node>();
     Ptr<P4SwitchNetDevice> sw = CreateObject<P4SwitchNetDevice>();
     sw->SetAttribute("P4SwitchArch", UintegerValue(arch));
     sw->SetAttribute("JsonPath", StringValue(json));
-    sw->SetAttribute("FlowTablePath", StringValue(""));
+    sw->SetAttribute("FlowTablePath", StringValue(flowTable));
     sw->SetAttribute("BmLogLevel", StringValue(logLevel));
     node->AddDevice(sw);
     sw->Initialize();
@@ -272,6 +275,68 @@ class P4BmLogLevelDefaultTestCase : public P4TestCase
 
 /**
  * \ingroup p4sim-tests
+ * Comments and empty lines of a flow table are skipped. A command that the runtime
+ * CLI reports as an error is printed with its file and line, and the rest of the
+ * file still runs. A CLI that cannot run is reported, too. (A flow table that
+ * cannot be opened ends the process.)
+ */
+class P4FlowTableErrorsTestCase : public P4TestCase
+{
+  public:
+    P4FlowTableErrorsTestCase()
+        : P4TestCase("Errors in a flow table name its file and line")
+    {
+    }
+
+  private:
+    void DoRun() override
+    {
+        SetDataDir(NS_TEST_SOURCEDIR);
+        std::string dir = CreateDataDirFilename("p4src/simple_v1model/");
+        std::ostringstream errors;
+        std::streambuf* cerrBuffer = std::cerr.rdbuf(errors.rdbuf());
+        Ptr<P4SwitchNetDevice> sw =
+            CreateSwitch(0, dir + "simple_v1model.json", "off", dir + "flowtable_errors.txt");
+        std::string path = std::getenv("PATH") ? std::getenv("PATH") : "";
+        std::ostringstream noCli;
+        std::cerr.rdbuf(noCli.rdbuf());
+        setenv("PATH", "/nonexistent", 1);
+        CreateSwitch(0, dir + "simple_v1model.json", "off", dir + "flowtable_0.txt");
+        setenv("PATH", path.c_str(), 1);
+        std::cerr.rdbuf(cerrBuffer);
+
+        NS_TEST_EXPECT_MSG_NE(noCli.str().find("flowtable_0.txt\n    simple_switch_CLI failed"),
+                              std::string::npos,
+                              "A missing CLI is not reported: " << noCli.str());
+
+        std::size_t entries = 0;
+        sw->GetCore()->mt_get_num_entries(0, "MyIngress.ipv4_nhop", &entries);
+        NS_TEST_EXPECT_MSG_EQ(entries, 2, "The commands without errors must run");
+        std::size_t lines = 0;
+        for (char c : errors.str())
+        {
+            lines += (c == '\n');
+        }
+        NS_TEST_EXPECT_MSG_EQ(lines, 8, "Expected 4 errors with 2 lines each: " << errors.str());
+        for (const std::string error :
+             {":5: table_add no_such_table ipv4_forward 0x0a010103 => 00:00:00:00:00:03 2\n"
+              "    Error: Invalid table name (no_such_table)",
+              ":6: table_add ipv4_nhop ipv4_forward 0x0a010102 => 00:00:00:00:00:02\n"
+              "    Error: Action MyIngress.ipv4_forward needs 2 parameters",
+              ":7: no_such_command 1 2\n"
+              "    *** Unknown syntax: no_such_command 1 2",
+              ":8: table_add ipv4_nhop ipv4_forward 0x0a010101 => 00:00:00:00:00:01 0\n"
+              "    Invalid table operation (DUPLICATE_ENTRY)"})
+        {
+            NS_TEST_EXPECT_MSG_NE(errors.str().find("flowtable_errors.txt" + error),
+                                  std::string::npos,
+                                  "Not reported: " << error << "\nin: " << errors.str());
+        }
+    }
+};
+
+/**
+ * \ingroup p4sim-tests
  * ChannelType and EnableTracing have no effect and are deprecated: a script that
  * still sets them runs, and ns-3 warns about them.
  */
@@ -359,6 +424,7 @@ class P4simTestSuite : public TestSuite
         AddTestCase(new P4BmLogLevelTestCase, P4SIM_TEST_QUICK);
         AddTestCase(new P4BmLogLevelDefaultTestCase, P4SIM_TEST_QUICK);
         AddTestCase(new P4DeprecatedAttributesTestCase, P4SIM_TEST_QUICK);
+        AddTestCase(new P4FlowTableErrorsTestCase, P4SIM_TEST_QUICK);
     }
 };
 

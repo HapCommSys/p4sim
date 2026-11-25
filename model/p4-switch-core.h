@@ -170,7 +170,12 @@ class P4SwitchCore : public bm::Switch
 
     /**
      * @brief Execute the CLI commands from a file
-     * @param commandsFile the path to the CLI commands file
+     *
+     * Empty lines and lines that start with '#' are skipped. A command that the
+     * CLI reports as an error is printed with its line number, and the rest of
+     * the file runs. A file that cannot be read ends the simulation.
+     *
+     * @param commandsFile the path to the CLI commands file, empty for none
      * @return int the status code
      */
     int ExecuteCliCommands(const std::string& commandsFile);
@@ -476,6 +481,19 @@ class P4SwitchCore : public bm::Switch
     std::vector<Address> m_destinationList; //!< List of addresses (O(log n) search)
     std::map<Address, int> m_addressMap;    //!< Map for fast lookup
   private:
+    /**
+     * @brief Print the commands that the runtime CLI reported as errors, with
+     * the file and the line
+     * @param file the path to the CLI commands file
+     * @param commands the line number and text of each command given to the CLI
+     * @param output what the CLI printed
+     * @param status the exit status of the CLI
+     */
+    void ReportCliErrors(const std::string& file,
+                         const std::vector<std::pair<uint32_t, std::string>>& commands,
+                         const std::string& output,
+                         int status) const;
+
     class MirroringSessions;            //!< Mirroring sessions for clone .etc
     int m_thriftPort{0};                //!< Thrift port of the switch (allocated at init)
     uint16_t m_requestedThriftPort{0};  //!< Requested Thrift port, 0 = automatic
