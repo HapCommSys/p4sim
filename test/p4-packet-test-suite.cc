@@ -9,13 +9,13 @@
  *   packet <port> <hex>   send this Ethernet frame into the switch on <port>
  *   expect <port> <hex>   this frame leaves the switch on <port>; '*' matches any nibble
  *   mirroring_add <session> <port>   the clones of this mirroring session leave on <port>
- *   mirroring_add_mc <session> <group>   they go to multicast group <group> (v1model)
+ *   mirroring_add_mc <session> <group>   they go to multicast group <group>
  *   register <name> <index> <value>   after the run, register <name>[<index>] holds <value>
  * Spaces in <hex> are ignored. All frames are sent at the same time, in file order.
  * A test passes if every port sends exactly the frames expected on it, in that
  * order. The switch has three ports, 0 to 2.
  *
- * On v1model, these commands of simple_switch_CLI configure multicast:
+ * On v1model and PSA, these commands of simple_switch_CLI configure multicast:
  *   mc_mgrp_create <group>                       create a multicast group
  *   mc_node_create <rid> <port>... [| <lag>...]  create a node; nodes get the handles 0, 1, ...
  *   mc_node_associate <group> <node handle>      add a node to a group
@@ -288,11 +288,12 @@ StfTestCase::ApplyMcCommands(Ptr<P4SwitchNetDevice> sw) const
     {
         return "";
     }
-    if (!sw->GetV1ModelCore())
+    // v1model and PSA have a packet replication engine
+    auto pre = sw->GetCore()->get_component<bm::McSimplePreLAG>();
+    if (!pre)
     {
-        return m_stf + ": the multicast commands need v1model";
+        return m_stf + ": the multicast commands need v1model or PSA";
     }
-    auto pre = sw->GetV1ModelCore()->get_component<bm::McSimplePreLAG>();
     for (const StfMcCommand& mc : m_mcCommands)
     {
         bm::McSimplePre::PortMap ports;
@@ -542,6 +543,8 @@ static class P4PacketTestSuite : public TestSuite
                     P4SIM_TEST_QUICK);
         // PSA clones and mirroring sessions
         AddTestCase(new StfTestCase("clone", "psa", P4SWITCH_ARCH_PSA, "clone_psa.stf"),
+                    P4SIM_TEST_QUICK);
+        AddTestCase(new StfTestCase("clone", "psa", P4SWITCH_ARCH_PSA, "clone_psa_mc.stf"),
                     P4SIM_TEST_QUICK);
         AddTestCase(
             new StfTestCase("primitives", "v1model", P4SWITCH_ARCH_V1MODEL, "primitives.stf"),

@@ -495,7 +495,7 @@ P4CoreV1model::TransmitNext(uint32_t port)
     if (!m_switchNetDevice->SendNs3Packet(frame.packet,
                                           static_cast<int>(port),
                                           frame.protocol,
-                                          m_destinationList[frame.addressIndex]))
+                                          GetDestination(frame.addressIndex)))
     {
         // Dropped by the device: nothing is on the wire, free the port.
         pstate.txCompleteEvent = Simulator::ScheduleNow(&P4CoreV1model::PortTxComplete, this, port);
@@ -2424,7 +2424,7 @@ P4CoreV1model::TmTransmit(uint32_t outPort, uint8_t priority, std::unique_ptr<Tm
     bool sent = m_switchNetDevice->SendNs3Packet(ns_packet,
                                                  static_cast<int>(outPort),
                                                  protocol,
-                                                 m_destinationList[addr_index],
+                                                 GetDestination(addr_index),
                                                  &txTime);
 
     // On success, report completion when the last bit has been serialised; the

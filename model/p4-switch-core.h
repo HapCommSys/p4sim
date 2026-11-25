@@ -425,6 +425,14 @@ class P4SwitchCore : public bm::Switch
      */
     int GetAddressIndex(const Address& destination);
 
+    /**
+     * @brief The destination address with an index that GetAddressIndex() gave
+     * @param index the index, as the packet registers keep it
+     * @return the address; another index aborts in a build with asserts (a
+     *         packet copy whose registers were not set, for example)
+     */
+    const Address& GetDestination(int index) const;
+
     /// A frame that passed the egress pipeline and waits for its port
     struct TransferFrame
     {

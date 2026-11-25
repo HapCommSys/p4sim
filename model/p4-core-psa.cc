@@ -289,6 +289,10 @@ P4CorePsa::EventDrivenEgressDequeue(uint32_t port)
         {
             NS_LOG_DEBUG("PSA: cloning packet after egress to session " << clone_session_id);
             std::unique_ptr<bm::Packet> packet_copy = bm_packet->clone_no_phv_ptr();
+            // BMv2 does not copy the registers of a packet: set them, as v1model does
+            RegisterAccess::clear_all(packet_copy.get());
+            packet_copy->set_register(RegisterAccess::PACKET_LENGTH_REG_IDX,
+                                      packet_copy->get_data_size());
             auto phv_copy = packet_copy->get_phv();
             phv_copy->reset_metadata();
             phv_copy->get_field("psa_egress_parser_input_metadata.packet_path")
@@ -379,7 +383,7 @@ P4CorePsa::TransmitNext(uint32_t port)
     if (!m_switchNetDevice->SendNs3Packet(frame.packet,
                                           static_cast<int>(port),
                                           frame.protocol,
-                                          m_destinationList[frame.addressIndex]))
+                                          GetDestination(frame.addressIndex)))
     {
         // Dropped by the device: nothing is on the wire, free the port.
         pstate.txCompleteEvent = Simulator::ScheduleNow(&P4CorePsa::PortTxComplete, this, port);
@@ -614,6 +618,8 @@ P4CorePsa::HandleIngressPipeline()
             bm_packet->restore_buffer_state(packet_in_state);
 
             std::unique_ptr<bm::Packet> packet_copy = bm_packet->clone_no_phv_ptr();
+            // BMv2 does not copy the registers of a packet: set them, as v1model does
+            RegisterAccess::clear_all(packet_copy.get());
             packet_copy->set_register(RegisterAccess::PACKET_LENGTH_REG_IDX, ingress_packet_size);
             auto phv_copy = packet_copy->get_phv();
             phv_copy->reset_metadata();
@@ -747,6 +753,8 @@ P4CorePsa::MultiCastPacket(bm::Packet* packet,
         // TODO use appropriate enum member from JSON
         f_packet_path.set(path);
         std::unique_ptr<bm::Packet> packet_copy = packet->clone_with_phv_ptr();
+        // BMv2 does not copy the registers of a packet: set them, as v1model does
+        RegisterAccess::clear_all(packet_copy.get());
         packet_copy->set_register(RegisterAccess::PACKET_LENGTH_REG_IDX, packet_size);
         Enqueue(egress_port, std::move(packet_copy));
     }

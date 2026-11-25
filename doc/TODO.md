@@ -56,8 +56,6 @@ line (bridge ports only, the old timing model) and gets no more changes.
 ## Feature gaps
 
 - **PSA and PNA.**
-  - PSA clones to a multicast group have no test: the `.stf` files of
-    `p4-packet` configure multicast on v1model only.
   - PNA has no Thrift service of its own (BMv2's `pna_nic` has one, for the
     time commands of `pna_nic_CLI`); its `FlowTablePath` runs in `bm_CLI`.
   - `P4Controller` works on v1model switches only.
