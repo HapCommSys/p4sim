@@ -63,8 +63,12 @@ line (bridge ports only, the old timing model) and gets no more changes.
     time commands of `pna_nic_CLI`), and it does not load its `FlowTablePath`.
   - `P4Controller` works on v1model switches only.
 - **`PipelineDelay` follow-ups (#59).**
-  - Separate ingress and egress delays: the egress part can now hold a packet
-    between the TM and the transfer buffer (see above).
+  - No separate egress delay (decided November 2026): one delay before the TM is
+    enough. With the same total and a port that takes its packets early enough
+    to keep the line busy, a second delay after the TM would send the same frames
+    in the same order at the same times (by analysis, not measured). Only the
+    timestamps that the P4 program sees and the timing of egress clones would
+    differ.
   - A model per stage (Tofino's ingress and egress share a fixed number of
     match-action stages; register accesses may add time). BMv2's JSON has no
     stage allocation, so p4sim cannot see the stages.

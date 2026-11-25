@@ -90,8 +90,9 @@ number is the order in which the ports are added.
    ``TransferBufferSize`` (v1model and PSA; 0 by default), it also takes packets
    while its transfer buffer, the port queue after the egress, has room: they
    pass the egress pipeline then and wait there in order, and are not overtaken
-   any more.  The links serialise every frame at their data rate, and every
-   device stores a frame completely before it forwards it.
+   any more; v1model's ``deq_timedelta`` does not contain this wait.  The links
+   serialise every frame at their data rate, and every device stores a frame
+   completely before it forwards it.
 
 **Control plane.**  Besides the flow-table file, the tables of a v1model switch
 can be changed during the simulation with ``P4Controller`` (flow entries, action
