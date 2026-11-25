@@ -221,7 +221,6 @@ build_lib(
         test/p4-p2p-channel-test-suite.cc
         test/p4-queue-test-suite.cc
         test/p4-packet-test-suite.cc
-        ${examples_as_tests_sources}
 )
 
 # GetP4SimDir() (utils/format-utils.cc) returns the p4sim folder of this build,
