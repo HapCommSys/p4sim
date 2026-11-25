@@ -176,7 +176,7 @@ class P4SwitchCore : public bm::Switch
      * the file runs. A file that cannot be read ends the simulation.
      *
      * @param commandsFile the path to the CLI commands file, empty for none
-     * @return int the status code
+     * @return 0 if every command ran without an error, 1 otherwise
      */
     int ExecuteCliCommands(const std::string& commandsFile);
 
@@ -483,16 +483,15 @@ class P4SwitchCore : public bm::Switch
   private:
     /**
      * @brief Print the commands that the runtime CLI reported as errors, with
-     * the file and the line
+     * the file and the line, and the command at which it stopped
      * @param file the path to the CLI commands file
      * @param commands the line number and text of each command given to the CLI
      * @param output what the CLI printed
-     * @param status the exit status of the CLI
+     * @return whether an error was printed
      */
-    void ReportCliErrors(const std::string& file,
+    bool ReportCliErrors(const std::string& file,
                          const std::vector<std::pair<uint32_t, std::string>>& commands,
-                         const std::string& output,
-                         int status) const;
+                         const std::string& output) const;
 
     class MirroringSessions;            //!< Mirroring sessions for clone .etc
     int m_thriftPort{0};                //!< Thrift port of the switch (allocated at init)

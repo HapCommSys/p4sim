@@ -6,7 +6,7 @@
  * manager, Thrift ports never collide, BmLogLevel controls the BMv2 pipeline log
  * (off by default), the deprecated attributes are still accepted, and errors in
  * a flow table are reported. The switches have no ports, so no packet is sent, and
- * only the last one has a flow table and so a Thrift server.
+ * only those of the last test case have a flow table and so a Thrift server.
  */
 
 #include "ns3/core-module.h"
@@ -278,9 +278,9 @@ class P4BmLogLevelDefaultTestCase : public P4TestCase
  * \ingroup p4sim-tests
  * Comments and empty lines of a flow table are skipped. A command that the runtime
  * CLI reports as an error is printed with its file and line, and the rest of the
- * file still runs. A CLI that cannot run is reported, too. The byte order mark that
- * some editors write at the start of a file is no error. (A flow table that cannot be
- * opened ends the process.)
+ * file still runs, unless the CLI stops, as at the line EOF. A CLI that cannot run
+ * is reported, too. The byte order mark that some editors write at the start of a
+ * file is no error. (A flow table that cannot be opened ends the process.)
  */
 class P4FlowTableErrorsTestCase : public P4TestCase
 {
@@ -297,8 +297,10 @@ class P4FlowTableErrorsTestCase : public P4TestCase
         std::string dir = CreateDataDirFilename("p4src/simple_v1model/");
         std::ostringstream errors;
         std::streambuf* cerrBuffer = std::cerr.rdbuf(errors.rdbuf());
-        Ptr<P4SwitchNetDevice> sw =
-            CreateSwitch(0, dir + "simple_v1model.json", "off", dir + "flowtable_errors.txt");
+        // The test macros evaluate their arguments twice on a failure, so each
+        // flow table runs before, once
+        Ptr<P4SwitchNetDevice> sw = CreateSwitch(0, dir + "simple_v1model.json");
+        int status = sw->GetCore()->ExecuteCliCommands(dir + "flowtable_errors.txt");
         std::string path = std::getenv("PATH") ? std::getenv("PATH") : "";
         std::ostringstream noCli;
         std::cerr.rdbuf(noCli.rdbuf());
@@ -311,8 +313,12 @@ class P4FlowTableErrorsTestCase : public P4TestCase
         std::ofstream(bomTable)
             << "\xEF\xBB\xBF"
             << "table_add ipv4_nhop ipv4_forward 0x0a010101 => 00:00:00:00:00:01 0\n";
-        Ptr<P4SwitchNetDevice> bom = CreateSwitch(0, dir + "simple_v1model.json", "off", bomTable);
+        Ptr<P4SwitchNetDevice> bom = CreateSwitch(0, dir + "simple_v1model.json");
+        int bomStatus = bom->GetCore()->ExecuteCliCommands(bomTable);
         std::cerr.rdbuf(cerrBuffer);
+
+        NS_TEST_EXPECT_MSG_EQ(status, 1, "The status must tell that commands failed");
+        NS_TEST_EXPECT_MSG_EQ(bomStatus, 0, "No command of the second table fails");
 
         NS_TEST_EXPECT_MSG_EQ(bomErrors.str(), "", "The byte order mark is no error");
         std::size_t bomEntries = 0;
@@ -331,7 +337,7 @@ class P4FlowTableErrorsTestCase : public P4TestCase
         {
             lines += (c == '\n');
         }
-        NS_TEST_EXPECT_MSG_EQ(lines, 8, "Expected 4 errors with 2 lines each: " << errors.str());
+        NS_TEST_EXPECT_MSG_EQ(lines, 10, "Expected 5 errors with 2 lines each: " << errors.str());
         for (const std::string error :
              {":5: table_add no_such_table ipv4_forward 0x0a010103 => 00:00:00:00:00:03 2\n"
               "    Error: Invalid table name (no_such_table)",
@@ -340,7 +346,9 @@ class P4FlowTableErrorsTestCase : public P4TestCase
               ":7: no_such_command 1 2\n"
               "    *** Unknown syntax: no_such_command 1 2",
               ":8: table_add ipv4_nhop ipv4_forward 0x0a010101 => 00:00:00:00:00:01 0\n"
-              "    Invalid table operation (DUPLICATE_ENTRY)"})
+              "    Invalid table operation (DUPLICATE_ENTRY)",
+              ":10: EOF\n"
+              "    simple_switch_CLI stopped here, the rest of the file is skipped\n"})
         {
             NS_TEST_EXPECT_MSG_NE(errors.str().find("flowtable_errors.txt" + error),
                                   std::string::npos,

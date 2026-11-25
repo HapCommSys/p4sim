@@ -35,6 +35,7 @@
 #include <bm/bm_sim/options_parse.h>
 #include <bm/bm_sim/port_monitor.h>
 #include <cctype>
+#include <cerrno>
 #include <cstdio>
 #include <cstdlib>
 #include <fcntl.h>
@@ -50,6 +51,10 @@
 #include <sys/mman.h>
 #include <sys/socket.h>
 #include <unistd.h>
+
+#ifndef MFD_NOEXEC_SEAL // glibc before 2.39
+#define MFD_NOEXEC_SEAL 0x0008U
+#endif
 
 NS_LOG_COMPONENT_DEFINE("P4SwitchCore");
 
@@ -782,18 +787,20 @@ P4SwitchCore::LoadFlowTableToSwitch(const std::string& flowTablePath)
     return ExecuteCliCommands(flowTablePath);
 }
 
-void
+bool
 P4SwitchCore::ReportCliErrors(const std::string& file,
                               const std::vector<std::pair<uint32_t, std::string>>& commands,
-                              const std::string& output,
-                              int status) const
+                              const std::string& output) const
 {
-    // The CLI prints its prompt before the output of each command
+    // The CLI prints its prompt before the output of each command, and once more
+    // at the end of the commands
     const std::string prompt = "RuntimeCmd: ";
     const std::vector<std::string> signs = {"Error: ", "Invalid ", "*** Unknown syntax"};
     size_t command = 0;
-    std::string last; // the last line that is not empty
+    std::string last;    // the last line of this command that is not empty
+    bool errors = false; // whether an error was printed
     auto report = [&](const std::string& error) {
+        errors = true;
         std::cerr << file;
         if (command >= 1 && command <= commands.size())
         {
@@ -809,6 +816,7 @@ P4SwitchCore::ReportCliErrors(const std::string& file,
         while (line.rfind(prompt, 0) == 0)
         {
             command++;
+            last.clear();
             line.erase(0, prompt.size());
         }
         if (std::any_of(signs.begin(), signs.end(), [&line](const std::string& sign) {
@@ -822,10 +830,14 @@ P4SwitchCore::ReportCliErrors(const std::string& file,
             last = line;
         }
     }
-    if (status != 0)
+    if (command <= commands.size())
     {
-        report(m_thriftCommand + " failed, the rest of the file is skipped: " + last);
+        report(m_thriftCommand +
+               (command == 0 ? " failed, the file is skipped"
+                             : " stopped here, the rest of the file is skipped") +
+               (last.empty() ? "" : ": " + last));
     }
+    return errors;
 }
 
 int
@@ -843,7 +855,7 @@ P4SwitchCore::ExecuteCliCommands(const std::string& commandsFile)
     // Without a flow table the tables keep the entries of the P4 program
     if (commandsFile.empty())
     {
-        return 1;
+        return 0;
     }
     std::vector<std::pair<uint32_t, std::string>> commands; // (line number, command)
     std::ostringstream input;
@@ -900,16 +912,24 @@ P4SwitchCore::ExecuteCliCommands(const std::string& commandsFile)
     }
 
     // The CLI inherits the commands in a file in memory, which leaves nothing on the
-    // disk if this process is killed, and its output comes back through a pipe
-    int fd = memfd_create("p4sim-cli", 0);
+    // disk if this process is killed, and its output comes back through a pipe. Hosts
+    // with vm.memfd_noexec=2 want the flag, and Linux before 6.3 does not know it.
+    int fd = memfd_create("p4sim-cli", MFD_NOEXEC_SEAL);
+    if (fd < 0 && errno == EINVAL)
+    {
+        fd = memfd_create("p4sim-cli", 0);
+    }
     std::string text = input.str();
     if (fd < 0 || write(fd, text.data(), text.size()) != static_cast<ssize_t>(text.size()))
     {
         NS_FATAL_ERROR("Switch ID " << m_p4SwitchId
                                     << ": cannot pass the flow table to the runtime CLI");
     }
-    std::string cmd = m_thriftCommand + " --thrift-port " + std::to_string(port) +
-                      " < /proc/self/fd/" + std::to_string(fd) + " 2>&1";
+    // The encoding lets the CLI read bytes that are not UTF-8: it reads the commands
+    // in blocks, so such a byte would end it before the commands above run
+    std::string cmd = "PYTHONIOENCODING=utf-8:surrogateescape " + m_thriftCommand +
+                      " --thrift-port " + std::to_string(port) + " < /proc/self/fd/" +
+                      std::to_string(fd) + " 2>&1";
     NS_LOG_DEBUG("Executing CLI command: " << cmd);
 
     std::string output;
@@ -919,10 +939,12 @@ P4SwitchCore::ExecuteCliCommands(const std::string& commandsFile)
     {
         output.append(buffer.data(), n);
     }
-    int result = cli ? pclose(cli) : -1;
+    if (cli)
+    {
+        pclose(cli);
+    }
     close(fd);
-    ReportCliErrors(commandsFile, commands, output, result);
-    return result;
+    return ReportCliErrors(commandsFile, commands, output) ? 1 : 0;
 }
 
 uint64_t

@@ -14,4 +14,4 @@ table_add switching_table set_dmac 10.0.1.2 => 00:00:00:00:00:04
 table_add switching_table set_dmac 10.0.3.2 => 00:00:00:00:00:08
 table_add mac_rewriting_table set_smac 0x0 => 00:00:00:00:00:02
 table_add mac_rewriting_table set_smac 0x1 => 00:00:00:00:00:03
-table_add mac_rewriting_table set_smac 0x2 => 00:00:00:00:00:0
+table_add mac_rewriting_table set_smac 0x2 => 00:00:00:00:00:07
