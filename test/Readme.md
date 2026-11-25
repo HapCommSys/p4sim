@@ -15,7 +15,7 @@ No environment variable is needed, and suites can run in parallel.
 
 ## Suites
 
-19 suites, 126 test cases. The first seven do not need BMv2.
+20 suites, 146 test cases. The first seven do not need BMv2.
 
 | Suite | Checks |
 |---|---|
@@ -27,20 +27,21 @@ No environment variable is needed, and suites can run in parallel.
 | `p4-queue` | egress queue: capacity, rate, FIFO, per-port rate, priorities |
 | `p4-traffic-manager` | the VOQ + fabric traffic manager |
 | `p4sim` | v1model, PSA and PNA load their program; Thrift ports; `BmLogLevel` and its default, `off`; the deprecated `ChannelType` and `EnableTracing` are still accepted |
-| `p4-packet` | frames sent into a switch and the frames that leave it, on v1model, PNA, PSA and the pipeline core |
-| `p4-controller` | flow entries, action profiles and mirroring sessions, read back from the switch; the mirroring, queue and time commands of `simple_switch_CLI` and `psa_switch_CLI`; the Thrift port of a destroyed switch answers with an error |
+| `p4-packet` | frames sent into a switch and the frames that leave it, on v1model, PNA, PSA and the pipeline core; a frame from a host on a switched-Ethernet port enters on that port |
+| `p4-controller` | `P4Controller`, read back from the switch: flow entries on v1model, PSA, PNA and the pipeline core, action profiles and a meter array on v1model, mirroring sessions on v1model and PSA; `P4RuntimeApi` with a null output argument fails; the mirroring, queue and time commands of `simple_switch_CLI` and `psa_switch_CLI`; the Thrift port of a destroyed switch answers with an error |
+| `p4-digest` | every `digest()` gives one record to the `Digest` trace, with the fields of its learn list, when the ingress processes the frame (v1model, pipeline core); after a program swap the records follow the new program; L2 learning with `P4Controller`'s digest callback: learned hosts are no longer flooded; a destroyed controller gets no digests, and each switch is registered once |
 | `p4-config-swap` | `EnableSwap`: an idle switch swaps its program at once, a busy one when its last packet has left; frames that arrive meanwhile wait and use the new program (v1model through `P4Controller` and `simple_switch_CLI`, PSA; also with frames in the transfer buffer); without `EnableSwap` the program stays |
 | `p4-egress` | a congested switched-Ethernet port sends back to back at its line rate; a switch with a full egress queue, or one whose port just refused a frame, can be destroyed |
 | `p4-switch-rate` | `SwitchRate` limits the whole pipeline, 0 means no limit, a full input buffer drops |
-| `p4-pipeline-delay` | `PipelineDelay` delays every packet by the same time without lowering the throughput (default egress path, VOQ, PSA, pipeline core, with `SwitchRate`, on a congested port), once per pass for recirculated frames and clones; a switch with packets in its pipeline can be destroyed |
+| `p4-pipeline-delay` | `PipelineDelay` delays every packet by the same time without lowering the throughput (default egress path, VOQ, PSA, PNA, pipeline core, with `SwitchRate`, on a congested port), once per pass for recirculated frames and clones; a switch with packets in its pipeline can be destroyed |
 | `p4-transfer-buffer` | `TransferBufferSize`: a congested port holds that many frames after the egress and still sends back to back (v1model, PSA; default 0); a high-priority frame does not overtake the frames in the buffer; a packet that the egress drops does not free a sending port |
 | `p4-bridge-port` | CSMA and point-to-point bridge ports next to a switched-Ethernet port |
-| `p4-pna` | a PNA switch forwards, and drops what its program does not send; a full output queue drops |
+| `p4-pna` | a PNA switch forwards, and drops what its program does not send; its flow table file runs in `bm_CLI`; a full output queue drops |
 | `link-framing` | Ethernet framing (preamble, FCS, padding, interframe gap) on the switched-Ethernet channel and the P4 point-to-point device; between two hosts, through a switch, and in a switch's estimate for a point-to-point bridge port |
-| `switched-ethernet-traffic-control` | flow control on host devices: a queue disc schedules the backlog of a host, `FqCoDelQueueDisc` is the default, `DisableFlowControl()` installs none |
+| `switched-ethernet-traffic-control` | flow control on host devices: a queue disc schedules the backlog of a host, `FqCoDelQueueDisc` is the default, `DisableFlowControl()` installs none; byte queue limits (`SetQueueLimits()`) keep the backlog in the queue disc even when the device queue has room |
 
 `p4-controller` also needs `simple_switch_CLI` and `psa_switch_CLI`, `p4-config-swap`
-`simple_switch_CLI`.
+`simple_switch_CLI`, `p4-pna` `bm_CLI`.
 
 [`examples-to-run.py`](examples-to-run.py) lists the examples that `test.py` runs
 as smoke tests: each must exit with 0. It keeps the examples from breaking unnoticed.
@@ -63,14 +64,14 @@ with three ports, once per architecture: `forward_v1model.p4`, `forward_pna.p4` 
 ingress and in the egress, on v1model and the pipeline core. [`p4src/priority`](p4src/priority) checks the
 priority queues of v1model, [`p4src/resubmit`](p4src/resubmit) and
 [`p4src/recirculate`](p4src/recirculate) its resubmit and recirculation,
-[`p4src/clone`](p4src/clone) its clones (also to a multicast group) and those of PSA, [`p4src/primitives`](p4src/primitives)
+[`p4src/clone`](p4src/clone) its clones and those of PSA (also to a multicast group), [`p4src/primitives`](p4src/primitives)
 `digest()`, `hash()` with max 0 and `random()` with lo > hi, and [`p4src/lag`](p4src/lag)
 the LAG member that its multicast picks. The format is a subset of p4c's STF:
 
 ```
 # comment
 mirroring_add 5 2                             # clones of mirroring session 5 leave port 2
-mirroring_add_mc 6 1                          # v1model: clones of session 6 go to multicast group 1
+mirroring_add_mc 6 1                          # clones of session 6 go to multicast group 1
 mc_set_lag_membership 3 1 2                   # v1model: LAG 3 has the ports 1 and 2
 mc_mgrp_create 1                              # multicast group 1
 mc_node_create 0 2 | 3                        # node 0 (rid 0): port 2 and LAG 3
@@ -96,5 +97,8 @@ program goes in its own directory as `<dir>/<dir>_<arch>.p4`.
   so parallel runs never share a port.
 - Keep tests small: every packet runs through the BMv2 pipeline.
 - Call `Simulator::Destroy()` in `DoTeardown()`, which also runs after a failed check.
+- A failed `NS_TEST_ASSERT_*` check does not end the test case (the test runner
+  continues on failure unless it runs with `--stop-on-failure`): check a size or
+  a pointer with an `if` before you use it.
 - A P4 JSON that fails to load aborts the process (`NS_FATAL_ERROR`), so it can
   only be tested in a separate process.

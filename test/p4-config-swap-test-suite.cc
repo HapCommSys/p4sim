@@ -16,6 +16,7 @@
 #include "ns3/network-module.h"
 #include "ns3/p4-controller.h"
 #include "ns3/p4-core-v1model.h"
+#include "ns3/p4-runtime-api.h"
 #include "ns3/p4-switch-net-device.h"
 #include "ns3/p4sim-ns3-compat.h"
 #include "ns3/switched-ethernet-channel.h"
@@ -280,10 +281,11 @@ class ConfigSwapDisabledTestCase : public TestCase
         switchNode->AddDevice(sw);
         sw->Initialize();
 
-        P4CoreV1model* core = sw->GetV1ModelCore();
+        P4SwitchCore* core = sw->GetCore();
+        P4RuntimeApi api(*core);
         std::string json = ReadFile(CreateDataDirFilename("p4src/swap/swap_v1model.json"));
-        NS_TEST_EXPECT_MSG_EQ(core->LoadNewConfig(json), -1, "A program was loaded");
-        NS_TEST_EXPECT_MSG_EQ(core->SwapConfigs(), -1, "A swap was accepted");
+        NS_TEST_EXPECT_MSG_EQ(api.LoadNewConfig(json), -1, "A program was loaded");
+        NS_TEST_EXPECT_MSG_EQ(api.SwapConfigs(), -1, "A swap was accepted");
         NS_TEST_EXPECT_MSG_EQ(core->IsSwapPending(), false, "A swap waits");
     }
 

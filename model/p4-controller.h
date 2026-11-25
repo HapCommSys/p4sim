@@ -3,16 +3,17 @@
 
 #include "p4-switch-net-device.h"
 
+#include "ns3/callback.h"
 #include "ns3/object.h"
-#include "ns3/p4-core-v1model.h"
+#include "ns3/p4-digest.h"
+#include "ns3/p4-runtime-api.h"
+#include "ns3/p4-switch-core.h"
 #include <ns3/network-module.h>
 
 #include <string>
 #include <vector>
 
 namespace ns3 {
-
-class P4CoreV1model;
 
 /**
  * @brief Controller for managing multiple P4 switches in an NS-3 simulation.
@@ -22,6 +23,11 @@ class P4CoreV1model;
  * - Setting paths for flow table configuration and viewing.
  * - Managing a collection of P4 switches, including adding and retrieving
  * switches.
+ *
+ * The table, action profile, counter, meter, register, parse value set,
+ * program swap and mirroring functions work on switches of every architecture
+ * (v1model, PSA, PNA and the pipeline core), through P4RuntimeApi. The digests
+ * of the switches reach the callback set with SetDigestCallback().
  */
 class P4Controller : public Object {
 public:
@@ -42,9 +48,26 @@ public:
    */
   static TypeId GetTypeId(void);
   /**
-   * @brief Register P4 Switch with the controller.
+   * @brief Register P4 Switch with the controller. Its index is the number of
+   * switches registered before it. Its digests reach the digest callback.
+   * A null switch, or one that is already registered, is not registered (a
+   * warning is logged).
    */
   void RegisterSwitch(ns3::Ptr<ns3::P4SwitchNetDevice> sw);
+
+  /**
+   * @brief Receive the digests of the registered switches: the records of
+   * digest() in their P4 programs (v1model and the pipeline core).
+   *
+   * Every digest() gives one record (no deduplication, unlike BMv2's
+   * notification socket), at the time its packet leaves the ingress, in an event
+   * after the switch is done with the packet: the callback may change the tables
+   * of the switch at once. The controller must exist while the simulation runs.
+   *
+   * @param cb gets the index of the switch and the record; a null callback
+   * ignores the digests (the default)
+   */
+  void SetDigestCallback(Callback<void, uint32_t, const P4Digest &> cb);
 
   /**
    * @brief Connect controller to switch's trace sources
@@ -807,6 +830,15 @@ private:
   P4Controller &operator=(const P4Controller &) = delete;
 
   std::vector<ns3::Ptr<ns3::P4SwitchNetDevice>> m_connectedSwitches;
+
+  /// Registered switch \p index sent a digest
+  void HandleDigest(uint32_t index, const P4Digest &digest);
+
+  /// The sink of the Digest trace of registered switch \p index
+  Callback<void, const P4Digest &> DigestSink(uint32_t index);
+
+  /// Gets the digests of the registered switches (see SetDigestCallback())
+  Callback<void, uint32_t, const P4Digest &> m_digestCallback;
 };
 
 } // namespace ns3

@@ -95,9 +95,14 @@ number is the order in which the ports are added.
    serialise every frame at their data rate, and every device stores a frame
    completely before it forwards it.
 
-**Control plane.**  Besides the flow-table file, the tables of a v1model switch
-can be changed during the simulation with ``P4Controller`` (flow entries, action
-profiles, counters, meters, registers, mirroring sessions).  The runtime CLIs of
+**Control plane.**  Besides the flow-table file, the tables of a switch can be
+changed during the simulation with ``P4Controller`` (flow entries, action
+profiles, counters, meters, registers, mirroring sessions), on every
+architecture.  It calls the BMv2 runtime API of the switch through
+``P4RuntimeApi``, which a simulation can also use directly.  The records of
+``digest()`` (v1model and the pipeline core) reach the trace source ``Digest``
+of the switch and the digest callback of ``P4Controller``, so that a controller
+in the simulation can learn from them; the example ``p4-l2-learning`` does.  The runtime CLIs of
 BMv2 connect to the Thrift port of a switch (attribute ``ThriftPort``; by
 default the first free port from ``$P4SIM_THRIFT_PORT_BASE``, 9090).
 
@@ -107,13 +112,14 @@ The main classes are:
   ``P4CoreV1model``, ``P4CorePsa``, ``P4PnaNic`` and ``P4CorePipeline``;
   ``SwitchedEthernetChannel`` and ``SwitchedEthernetHostDevice``;
   ``CustomP2PNetDevice``, ``P4P2PChannel`` and ``P4BridgeChannel``;
-  ``LinkFraming``; ``CustomHeader``; ``P4Controller``; ``P4TopologyReader``.
+  ``LinkFraming``; ``CustomHeader``; ``P4Controller`` and ``P4RuntimeApi``;
+  ``P4TopologyReader``.
 * **Helpers** -- ``P4Helper``, ``SwitchedEthernetHelper``,
   ``P4PointToPointHelper``, ``P4TopologyReaderHelper``,
   ``BuildNetworkFromTopology()`` (``p4-net-builder.h``), ``BuildFlowtableHelper``.
 * **Utilities** -- ``format-utils`` (paths of the P4 files, conversions),
-  ``SwitchApi`` (BMv2 runtime API), the input buffer and output queues
-  (``p4-queue.h``), ``P4TrafficManager``, ``FattreeTopoHelper``.
+  the input buffer and output queues (``p4-queue.h``), ``P4TrafficManager``,
+  ``FattreeTopoHelper``.
 
 ``doc/switch.md`` describes the switched-Ethernet devices and their timing, and
 ``doc/traffic-manager.md`` the traffic manager.
@@ -131,13 +137,15 @@ Scope and Limitations
   (``patches/bmv2-spdlog-cxx20.patch``).
 * The P4 program sees every frame, ARP included, and must forward it; the
   example programs do.
-* PNA ignores ``PipelineDelay``, has no Thrift service of its own, and does not
-  load its ``FlowTablePath``.
-* ``P4Controller`` works on v1model switches only.
-* ``digest()`` sends its records to the notification socket of BMv2; nothing in
-  the simulation receives them.
+* PNA has no Thrift service of its own: its ``FlowTablePath`` runs in BMv2's
+  generic ``bm_CLI``, which has the table commands but not the time commands of
+  ``pna_nic_CLI``.
+* PSA and PNA programs give no digest records, as BMv2's ``psa_switch`` and
+  ``pna_nic`` give none.
 * The pipeline core (``P4SwitchArch`` 3) has no output queue: a congested port
-  can lose frames.
+  can lose frames.  It has no packet replication engine either: multicast
+  (``mcast_grp``), clones, resubmit and recirculation have no effect, and the
+  frame goes to ``egress_spec`` only.
 * The Thrift server of a switch runs in its own thread.  Use the runtime CLIs
   before and after the simulation, and ``P4Controller`` during it.  BMv2 cannot
   stop the server, so the Thrift port of a destroyed switch stays open; it
@@ -297,7 +305,8 @@ Output
   ``P4PointToPointHelper``.
 * **Trace sources** of ``P4SwitchNetDevice`` -- ``MacTx``, ``MacTxDrop``,
   ``MacRx``, ``MacRxDrop`` (full input buffer), ``Sniffer``,
-  ``PromiscSniffer`` and ``SwitchEvent``.
+  ``PromiscSniffer``, ``SwitchEvent`` and ``Digest`` (the records of
+  ``digest()``).
 * **Logging** -- each component has its own ``NS_LOG`` component
   (e.g. ``P4SwitchNetDevice``, ``P4CoreV1model``, ``P4Controller``), and BMv2
   writes its pipeline log as set by ``BmLogLevel``.
@@ -345,6 +354,8 @@ Run any built-in example with::
      - Four hosts and four switches (p4lang tutorial ``basic``)
    * - ``p4-basic-controller``
      - Flow entries changed by ``P4Controller`` during the simulation
+   * - ``p4-l2-learning``
+     - L2 learning: ``P4Controller`` fills the tables from the digests of the switch
    * - ``p4-basic-tunnel``
      - A tunnel with a custom header
    * - ``p4-firewall``
@@ -353,6 +364,10 @@ Run any built-in example with::
      - Spine-leaf network with ECMP load balancing
    * - ``p4-topo-fattree``
      - Generated k-ary fat tree with its flow tables
+   * - ``p4-priority-queues``
+     - Strict-priority queues, with the classification in the P4 program
+   * - ``p4-latency``
+     - What makes up the one-way delay through a P4 switch
    * - ``p4-voq-fabric-throughput``
      - Throughput of the VOQ + fabric traffic manager
 
@@ -376,7 +391,7 @@ Troubleshooting
 Validation
 **********
 
-The module has 19 test suites with 126 test cases, from unit tests of
+The module has 20 test suites with 146 test cases, from unit tests of
 single classes to packet tests that send frames through a switch and check the
 frames that leave it (``p4-packet``, with test files in the format of p4c's
 STF).  Among them:
@@ -388,6 +403,8 @@ STF).  Among them:
   links.
 * ``p4-traffic-manager`` -- the VOQ + fabric traffic manager.
 * ``p4-controller`` -- ``P4Controller`` and the runtime CLIs.
+* ``p4-digest`` -- the records of ``digest()``, and L2 learning with
+  ``P4Controller``.
 * ``p4-config-swap`` -- swapping the P4 program at run time.
 
 ``test/Readme.md`` describes every suite and how to run them, for example::

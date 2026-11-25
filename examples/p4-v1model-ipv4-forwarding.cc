@@ -233,6 +233,11 @@ main(int argc, char* argv[])
     std::string p4JsonPath = p4SrcDir + "/simple_v1model.json";
     std::string flowTablePath = p4SrcDir + "/flowtable_0.txt";
 
+    // ns-3's ARP sends a request after a random delay of up to 10 ms and keeps
+    // only 3 packets waiting for the reply: at 3 Mbps a fourth one can come and
+    // is dropped. Keep up to 100, close to Linux (unres_qlen 101).
+    Config::SetDefault("ns3::ArpCache::PendingQueueSize", UintegerValue(100));
+
     CommandLine cmd;
     cmd.AddValue("pktSize", "Application payload size (bytes)", pktSize);
     cmd.AddValue("appDataRate", "OnOff application data rate", appDataRate);

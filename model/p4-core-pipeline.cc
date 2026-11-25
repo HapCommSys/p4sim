@@ -135,7 +135,7 @@ P4CorePipeline::ReceivePacket(Ptr<Packet> packetIn,
     int learn_id = RegisterAccess::get_lf_field_list(bm_packet.get());
     if (learn_id > 0)
     {
-        get_learn_engine()->learn(learn_id, *bm_packet.get());
+        Learn(learn_id, *bm_packet);
     }
 
     // The ingress dropped the packet (mark_to_drop()): no egress, as in simple_switch
@@ -222,7 +222,7 @@ P4CorePipeline::EnqueueNow(uint32_t egress_port, std::unique_ptr<bm::Packet>&& p
     m_switchNetDevice->SendNs3Packet(ns_packet,
                                      static_cast<int>(egress_port),
                                      protocol,
-                                     m_destinationList[addr_index]);
+                                     GetDestination(addr_index));
 }
 
 } // namespace ns3

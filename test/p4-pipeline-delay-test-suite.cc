@@ -377,6 +377,11 @@ static class P4PipelineDelayTestSuite : public TestSuite
                                               delay,
                                               first),
                     P4SIM_TEST_QUICK);
+        AddTestCase(new PipelineDelayTestCase("pna: every frame arrives PipelineDelay later",
+                                              {"pna", P4NIC_ARCH_PNA, false, 0, "10Gbps", 20},
+                                              delay,
+                                              first),
+                    P4SIM_TEST_QUICK);
         AddTestCase(
             new PipelineDelayTestCase("pipeline: every frame arrives PipelineDelay later",
                                       {"pipeline", P4SWITCH_ARCH_PIPELINE, false, 0, "10Gbps", 20},

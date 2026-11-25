@@ -9,13 +9,13 @@
  *   packet <port> <hex>   send this Ethernet frame into the switch on <port>
  *   expect <port> <hex>   this frame leaves the switch on <port>; '*' matches any nibble
  *   mirroring_add <session> <port>   the clones of this mirroring session leave on <port>
- *   mirroring_add_mc <session> <group>   they go to multicast group <group> (v1model)
+ *   mirroring_add_mc <session> <group>   they go to multicast group <group>
  *   register <name> <index> <value>   after the run, register <name>[<index>] holds <value>
  * Spaces in <hex> are ignored. All frames are sent at the same time, in file order.
  * A test passes if every port sends exactly the frames expected on it, in that
  * order. The switch has three ports, 0 to 2.
  *
- * On v1model, these commands of simple_switch_CLI configure multicast:
+ * On v1model and PSA, these commands of simple_switch_CLI configure multicast:
  *   mc_mgrp_create <group>                       create a multicast group
  *   mc_node_create <rid> <port>... [| <lag>...]  create a node; nodes get the handles 0, 1, ...
  *   mc_node_associate <group> <node handle>      add a node to a group
@@ -23,10 +23,12 @@
  */
 
 #include "ns3/core-module.h"
+#include "ns3/eth-net-device.h"
 #include "ns3/network-module.h"
 #include "ns3/p4-core-v1model.h"
 #include "ns3/p4-switch-net-device.h"
 #include "ns3/p4sim-ns3-compat.h"
+#include "ns3/switched-ethernet-channel.h"
 #include "ns3/test.h"
 
 #include <algorithm>
@@ -288,11 +290,12 @@ StfTestCase::ApplyMcCommands(Ptr<P4SwitchNetDevice> sw) const
     {
         return "";
     }
-    if (!sw->GetV1ModelCore())
+    // v1model and PSA have a packet replication engine
+    auto pre = sw->GetCore()->get_component<bm::McSimplePreLAG>();
+    if (!pre)
     {
-        return m_stf + ": the multicast commands need v1model";
+        return m_stf + ": the multicast commands need v1model or PSA";
     }
-    auto pre = sw->GetV1ModelCore()->get_component<bm::McSimplePreLAG>();
     for (const StfMcCommand& mc : m_mcCommands)
     {
         bm::McSimplePre::PortMap ports;
@@ -495,6 +498,97 @@ StfTestCase::DoRun()
     }
 }
 
+/**
+ * The ingress port of a frame from a host on a switched-Ethernet port: the .stf
+ * files send their frames through bridge ports. Each of three hosts, one per
+ * port, sends a broadcast frame that is not IPv4, which p4src/forward sends on
+ * by its ingress port, 0 -> 1 -> 2 -> 0: each host gets the frame of the host
+ * before it.
+ */
+class SwitchedPortTestCase : public TestCase
+{
+  public:
+    SwitchedPortTestCase(const std::string& archName, uint32_t arch, const std::string& jsonArch)
+        : TestCase(archName + ": a frame from a host on a switched-Ethernet port enters on that "
+                              "port"),
+          m_jsonArch(jsonArch),
+          m_arch(arch)
+    {
+    }
+
+  private:
+    void DoRun() override;
+
+    void DoTeardown() override
+    {
+        Simulator::Destroy();
+    }
+
+    /// Host \p host received a frame from \p from
+    bool Receive(uint32_t host,
+                 Ptr<NetDevice> device,
+                 Ptr<const Packet> packet,
+                 uint16_t protocol,
+                 const Address& from)
+    {
+        m_received[host].push_back(Mac48Address::ConvertFrom(from));
+        return true;
+    }
+
+    std::string m_jsonArch;
+    uint32_t m_arch;
+    std::vector<Mac48Address> m_received[N_PORTS]; ///< the sources of each host's frames
+};
+
+void
+SwitchedPortTestCase::DoRun()
+{
+    SetDataDir(NS_TEST_SOURCEDIR);
+    Ptr<Node> switchNode = CreateObject<Node>();
+    Ptr<Node> hostNode = CreateObject<Node>();
+    Ptr<P4SwitchNetDevice> sw = CreateObject<P4SwitchNetDevice>();
+    sw->SetAttribute("P4SwitchArch", UintegerValue(m_arch));
+    sw->SetAttribute(
+        "JsonPath",
+        StringValue(CreateDataDirFilename("p4src/forward/forward_" + m_jsonArch + ".json")));
+    sw->SetAttribute("FlowTablePath", StringValue(""));
+    switchNode->AddDevice(sw);
+    std::vector<Ptr<SwitchedEthernetHostDevice>> hosts;
+    for (uint32_t i = 0; i < N_PORTS; i++)
+    {
+        Ptr<SwitchedEthernetChannel> channel = CreateObject<SwitchedEthernetChannel>();
+        sw->Attach(channel);
+        Ptr<SwitchedEthernetHostDevice> host = CreateObject<SwitchedEthernetHostDevice>();
+        host->SetAddress(Mac48Address(("00:00:00:00:00:1" + std::to_string(i)).c_str()));
+        hostNode->AddDevice(host);
+        host->Attach(channel);
+        host->SetReceiveCallback(MakeCallback(&SwitchedPortTestCase::Receive, this).Bind(i));
+        hosts.push_back(host);
+    }
+    sw->Initialize();
+
+    for (uint32_t i = 0; i < N_PORTS; i++)
+    {
+        Simulator::Schedule(MilliSeconds(1 + i), [host = hosts[i]]() {
+            host->Send(Create<Packet>(46), Mac48Address::GetBroadcast(), 0x88b5);
+        });
+    }
+    Simulator::Stop(Seconds(1));
+    Simulator::Run();
+
+    for (uint32_t i = 0; i < N_PORTS; i++)
+    {
+        uint32_t from = (i + N_PORTS - 1) % N_PORTS;
+        NS_TEST_EXPECT_MSG_EQ(m_received[i].size(), 1u, "Host " << i << " should get one frame");
+        if (!m_received[i].empty())
+        {
+            NS_TEST_EXPECT_MSG_EQ(m_received[i][0],
+                                  Mac48Address::ConvertFrom(hosts[from]->GetAddress()),
+                                  "Host " << i << " should get the frame of host " << from);
+        }
+    }
+}
+
 /// Every architecture runs the same program, p4src/forward, with the same .stf
 /// files (the pipeline core runs forward_v1model); p4src/drop checks mark_to_drop()
 /// in the ingress and in the egress on v1model and the pipeline core; p4src/priority checks the
@@ -520,6 +614,7 @@ static class P4PacketTestSuite : public TestSuite
             {
                 AddTestCase(new StfTestCase("forward", name, arch, stf, json), P4SIM_TEST_QUICK);
             }
+            AddTestCase(new SwitchedPortTestCase(name, arch, json), P4SIM_TEST_QUICK);
         }
         AddTestCase(new StfTestCase("drop", "v1model", P4SWITCH_ARCH_V1MODEL, "mark_to_drop.stf"),
                     P4SIM_TEST_QUICK);
@@ -542,6 +637,8 @@ static class P4PacketTestSuite : public TestSuite
                     P4SIM_TEST_QUICK);
         // PSA clones and mirroring sessions
         AddTestCase(new StfTestCase("clone", "psa", P4SWITCH_ARCH_PSA, "clone_psa.stf"),
+                    P4SIM_TEST_QUICK);
+        AddTestCase(new StfTestCase("clone", "psa", P4SWITCH_ARCH_PSA, "clone_psa_mc.stf"),
                     P4SIM_TEST_QUICK);
         AddTestCase(
             new StfTestCase("primitives", "v1model", P4SWITCH_ARCH_V1MODEL, "primitives.stf"),

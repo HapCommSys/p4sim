@@ -56,12 +56,16 @@ line (bridge ports only, the old timing model) and gets no more changes.
 ## Feature gaps
 
 - **PSA and PNA.**
-  - PNA ignores `PipelineDelay`.
-  - PSA clones to a multicast group have no test: the `.stf` files of
-    `p4-packet` configure multicast on v1model only.
   - PNA has no Thrift service of its own (BMv2's `pna_nic` has one, for the
-    time commands of `pna_nic_CLI`), and it does not load its `FlowTablePath`.
-  - `P4Controller` works on v1model switches only.
+    time commands of `pna_nic_CLI`); its `FlowTablePath` runs in `bm_CLI`.
+  - PSA and PNA give no digest records: BMv2's `psa_switch` and `pna_nic` do
+    not pass digests on either.
+- **The pipeline core** (`P4SwitchArch` 3) ignores `mcast_grp`, clones,
+  resubmit and recirculation, without a warning: a v1model program that floods
+  (L2 learning, for example) sends nothing. Proposal: give it the packet
+  replication engine of v1model (the `McSimplePreLAG` component, so that the
+  `mc_*` commands of `simple_switch_CLI` work) and an egress pass per copy;
+  meanwhile, log a warning when a packet asks for one of them.
 - **`PipelineDelay` follow-ups (#59).**
   - No separate egress delay (decided November 2026): one delay before the TM is
     enough. With the same total and a port that takes its packets early enough
@@ -74,10 +78,6 @@ line (bridge ports only, the old timing model) and gets no more changes.
     stage allocation, so p4sim cannot see the stages.
   - The default is 0. No published figure covers the whole pipeline; the
     attribute's help text gives a measured one for scale.
-- **Digests.** `digest()` sends its records to BMv2's notification socket, and
-  nothing in the simulation receives them. Proposal: pass learned records to an
-  ns-3 trace source that `P4Controller` can subscribe to, so that control-plane
-  experiments such as L2 learning can run inside the simulation.
 - **Runtime CLI during the simulation.** The Thrift server of a switch runs in
   its own thread, so a CLI that runs during the simulation changes the switch
   without synchronisation with it. The CLIs are for before and after the
@@ -85,8 +85,6 @@ line (bridge ports only, the old timing model) and gets no more changes.
   its switch was destroyed gets an error: the services of a switch stop before
   it is destroyed.)
 - **Smaller gaps, to do when a test or user needs them:**
-  - byte queue limits on host devices (`TrafficControlHelper::SetQueueLimits()`)
-    should work since #42, but are not tested;
   - a configurable drop port (all switches of a simulation would share it);
   - a mirroring session with both a port and a multicast group;
   - the other PRE commands of `simple_switch_CLI` in the STF harness
@@ -110,6 +108,8 @@ line (bridge ports only, the old timing model) and gets no more changes.
     manager's thread even when the manager was never started, which crashes
     with glibc 2.43 (Ubuntu 26.04). P4sim is not affected: its switches have a
     device manager without ports instead of BMI.
-- **The last lost packet of the examples** (PDR 99.911 %) is ns-3's ARP: its
-  pending queue holds 3 packets. Not p4sim; the examples could enlarge
-  `ArpCache::PendingQueueSize`.
+- **`P4Controller`'s meter functions.** `SetMeterRates()`, `GetMeterRates()`
+  and `ResetMeterRates()` each have an overload for a table entry
+  (`bm::entry_handle_t`) and one for a meter array (`size_t`): an `int` argument
+  does not compile, and the type of the variable picks the overload. Proposal:
+  name the meter-array ones `MeterSetRates()`, ... as `P4RuntimeApi` does.

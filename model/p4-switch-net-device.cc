@@ -173,8 +173,7 @@ P4SwitchNetDevice::GetTypeId()
                           "egress then takes no time. The pipeline takes the next packet at "
                           "once, so the delay does not lower the throughput (see SwitchRate). "
                           "A recirculated packet passes the pipeline again and is delayed "
-                          "again. 0 (the default) means no delay. v1model, PSA and the pipeline "
-                          "core; PNA ignores it. For scale: on Tofino, the ingress block "
+                          "again. 0 (the default) means no delay. For scale: on Tofino, the ingress block "
                           "(parser, control, deparser) was measured at 162 to 224 ns on 100G "
                           "ports and 221 to 472 ns on 10G ports, depending on the program "
                           "(Franco et al., Computer Communications 218, 2024).",
@@ -241,6 +240,13 @@ P4SwitchNetDevice::GetTypeId()
                             "P4 pipeline was full (see SwitchRate)",
                             MakeTraceSourceAccessor(&P4SwitchNetDevice::m_macRxDropTrace),
                             "ns3::Packet::TracedCallback")
+
+            .AddTraceSource("Digest",
+                            "The record of a digest() in the P4 program (v1model and the "
+                            "pipeline core): the fields of its learn list at the end of the "
+                            "ingress of the packet, at that time",
+                            MakeTraceSourceAccessor(&P4SwitchNetDevice::m_digestTrace),
+                            "ns3::P4SwitchNetDevice::DigestTracedCallback")
             //
             // Trace sources designed to simulate a packet sniffer facility (tcpdump).
             //
@@ -349,6 +355,7 @@ P4SwitchNetDevice::DoInitialize()
         m_pnaNic = std::make_unique<P4PnaNic>(this, m_enableSwap, m_queueBufferSize);
         ConfigureCore(*m_pnaNic);
         m_pnaNic->InitializeSwitchFromP4Json(m_jsonPath);
+        m_pnaNic->LoadFlowTableToSwitch(m_flowTablePath);
         SetPortTxDoneCallback(MakeCallback(&P4PnaNic::PortTxComplete, m_pnaNic.get()));
         m_pnaNic->start_and_return_();
         break;
@@ -424,7 +431,7 @@ P4SwitchNetDevice::Attach(Ptr<SwitchedEthernetChannel> channel)
 // ---------------------------------------------------------------------------
 
 void
-P4SwitchNetDevice::Receive(Ptr<Packet> packet, Ptr<P4SwitchNetDevice> sender)
+P4SwitchNetDevice::Receive(Ptr<Packet> packet, Ptr<SwitchedEthernetChannel> channel, uint32_t slot)
 {
     NS_LOG_FUNCTION_NOARGS();
     NS_LOG_DEBUG("UID=" << packet->GetUid());
@@ -464,11 +471,20 @@ P4SwitchNetDevice::Receive(Ptr<Packet> packet, Ptr<P4SwitchNetDevice> sender)
         return;
     }
 
-    // Switch mode: find the ingress port from the sender device.
-    uint32_t inPort = GetPortNumber(sender);
+    // Switch mode: the ingress port is the one attached to this channel in this
+    // slot. (The other end may be a host device, which is not a P4SwitchNetDevice.)
+    uint32_t inPort = UINT32_MAX;
+    for (uint32_t i = 0; i < m_portChannels.size(); ++i)
+    {
+        if (m_portChannels[i] == channel && m_portDeviceIds[i] == slot)
+        {
+            inPort = i;
+            break;
+        }
+    }
     if (inPort == UINT32_MAX)
     {
-        NS_LOG_WARN("Receive: sender not found in port list — dropping");
+        NS_LOG_WARN("Receive: the channel is not attached to a port — dropping");
         return;
     }
 
@@ -854,7 +870,12 @@ P4SwitchNetDevice::GetPortChannel(uint32_t n) const
 uint32_t
 P4SwitchNetDevice::GetPortNumber(Ptr<P4SwitchNetDevice> sender) const
 {
-    // Find the port whose far end is `sender`.
+    // Find the port whose far end is `sender`. A host's slot has no P4 device,
+    // so a null sender would match the first port that leads to a host.
+    if (!sender)
+    {
+        return UINT32_MAX;
+    }
     for (uint32_t i = 0; i < m_portChannels.size(); ++i)
     {
         if (!m_portChannels[i])
@@ -986,6 +1007,20 @@ void
 P4SwitchNetDevice::NotifyMacRxDrop(Ptr<const Packet> packet)
 {
     m_macRxDropTrace(packet);
+}
+
+void
+P4SwitchNetDevice::NotifyDigest(const P4Digest& digest)
+{
+    NS_LOG_FUNCTION(this << digest.listId);
+    Simulator::ScheduleNow(&P4SwitchNetDevice::FireDigest, Ptr<P4SwitchNetDevice>(this), digest);
+}
+
+void
+P4SwitchNetDevice::FireDigest(const P4Digest& digest)
+{
+    NS_LOG_FUNCTION(this << digest.listId);
+    m_digestTrace(digest);
 }
 
 void
