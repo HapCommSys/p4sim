@@ -28,14 +28,17 @@
 #include "ns3/p4sim-ns3-compat.h"
 #include "ns3/simulator.h"
 
-#include <bm/bm_runtime/bm_runtime.h>
-#include <bm/bm_sim/options_parse.h>
-#include <fstream>
-
 #include <algorithm>
+#include <bm/bm_runtime/bm_runtime.h>
+#include <bm/bm_sim/dev_mgr.h>
+#include <bm/bm_sim/options_parse.h>
+#include <bm/bm_sim/port_monitor.h>
 #include <cctype>
 #include <cstdlib>
 #include <fcntl.h>
+#include <fstream>
+#include <map>
+#include <memory>
 #include <netinet/in.h>
 #include <sys/file.h>
 #include <sys/socket.h>
@@ -74,6 +77,60 @@ struct PhvSourceAccess
 };
 
 template struct PhvSourceAccess<&bm::SwitchWContexts::phv_source>;
+
+/**
+ * BMv2 device manager without ports. P4sim moves the packets between BMv2 and
+ * ns-3 itself, so a switch needs no BMv2 port and P4sim never starts a device
+ * manager. Without this one, init_from_options_parser() creates BMv2's default
+ * device manager (BMI), whose destructor joins a thread that only a start
+ * creates: with glibc 2.43 (Ubuntu 26.04) every simulation then crashes at its
+ * end (BMv2 1.15.8, bmi_port_destroy_mgr()). This one starts no thread and
+ * opens no socket.
+ */
+class NoPortsDevMgr : public bm::DevMgrIface
+{
+  public:
+    NoPortsDevMgr()
+    {
+        p_monitor = bm::PortMonitorIface::make_dummy();
+    }
+
+  private:
+    ReturnCode port_add_(const std::string& /* ifaceName */,
+                         port_t /* port */,
+                         const PortExtras& /* extras */) override
+    {
+        return ReturnCode::UNSUPPORTED;
+    }
+
+    ReturnCode port_remove_(port_t /* port */) override
+    {
+        return ReturnCode::UNSUPPORTED;
+    }
+
+    void transmit_fn_(port_t /* port */, const char* /* buffer */, int /* len */) override
+    {
+    }
+
+    void start_() override
+    {
+    }
+
+    ReturnCode set_packet_handler_(const PacketHandler& /* handler */, void* /* cookie */) override
+    {
+        return ReturnCode::SUCCESS;
+    }
+
+    bool port_is_up_(port_t /* port */) const override
+    {
+        return false;
+    }
+
+    std::map<port_t, PortInfo> get_port_info_() const override
+    {
+        return {};
+    }
+};
 
 /// Default first port of the automatic Thrift port allocation
 constexpr int P4SIM_DEFAULT_THRIFT_PORT_BASE = 9090;
@@ -118,6 +175,24 @@ IsTcpPortFree(int port)
     bool isFree = ::bind(sock, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) == 0;
     ::close(sock);
     return isFree;
+}
+
+/// True if a server on this host accepts TCP connections on port \p port
+bool
+ServerListens(int port)
+{
+    int sock = ::socket(AF_INET, SOCK_STREAM | SOCK_CLOEXEC, 0);
+    if (sock < 0)
+    {
+        return false;
+    }
+    sockaddr_in addr{};
+    addr.sin_family = AF_INET;
+    addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+    addr.sin_port = htons(static_cast<uint16_t>(port));
+    bool listens = ::connect(sock, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) == 0;
+    ::close(sock);
+    return listens;
 }
 
 /**
@@ -307,6 +382,9 @@ P4SwitchCore::~P4SwitchCore()
     Simulator::Cancel(m_ingressEvent);
     Simulator::Cancel(m_pipelineEvent);
     Simulator::Cancel(m_swapEvent);
+    // In case P4SwitchNetDevice::DoDispose() did not: the Thrift server keeps
+    // running and must not reach this switch any more
+    StopThriftServices();
 }
 
 bm::RuntimeInterface::ErrorCode
@@ -540,8 +618,8 @@ P4SwitchCore::InitializeSwitchFromP4Json(const std::string& jsonPath)
     opt_parser.thrift_port = m_thriftPort;
     opt_parser.console_logging = false;
 
-    // Initialize the switch
-    status = init_from_options_parser(opt_parser);
+    // Initialize the switch, with a device manager without ports (NoPortsDevMgr)
+    status = init_from_options_parser(opt_parser, nullptr, std::make_unique<NoPortsDevMgr>());
     if (status != 0)
     {
         // BMv2 prints the reason to std::cout without flushing it; flush it so
@@ -619,16 +697,21 @@ P4SwitchCore::ExecuteCliCommands(const std::string& commandsFile)
 
     // Get runtime port and start the server
     int port = get_runtime_port();
-    // The server thread points bm_runtime::processor_ to its processor, but for
-    // the second and later switches of a process, start_server() returns before
-    // that. So the services of the target are added after the wait, and only to
-    // a new processor: never to the server of another switch.
+    // The server thread points bm_runtime::processor_ to its processor, registers
+    // BMv2's services, and then listens. For the second and later switches of a
+    // process, start_server() returns before that, so wait until the server
+    // listens (at most 5 s): then the services of this switch are registered
+    // after BMv2's, and only to its own processor, never to the server of
+    // another switch.
     auto previousProcessor = bm_runtime::processor_;
     bm_runtime::start_server(this, port);
-    std::this_thread::sleep_for(std::chrono::seconds(1));
-    if (bm_runtime::processor_ != previousProcessor)
+    for (int i = 0; i < 500 && !ServerListens(port); i++)
     {
-        AddThriftServices();
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+    if (ServerListens(port) && bm_runtime::processor_ != previousProcessor)
+    {
+        GuardThriftServices();
     }
     else
     {

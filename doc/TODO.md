@@ -73,12 +73,12 @@ line (bridge ports only, the old timing model) and gets no more changes.
   nothing in the simulation receives them. Proposal: pass learned records to an
   ns-3 trace source that `P4Controller` can subscribe to, so that control-plane
   experiments such as L2 learning can run inside the simulation.
-- **Thrift handlers.** The Thrift server thread runs until the process ends
-  (BMv2 cannot stop it): a CLI that connects after its switch was destroyed uses
-  a freed core. A CLI that runs during the simulation works from another thread,
-  without synchronisation. Proposal: a locked registry of live cores that the
-  handlers check; document that the CLI is for before and after the simulation,
-  and `P4Controller` for changes during it.
+- **Runtime CLI during the simulation.** The Thrift server of a switch runs in
+  its own thread, so a CLI that runs during the simulation changes the switch
+  without synchronisation with it. The CLIs are for before and after the
+  simulation, `P4Controller` for changes during it. (A CLI that connects after
+  its switch was destroyed gets an error: the services of a switch stop before
+  it is destroyed.)
 - **Smaller gaps, to do when a test or user needs them:**
   - byte queue limits on host devices (`TrafficControlHelper::SetQueueLimits()`)
     should work since #42, but are not tested;
@@ -101,6 +101,10 @@ line (bridge ports only, the old timing model) and gets no more changes.
     `mirroring_mapping_delete`, which the `psa_switch` service does not have;
     and the CLI does not import `InvalidMirroringOperation`, so any failed
     mirroring command raises a `NameError`. Both end the CLI.
+  - Upstream fix for BMI (1.15.8): `bmi_port_destroy_mgr()` joins the port
+    manager's thread even when the manager was never started, which crashes
+    with glibc 2.43 (Ubuntu 26.04). P4sim is not affected: its switches have a
+    device manager without ports instead of BMI.
 - **The last lost packet of the examples** (PDR 99.911 %) is ns-3's ARP: its
   pending queue holds 3 packets. Not p4sim; the examples could enlarge
   `ArpCache::PendingQueueSize`.

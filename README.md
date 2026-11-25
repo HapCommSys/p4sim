@@ -53,6 +53,8 @@ The following steps set up a local environment to run P4sim with **ns-3.39** on 
 
 > **Other ns-3 releases:** for ns-3.40 to ns-3.49, check out that tag in Step 3 (for example `git checkout ns-3.49`). From ns-3.41 on, ns-3 builds as C++20 or C++23, and the spdlog that BMv2 bundles does not compile as C++20; P4sim then builds with a copy of these headers that has the fix ([patches/bmv2-spdlog-cxx20.patch](patches/bmv2-spdlog-cxx20.patch)). The installed BMv2 is not changed.
 
+> **Ubuntu 26.04:** P4sim runs there with BMv2 1.15.8 built from source and ns-3.49 (tested). ns-3.39's `./ns3` script does not run on Python 3.14, the Python of Ubuntu 26.04.
+
 ### Step 1: Initialize the Working Directory
 
 ```bash
@@ -218,7 +220,7 @@ The [paper](https://dl.acm.org/doi/10.1145/3747204.3747210) evaluates P4sim with
 - `P4Controller` works on v1model switches only.
 - `digest()` sends its records to BMv2's notification socket; nothing in the simulation receives them.
 - The pipeline core (`P4SwitchArch` 3) has no output queue: a congested port can lose frames.
-- The Thrift server of a switch runs in its own thread: use the runtime CLIs before and after the simulation, and `P4Controller` during it.
+- The Thrift server of a switch runs in its own thread: use the runtime CLIs before and after the simulation, and `P4Controller` during it. BMv2 cannot stop the server, so the Thrift port of a destroyed switch stays open; it answers every call with an error.
 
 [doc/TODO.md](doc/TODO.md) has the details and the other open items.
 

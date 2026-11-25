@@ -2,18 +2,21 @@
 // Copyright (c) 2025 TU Dresden. Author: Mingyu Ma <mingyu.ma@tu-dresden.de>
 
 /*
- * Switch set-up: every architecture loads its P4 program, Thrift ports never
- * collide, BmLogLevel controls the BMv2 pipeline log (off by default), and the
- * deprecated attributes are still accepted. The switches have no ports and no
- * flow table, so no Thrift server starts and no packet is sent.
+ * Switch set-up: every architecture loads its P4 program and uses no BMv2 port
+ * manager, Thrift ports never collide, BmLogLevel controls the BMv2 pipeline log
+ * (off by default), and the deprecated attributes are still accepted. The
+ * switches have no ports and no flow table, so no Thrift server starts and no
+ * packet is sent.
  */
 
 #include "ns3/core-module.h"
 #include "ns3/network-module.h"
+#include "ns3/p4-switch-core.h"
 #include "ns3/p4-switch-net-device.h"
 #include "ns3/p4sim-ns3-compat.h"
 #include "ns3/test.h"
 
+#include <bm/bm_sim/dev_mgr.h>
 #include <bm/bm_sim/logger.h>
 #include <cstdlib>
 #include <filesystem>
@@ -151,6 +154,47 @@ class P4SwitchLoadTestCase : public P4TestCase
 
     uint32_t m_arch;    //!< P4SwitchArch value
     std::string m_json; //!< P4 JSON, relative to the test directory
+};
+
+/**
+ * \ingroup p4sim-tests
+ * P4sim moves the packets between BMv2 and ns-3 itself, so a switch of any
+ * architecture has a BMv2 device manager without ports: it lists no port, and
+ * adding one is unsupported. BMv2's default device manager (BMI) would try to
+ * open the interface and fail with an error instead; its destructor crashes
+ * with glibc 2.43 when, as in P4sim, it was never started.
+ */
+class P4NoBmv2PortsTestCase : public P4TestCase
+{
+  public:
+    P4NoBmv2PortsTestCase()
+        : P4TestCase("A switch has no BMv2 ports and no BMI device manager")
+    {
+    }
+
+  private:
+    void DoRun() override
+    {
+        SetDataDir(NS_TEST_SOURCEDIR);
+        const std::map<uint32_t, std::string> jsons = {
+            {0, "p4src/simple_v1model/simple_v1model.json"},
+            {1, "p4src/simple_psa/simple_psa.json"},
+            {2, "p4src/simple_pna/simple_pna.json"}};
+        for (const auto& [arch, json] : jsons)
+        {
+            Ptr<P4SwitchNetDevice> sw = CreateSwitch(arch, CreateDataDirFilename(json));
+            P4SwitchCore* core = sw->GetCore();
+            NS_TEST_ASSERT_MSG_NE(core, nullptr, "No core for P4SwitchArch " << arch);
+            NS_TEST_EXPECT_MSG_EQ(core->get_port_info().size(),
+                                  0,
+                                  "P4SwitchArch " << arch << " lists BMv2 ports");
+            auto rc = core->port_add("p4sim-no-such-port", 7, {});
+            NS_TEST_EXPECT_MSG_EQ(
+                static_cast<int>(rc),
+                static_cast<int>(bm::PacketDispatcherIface::ReturnCode::UNSUPPORTED),
+                "P4SwitchArch " << arch << " uses a BMv2 device manager with ports");
+        }
+    }
 };
 
 /**
@@ -310,6 +354,7 @@ class P4simTestSuite : public TestSuite
                     P4SIM_TEST_QUICK);
         AddTestCase(new P4SwitchLoadTestCase("PNA", 2, "p4src/simple_pna/simple_pna.json"),
                     P4SIM_TEST_QUICK);
+        AddTestCase(new P4NoBmv2PortsTestCase, P4SIM_TEST_QUICK);
         AddTestCase(new P4ThriftPortTestCase, P4SIM_TEST_QUICK);
         AddTestCase(new P4BmLogLevelTestCase, P4SIM_TEST_QUICK);
         AddTestCase(new P4BmLogLevelDefaultTestCase, P4SIM_TEST_QUICK);

@@ -129,10 +129,9 @@ private:
 
 void P4CorePsa::AddThriftServices() {
   NS_LOG_FUNCTION(this);
-  bm_runtime::add_service<pswitch_runtime::PsaSwitchIf,
-                          pswitch_runtime::PsaSwitchProcessor>(
-      "psa_switch", stdcxx::shared_ptr<pswitch_runtime::PsaSwitchIf>(
-                        new PsaSwitchHandler(this)));
+  AddThriftService("psa_switch",
+                   std::make_shared<pswitch_runtime::PsaSwitchProcessor>(
+                       std::make_shared<PsaSwitchHandler>(this)));
 }
 
 } // namespace ns3
