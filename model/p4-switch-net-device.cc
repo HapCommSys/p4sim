@@ -182,6 +182,20 @@ P4SwitchNetDevice::GetTypeId()
                           MakeTimeAccessor(&P4SwitchNetDevice::m_pipelineDelay),
                           MakeTimeChecker(Seconds(0)))
 
+            .AddAttribute("TransferBufferSize",
+                          "Frames that a port holds after the egress pipeline, besides the one "
+                          "it is sending: the hardware port queue. A port takes its next "
+                          "packet from the output queues when it is idle or this buffer has "
+                          "room; the packet passes the egress at once and then waits here, in "
+                          "order, so the backlog of a congested port stays in the output "
+                          "queues, where the priorities apply, and a frame in this buffer is "
+                          "not overtaken. The buffer never drops. 0 (the default): a port "
+                          "takes its next packet only when it is idle. v1model and PSA; not "
+                          "with EnableVoqFabric; PNA and the pipeline core ignore it.",
+                          UintegerValue(0),
+                          MakeUintegerAccessor(&P4SwitchNetDevice::m_transferBufferSize),
+                          MakeUintegerChecker<uint32_t>())
+
             .AddAttribute("EnableVoqFabric",
                           "If true, a V1model switch routes post-ingress traffic through the "
                           "VOQ + fabric Traffic Manager instead of the legacy output queues. "
@@ -299,6 +313,9 @@ P4SwitchNetDevice::DoInitialize()
     {
     case P4SWITCH_ARCH_V1MODEL:
         NS_LOG_DEBUG("Initialising V1model pipeline");
+        // The VOQ traffic manager hands each port one frame at a time itself
+        NS_ABORT_MSG_IF(m_enableVoqFabric && m_transferBufferSize > 0,
+                        "TransferBufferSize does not work with EnableVoqFabric yet");
         m_v1modelSwitch = std::make_unique<P4CoreV1model>(this,
                                                           m_enableSwap,
                                                           m_switchRate,
@@ -882,6 +899,7 @@ P4SwitchNetDevice::ConfigureCore(P4SwitchCore& core) const
     core.SetBmLogLevel(m_bmLogLevel);
     core.SetThriftPort(m_thriftPort);
     core.SetPipelineDelay(m_pipelineDelay);
+    core.SetTransferBufferSize(m_transferBufferSize);
 }
 
 int
