@@ -453,8 +453,7 @@ P4CoreV1model::EventDrivenEgressDequeue(uint32_t port)
                                                               << ", Size: " << ns_packet->GetSize()
                                                               << " bytes, Port: " << out_port);
 
-    SendOrBuffer(static_cast<uint32_t>(out_port),
-                 TransferFrame{ns_packet, protocol, addr_index});
+    SendOrBuffer(static_cast<uint32_t>(out_port), TransferFrame{ns_packet, protocol, addr_index});
 }
 
 bool

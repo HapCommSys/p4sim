@@ -428,9 +428,9 @@ class P4SwitchCore : public bm::Switch
     /// A frame that passed the egress pipeline and waits for its port
     struct TransferFrame
     {
-        Ptr<Packet> packet;  //!< the frame
-        uint16_t protocol;   //!< its protocol
-        int addressIndex;    //!< index of its destination address in m_destinationList
+        Ptr<Packet> packet; //!< the frame
+        uint16_t protocol;  //!< its protocol
+        int addressIndex;   //!< index of its destination address in m_destinationList
     };
 
     /**

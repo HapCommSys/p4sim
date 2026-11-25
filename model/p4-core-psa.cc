@@ -340,8 +340,7 @@ P4CorePsa::EventDrivenEgressDequeue(uint32_t port)
     uint16_t protocol = RegisterAccess::get_ns_protocol(bm_packet.get());
     int addr_index = RegisterAccess::get_ns_address(bm_packet.get());
     Ptr<Packet> ns_packet = this->ConvertToNs3Packet(std::move(bm_packet));
-    SendOrBuffer(static_cast<uint32_t>(out_port),
-                 TransferFrame{ns_packet, protocol, addr_index});
+    SendOrBuffer(static_cast<uint32_t>(out_port), TransferFrame{ns_packet, protocol, addr_index});
 }
 
 bool
