@@ -25,6 +25,14 @@
 
 #define SSWITCH_DROP_PORT 511
 
+namespace apache
+{
+namespace thrift
+{
+class TProcessor;
+} // namespace thrift
+} // namespace apache
+
 namespace ns3
 {
 
@@ -80,6 +88,18 @@ class P4SwitchCore : public bm::Switch
      * @return the port, or 0 before InitializeSwitchFromP4Json() is called
      */
     int GetThriftPort() const;
+
+    /**
+     * @brief Stop the Thrift services of this switch; call it before the switch
+     *        is destroyed (P4SwitchNetDevice::DoDispose() does)
+     *
+     * BMv2 cannot stop the Thrift server of a switch: it runs until the process
+     * ends. Its services run each call only while the switch has not stopped
+     * them, and a call that runs when they are stopped finishes first. Afterwards
+     * the server answers every call with an error ("... destroyed"), so a runtime
+     * CLI that connects late does not reach the freed switch.
+     */
+    void StopThriftServices();
 
     /**
      * @brief Set the time a packet spends in the P4 pipeline (the PipelineDelay
@@ -284,10 +304,19 @@ class P4SwitchCore : public bm::Switch
     /**
      * @brief Add the Thrift services of the target to the Thrift server of this
      * switch, such as "simple_switch" for the commands that simple_switch_CLI adds
-     * to the runtime CLI. ExecuteCliCommands() calls it after starting the server.
-     * The default adds none.
+     * to the runtime CLI, with AddThriftService(). ExecuteCliCommands() calls it
+     * after starting the server. The default adds none.
      */
     virtual void AddThriftServices();
+
+    /**
+     * @brief Add a Thrift service to the Thrift server of this switch, guarded:
+     * it runs a call only until StopThriftServices()
+     * @param name the name of the service, as the runtime CLI asks for it
+     * @param processor the Thrift processor of the service
+     */
+    void AddThriftService(const std::string& name,
+                          std::shared_ptr<apache::thrift::TProcessor> processor);
 
     /**
      * @brief Ingress processing pipeline
@@ -382,6 +411,16 @@ class P4SwitchCore : public bm::Switch
     uint64_t m_startTimestamp;          //!< Start time of the switch
     bm::TargetParserBasic* m_argParser; //!< Structure of parsers
     std::unique_ptr<MirroringSessions> m_mirroringSessions; //!< Mirroring sessions
+
+    /**
+     * @brief Register the Thrift services of this switch, guarded (see
+     * StopThriftServices()): BMv2's "standard" and "simple_pre"/"simple_pre_lag",
+     * which the server added unguarded, and those of the target
+     * (AddThriftServices()). ExecuteCliCommands() calls it once the server listens.
+     */
+    void GuardThriftServices();
+
+    uint64_t m_thriftId{0}; //!< ID of this switch's Thrift services; 0 = none
 
     /**
      * @brief Run the ingress pipeline on the next packet of the input buffer,

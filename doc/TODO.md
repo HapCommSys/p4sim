@@ -75,12 +75,12 @@ line (bridge ports only, the old timing model) and gets no more changes.
   nothing in the simulation receives them. Proposal: pass learned records to an
   ns-3 trace source that `P4Controller` can subscribe to, so that control-plane
   experiments such as L2 learning can run inside the simulation.
-- **Thrift handlers.** The Thrift server thread runs until the process ends
-  (BMv2 cannot stop it): a CLI that connects after its switch was destroyed uses
-  a freed core. A CLI that runs during the simulation works from another thread,
-  without synchronisation. Proposal: a locked registry of live cores that the
-  handlers check; document that the CLI is for before and after the simulation,
-  and `P4Controller` for changes during it.
+- **Runtime CLI during the simulation.** The Thrift server of a switch runs in
+  its own thread, so a CLI that runs during the simulation changes the switch
+  without synchronisation with it. The CLIs are for before and after the
+  simulation, `P4Controller` for changes during it. (A CLI that connects after
+  its switch was destroyed gets an error: the services of a switch stop before
+  it is destroyed.)
 - **Smaller gaps, to do when a test or user needs them:**
   - byte queue limits on host devices (`TrafficControlHelper::SetQueueLimits()`)
     should work since #42, but are not tested;

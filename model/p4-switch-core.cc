@@ -177,6 +177,24 @@ IsTcpPortFree(int port)
     return isFree;
 }
 
+/// True if a server on this host accepts TCP connections on port \p port
+bool
+ServerListens(int port)
+{
+    int sock = ::socket(AF_INET, SOCK_STREAM | SOCK_CLOEXEC, 0);
+    if (sock < 0)
+    {
+        return false;
+    }
+    sockaddr_in addr{};
+    addr.sin_family = AF_INET;
+    addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+    addr.sin_port = htons(static_cast<uint16_t>(port));
+    bool listens = ::connect(sock, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) == 0;
+    ::close(sock);
+    return listens;
+}
+
 /**
  * Reserve \p port for this process if it is free.
  *
@@ -364,6 +382,9 @@ P4SwitchCore::~P4SwitchCore()
     Simulator::Cancel(m_ingressEvent);
     Simulator::Cancel(m_pipelineEvent);
     Simulator::Cancel(m_swapEvent);
+    // In case P4SwitchNetDevice::DoDispose() did not: the Thrift server keeps
+    // running and must not reach this switch any more
+    StopThriftServices();
 }
 
 bm::RuntimeInterface::ErrorCode
@@ -676,16 +697,21 @@ P4SwitchCore::ExecuteCliCommands(const std::string& commandsFile)
 
     // Get runtime port and start the server
     int port = get_runtime_port();
-    // The server thread points bm_runtime::processor_ to its processor, but for
-    // the second and later switches of a process, start_server() returns before
-    // that. So the services of the target are added after the wait, and only to
-    // a new processor: never to the server of another switch.
+    // The server thread points bm_runtime::processor_ to its processor, registers
+    // BMv2's services, and then listens. For the second and later switches of a
+    // process, start_server() returns before that, so wait until the server
+    // listens (at most 5 s): then the services of this switch are registered
+    // after BMv2's, and only to its own processor, never to the server of
+    // another switch.
     auto previousProcessor = bm_runtime::processor_;
     bm_runtime::start_server(this, port);
-    std::this_thread::sleep_for(std::chrono::seconds(1));
-    if (bm_runtime::processor_ != previousProcessor)
+    for (int i = 0; i < 500 && !ServerListens(port); i++)
     {
-        AddThriftServices();
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+    if (ServerListens(port) && bm_runtime::processor_ != previousProcessor)
+    {
+        GuardThriftServices();
     }
     else
     {

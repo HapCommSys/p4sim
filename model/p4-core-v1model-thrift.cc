@@ -170,10 +170,9 @@ private:
 
 void P4CoreV1model::AddThriftServices() {
   NS_LOG_FUNCTION(this);
-  bm_runtime::add_service<sswitch_runtime::SimpleSwitchIf,
-                          sswitch_runtime::SimpleSwitchProcessor>(
-      "simple_switch", stdcxx::shared_ptr<sswitch_runtime::SimpleSwitchIf>(
-                           new SimpleSwitchHandler(this)));
+  AddThriftService("simple_switch",
+                   std::make_shared<sswitch_runtime::SimpleSwitchProcessor>(
+                       std::make_shared<SimpleSwitchHandler>(this)));
 }
 
 } // namespace ns3

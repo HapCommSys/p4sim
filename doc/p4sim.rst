@@ -134,7 +134,9 @@ Scope and Limitations
 * The pipeline core (``P4SwitchArch`` 3) has no output queue: a congested port
   can lose frames.
 * The Thrift server of a switch runs in its own thread.  Use the runtime CLIs
-  before and after the simulation, and ``P4Controller`` during it.
+  before and after the simulation, and ``P4Controller`` during it.  BMv2 cannot
+  stop the server, so the Thrift port of a destroyed switch stays open; it
+  answers every call with an error.
 
 ``doc/TODO.md`` in the module lists the open items.
 
@@ -366,7 +368,7 @@ Troubleshooting
 Validation
 **********
 
-The module has 18 test suites with 113 test cases, from unit tests of
+The module has 18 test suites with 115 test cases, from unit tests of
 single classes to packet tests that send frames through a switch and check the
 frames that leave it (``p4-packet``, with test files in the format of p4c's
 STF).  Among them:

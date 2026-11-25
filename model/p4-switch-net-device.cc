@@ -359,6 +359,12 @@ P4SwitchNetDevice::DoDispose()
 
     // The callback points into the core deleted below.
     m_portTxDone = MakeNullCallback<void, uint32_t>();
+    // The Thrift server keeps running: stop the services before any part of the
+    // core is destroyed (a call that runs now finishes first)
+    if (P4SwitchCore* core = GetCore())
+    {
+        core->StopThriftServices();
+    }
     m_v1modelSwitch.reset();
     m_psaSwitch.reset();
     m_pnaNic.reset();
