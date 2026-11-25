@@ -144,6 +144,7 @@ The P4 program and its flow tables define the forwarding. These attributes of `n
 | `InputBufferSizeLow` | Input buffer for the packets received on the ports, in packets |
 | `InputBufferSizeHigh` | v1model: input buffer for resubmitted and recirculated packets, served first |
 | `QueueBufferSize` | Each output queue, in packets: per port and priority (v1model, PSA), or per port (PNA) |
+| `TransferBufferSize` | Frames a port holds after the egress pipeline, besides the one it sends (the hardware port queue); 0 (default) = none. v1model and PSA, not with `EnableVoqFabric` |
 | `EnableVoqFabric` | v1model: use the VOQ + fabric traffic manager instead of the output queues ([doc/traffic-manager.md](doc/traffic-manager.md)) |
 | `EnableSwap` | Allow swapping the P4 program at run time (`load_new_config` and `swap_configs` of the runtime CLI, or `P4Controller`). The swap waits until the switch holds no packet; frames that arrive meanwhile wait and use the new program |
 | `BmLogLevel` | Level of the BMv2 pipeline log in `/tmp/bmv2-<thrift port>-pipeline.log`, `trace` to `off`. `off` (default) writes none; `trace` logs every step of every packet, which helps to debug a P4 program but slows the simulation down |
@@ -153,7 +154,8 @@ The P4 program and its flow tables define the forwarding. These attributes of `n
 > **Notes:**
 > 1. The P4 program sees every frame, ARP included, and must forward it.
 > 2. `SwitchRate` models a slower switch, such as a software switch: an idle pipeline takes a packet at once, and packets that arrive while it is busy wait in the input buffer, or are dropped (`MacRxDrop`) when it is full. Resubmitted and recirculated passes count too. With the default, 0, only the links limit the traffic, as in a hardware switch. `PipelineDelay` adds a fixed latency instead and does not change the throughput.
-> 3. The flow-table file runs in `simple_switch_CLI` (v1model) or `psa_switch_CLI` (PSA). Besides the table commands it can use `mirroring_add`, `mirroring_add_mc`, `set_queue_depth` and `set_queue_rate`, and on v1model `mirroring_delete`: BMv2 1.15.8's `psa_switch_CLI` stops at `mirroring_delete`, as at any failed mirroring command, and skips the rest of the file.
+> 3. `TransferBufferSize` stands for the port queue after the egress of a hardware switch: a port takes packets from the output queues while this buffer has room, and they pass the egress then. A frame in the buffer is not overtaken any more: a high-priority packet that arrives later waits behind it. The backlog of a congested port stays in the output queues, where the priorities apply, and `enq_qdepth`/`deq_qdepth` count only those. On v1model, `deq_timedelta` likewise ends when the packet leaves its output queue: it does not contain the wait in this buffer. A port can hold `TransferBufferSize` more frames than `QueueBufferSize` allows, and a pending program swap (`EnableSwap`) waits for them too.
+> 4. The flow-table file runs in `simple_switch_CLI` (v1model) or `psa_switch_CLI` (PSA). Besides the table commands it can use `mirroring_add`, `mirroring_add_mc`, `set_queue_depth` and `set_queue_rate`, and on v1model `mirroring_delete`: BMv2 1.15.8's `psa_switch_CLI` stops at `mirroring_delete`, as at any failed mirroring command, and skips the rest of the file.
 
 ### Switch ports
 

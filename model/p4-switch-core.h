@@ -21,6 +21,7 @@
 #include <map>
 #include <memory>
 #include <thread>
+#include <unordered_map>
 #include <vector>
 
 #define SSWITCH_DROP_PORT 511
@@ -119,6 +120,38 @@ class P4SwitchCore : public bm::Switch
      * @return the delay set by SetPipelineDelay()
      */
     Time GetPipelineDelay() const;
+
+    /**
+     * @brief Set the size of each port's transfer buffer (the TransferBufferSize
+     *        attribute of P4SwitchNetDevice)
+     * @param frames how many frames a port holds after the egress pipeline,
+     *        besides the one it is sending; 0 (the default) means none
+     *
+     * The transfer buffer stands for the hardware port queue after the egress.
+     * A port takes its next packet from the egress queues when it is idle or its
+     * transfer buffer has room; the packet passes the egress pipeline at once and
+     * waits in the transfer buffer, in order, until the port has sent the frames
+     * before it. So the backlog of a congested port stays in the egress queues,
+     * where the priorities are applied, and a frame in the transfer buffer is not
+     * overtaken any more. The transfer buffer never drops. With 0, a port takes
+     * its next packet only when it is idle. v1model (without the VOQ traffic
+     * manager) and PSA; PNA and the pipeline core have no egress queues and do
+     * not use it.
+     */
+    void SetTransferBufferSize(uint32_t frames);
+
+    /**
+     * @brief Get the size of each port's transfer buffer
+     * @return the size set by SetTransferBufferSize()
+     */
+    uint32_t GetTransferBufferSize() const;
+
+    /**
+     * @brief Get the number of frames in a port's transfer buffer
+     * @param port the port
+     * @return the frames that passed the egress pipeline and wait for the port
+     */
+    uint32_t GetTransferBufferLength(uint32_t port) const;
 
     /**
      * @brief Load the flow table to the switch
@@ -392,6 +425,27 @@ class P4SwitchCore : public bm::Switch
      */
     int GetAddressIndex(const Address& destination);
 
+    /// A frame that passed the egress pipeline and waits for its port
+    struct TransferFrame
+    {
+        Ptr<Packet> packet; //!< the frame
+        uint16_t protocol;  //!< its protocol
+        int addressIndex;   //!< index of its destination address in m_destinationList
+    };
+
+    /**
+     * @brief Whether a port can take its next packet from the egress queues
+     *        (see SetTransferBufferSize())
+     * @param port the port
+     * @param transmitterFree whether the port could send a frame now
+     * @return true if the port is idle with an empty transfer buffer, or its
+     *         transfer buffer has room
+     */
+    bool PortCanTakePacket(uint32_t port, bool transmitterFree) const;
+
+    /// The transfer buffer of each port, oldest frame first (see SetTransferBufferSize())
+    std::unordered_map<uint32_t, std::deque<TransferFrame>> m_transferBuffers;
+
     int m_p4SwitchId;                          //!< ID of the switch
     P4SwitchNetDevice* m_switchNetDevice;      //!< Pointer to the switch net device
     bool m_enableQueueingMetadata{false};      //!< Enable queueing metadata
@@ -446,11 +500,13 @@ class P4SwitchCore : public bm::Switch
         std::unique_ptr<bm::Packet> packet; //!< the packet
     };
 
+    uint32_t m_transferBufferSize{0};             //!< see SetTransferBufferSize(); 0 = none
     Time m_pipelineDelay;                         //!< see SetPipelineDelay(); 0 = none
     std::deque<PipelinePacket> m_pipelinePackets; //!< the packets in the pipeline, oldest first
     EventId m_pipelineEvent;                      //!< the pending ReleaseFromPipeline()
 
-    /// Whether a packet of this switch exists, as BMv2 counts them for a swap
+    /// Whether the switch holds a packet, as BMv2 counts them for a swap, or a frame
+    /// in a transfer buffer
     bool HoldsPackets();
 
     /// Do the waiting swap if the switch holds no packet, then let in the held frames

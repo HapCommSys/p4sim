@@ -85,19 +85,26 @@ class ConfigSwapTestCase : public TestCase
      * \param arch P4SWITCH_ARCH_*
      * \param busy whether frames are queued in the switch when the swap is asked for
      * \param by how the swap is asked for
+     * \param bufferSize TransferBufferSize; 0 leaves the attribute at its default
      */
-    ConfigSwapTestCase(const std::string& archName, uint32_t arch, bool busy, SwapBy by)
+    ConfigSwapTestCase(const std::string& archName,
+                       uint32_t arch,
+                       bool busy,
+                       SwapBy by,
+                       uint32_t bufferSize = 0)
         : TestCase(archName + ": a swap " +
                    (by == SwapBy::CLI          ? "from simple_switch_CLI "
                     : by == SwapBy::CONTROLLER ? "from P4Controller "
                                                : "") +
                    (busy ? "waits for the frames in the switch, and later frames use the new "
                            "program"
-                         : "in an idle switch takes effect at once")),
+                         : "in an idle switch takes effect at once") +
+                   (bufferSize > 0 ? ", also in a transfer buffer" : "")),
           m_archName(archName),
           m_arch(arch),
           m_busy(busy),
-          m_by(by)
+          m_by(by),
+          m_bufferSize(bufferSize)
     {
     }
 
@@ -119,6 +126,7 @@ class ConfigSwapTestCase : public TestCase
     uint32_t m_arch;
     bool m_busy;
     SwapBy m_by;
+    uint32_t m_bufferSize; ///< TransferBufferSize
     Ptr<P4SwitchNetDevice> m_switch;
     P4Controller m_controller;
     std::vector<Ptr<SwitchedEthernetHostDevice>> m_hosts; ///< the host on each port
@@ -174,6 +182,10 @@ ConfigSwapTestCase::DoRun()
     m_switch->SetAttribute("FlowTablePath", StringValue(""));
     m_switch->SetAttribute("EnableSwap", BooleanValue(true));
     m_switch->SetAttribute("BmLogLevel", StringValue("off"));
+    if (m_bufferSize > 0)
+    {
+        m_switch->SetAttribute("TransferBufferSize", UintegerValue(m_bufferSize));
+    }
     switchNode->AddDevice(m_switch);
 
     const char* macs[] = {"00:00:00:00:00:10", "00:00:00:00:00:01", "00:00:00:00:00:02"};
@@ -300,6 +312,11 @@ static class P4ConfigSwapTestSuite : public TestSuite
         AddTestCase(new ConfigSwapTestCase("v1model", P4SWITCH_ARCH_V1MODEL, true, SwapBy::CLI),
                     P4SIM_TEST_QUICK);
         AddTestCase(new ConfigSwapTestCase("psa", P4SWITCH_ARCH_PSA, true, SwapBy::CORE),
+                    P4SIM_TEST_QUICK);
+        AddTestCase(
+            new ConfigSwapTestCase("v1model", P4SWITCH_ARCH_V1MODEL, true, SwapBy::CONTROLLER, 2),
+            P4SIM_TEST_QUICK);
+        AddTestCase(new ConfigSwapTestCase("psa", P4SWITCH_ARCH_PSA, true, SwapBy::CORE, 2),
                     P4SIM_TEST_QUICK);
         AddTestCase(new ConfigSwapDisabledTestCase, P4SIM_TEST_QUICK);
     }

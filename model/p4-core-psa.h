@@ -181,10 +181,40 @@ class P4CorePsa : public P4SwitchCore
         bool busy{false};
         EventId pendingEvent{};
         EventId txCompleteEvent{}; ///< PortTxComplete() for a frame the device refused
+        EventId bufferEvent{};     ///< TransmitFromBuffer(), scheduled by PortTxComplete()
     };
 
     /// Indexed by egress port number; created on first use.
     std::unordered_map<uint32_t, PortTxState> m_portTxState;
+
+    /// Whether port \p port could send a frame now: it sends none, and its channel is free
+    bool TransmitterFree(uint32_t port);
+
+    /**
+     * @brief A frame has passed the egress pipeline: append it to the port's
+     * transfer buffer, send the oldest frame if the port is free, and let the
+     * port take its next packet if there is room (see
+     * P4SwitchCore::SetTransferBufferSize()).
+     */
+    void SendOrBuffer(uint32_t port, TransferFrame&& frame);
+
+    /// Send the oldest frame of the port's transfer buffer; the port is busy until
+    /// the device calls PortTxComplete()
+    void TransmitNext(uint32_t port);
+
+    /**
+     * @brief Send the oldest frame of the port's transfer buffer if the port is
+     * free, then let the port take its next packet. PortTxComplete() schedules it
+     * in the same instant: the device calls PortTxComplete() from its end of
+     * transmission, and does not expect a new frame from there.
+     */
+    void TransmitFromBuffer(uint32_t port);
+
+    /**
+     * @brief The egress pipeline dropped or recirculated a packet of \p port:
+     * nothing goes to the port, which may take its next packet.
+     */
+    void EgressDone(uint32_t port);
 
     /**
      * @brief Link rate of port 0 (bits per second), for log messages only.

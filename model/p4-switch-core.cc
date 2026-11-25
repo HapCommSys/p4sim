@@ -450,6 +450,15 @@ P4SwitchCore::CheckPendingSwap()
 bool
 P4SwitchCore::HoldsPackets()
 {
+    // Frames in a transfer buffer have passed the pipeline and hold no PHV, but
+    // they have not left the switch
+    for (const auto& kv : m_transferBuffers)
+    {
+        if (!kv.second.empty())
+        {
+            return true;
+        }
+    }
     const std::unique_ptr<bm::PHVSourceIface>& phvSource = this->*PhvSource(PhvSourceTag{});
     for (bm::cxt_id_t cxt = 0; cxt < get_nb_cxts(); cxt++)
     {
@@ -501,6 +510,32 @@ Time
 P4SwitchCore::GetPipelineDelay() const
 {
     return m_pipelineDelay;
+}
+
+void
+P4SwitchCore::SetTransferBufferSize(uint32_t frames)
+{
+    m_transferBufferSize = frames;
+}
+
+uint32_t
+P4SwitchCore::GetTransferBufferSize() const
+{
+    return m_transferBufferSize;
+}
+
+uint32_t
+P4SwitchCore::GetTransferBufferLength(uint32_t port) const
+{
+    auto it = m_transferBuffers.find(port);
+    return it == m_transferBuffers.end() ? 0 : static_cast<uint32_t>(it->second.size());
+}
+
+bool
+P4SwitchCore::PortCanTakePacket(uint32_t port, bool transmitterFree) const
+{
+    uint32_t waiting = GetTransferBufferLength(port);
+    return (transmitterFree && waiting == 0) || waiting < m_transferBufferSize;
 }
 
 void

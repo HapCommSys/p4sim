@@ -428,6 +428,7 @@ class P4SwitchNetDevice : public NetDevice
     size_t m_queueBufferSize;
     uint64_t m_switchRate;
     Time m_pipelineDelay; //!< "PipelineDelay" attribute, passed to the core
+    uint32_t m_transferBufferSize{0}; //!< "TransferBufferSize" attribute, passed to the core
 
     /// When true, a V1model core routes traffic through the VOQ + fabric
     /// Traffic Manager instead of the legacy output queues (attribute

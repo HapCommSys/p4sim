@@ -86,9 +86,14 @@ number is the order in which the ports are added.
    ``EnableVoqFabric`` replaces the output queues with a traffic manager of
    virtual output queues and a fabric scheduler (``P4TrafficManager``).
 4. A port takes its next packet when its device reports that the previous frame
-   has been sent, so a congested port sends back to back at its line rate.  The
-   links serialise every frame at their data rate, and every device stores a
-   frame completely before it forwards it.
+   has been sent, so a congested port sends back to back at its line rate.  With
+   ``TransferBufferSize`` (v1model and PSA; 0 by default), it also takes packets
+   while its transfer buffer, the port queue after the egress, has room: they
+   pass the egress pipeline then and wait there in order, and are not overtaken
+   any more; v1model's ``deq_timedelta`` does not contain this wait.  A pending
+   program swap waits for these frames too.  The links
+   serialise every frame at their data rate, and every device stores a frame
+   completely before it forwards it.
 
 **Control plane.**  Besides the flow-table file, the tables of a v1model switch
 can be changed during the simulation with ``P4Controller`` (flow entries, action
@@ -254,6 +259,9 @@ Attributes of ``ns3::P4SwitchNetDevice``:
    * - ``QueueBufferSize``
      - 128
      - Each output queue, in packets: per port and priority (v1model, PSA), or per port (PNA)
+   * - ``TransferBufferSize``
+     - 0
+     - Frames a port holds after the egress pipeline, besides the one it sends (v1model and PSA, not with ``EnableVoqFabric``)
    * - ``EnableVoqFabric``
      - false
      - V1model: use the VOQ + fabric traffic manager instead of the output queues
@@ -368,7 +376,7 @@ Troubleshooting
 Validation
 **********
 
-The module has 18 test suites with 115 test cases, from unit tests of
+The module has 19 test suites with 126 test cases, from unit tests of
 single classes to packet tests that send frames through a switch and check the
 frames that leave it (``p4-packet``, with test files in the format of p4c's
 STF).  Among them:
@@ -376,7 +384,8 @@ STF).  Among them:
 * ``p4-packet`` -- forwarding on every architecture; drops, priorities,
   resubmit, recirculation, clones, multicast and LAG.
 * ``p4-egress``, ``p4-switch-rate``, ``p4-pipeline-delay``,
-  ``link-framing`` -- the timing of ports, pipeline and links.
+  ``p4-transfer-buffer``, ``link-framing`` -- the timing of ports, pipeline and
+  links.
 * ``p4-traffic-manager`` -- the VOQ + fabric traffic manager.
 * ``p4-controller`` -- ``P4Controller`` and the runtime CLIs.
 * ``p4-config-swap`` -- swapping the P4 program at run time.

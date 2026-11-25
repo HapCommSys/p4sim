@@ -11,17 +11,15 @@ line (bridge ports only, the old timing model) and gets no more changes.
 ## Design questions
 
 ### Where does a congested switch hold its backlog?
-- **Today.** Packets wait in the TM queues between the
-  ingress and the egress (`egress_buffer`, or the VOQs). A port takes the next
-  packet from the TM only when it is idle, and sends it as soon as the egress is
-  done with it. #22 had added a per-port ns-3 `QueueDisc` after the egress
-  (`P4CoreV1model::SetPortQueueDisc()`); it was removed before the release.
-  Because the port takes one packet at a time, it never held more than one
-  packet (from reading the code), so its scheduling and AQM had no effect.
-- **Preferred design.** The backlog builds up in the TM queue between the
-  ingress and the egress, where scheduling and AQM belong. After the egress
-  comes only a transfer buffer: a plain FIFO that stands for the hardware port
-  queue, with a configurable depth. It is added when a model needs it.
+- **Today.** The backlog builds up in the TM queues between the ingress and the
+  egress (`egress_buffer`, or the VOQs), where scheduling and AQM belong. After
+  the egress, each port has a transfer buffer (`TransferBufferSize` frames): a
+  plain FIFO that stands for the hardware port queue. A port takes packets from
+  the TM while it is idle or its transfer buffer has room; the buffer never
+  drops, and its frames are not overtaken. The default, 0, keeps the earlier
+  behaviour: a port takes the next packet only when it is idle. (#22's per-port
+  ns-3 `QueueDisc` after the egress was removed before 2.0: as the port took one
+  packet at a time, it never held more than one.)
 - **Literature check (November 2026), Tofino and Tofino 2.** We have not
   measured this on hardware; these are published sources.
   - The backlog of an oversubscribed port sits in the TM's shared buffer
@@ -38,13 +36,14 @@ line (bridge ports only, the old timing model) and gets no more changes.
     counted. Whether the dequeued packet itself counts is not documented
     (BurstRadar, APSys 2018, assumes it does; Intel's open-source tofino-model
     and BMv2 do not).
-  - So the preferred design matches the hardware.
-- **Still to decide.**
-  - The size of the FIFO: no public value; a rough estimate is one or two
-    full-size frames at 100 Gbps.
-  - The queue depth: today, a TM queue of depth 1 holds one packet
-    besides the one that the port is sending, and the dequeued packet does not
-    count in `deq_qdepth` (as in BMv2).
+  - So this design matches the hardware.
+- **Still open.**
+  - The default size of the transfer buffer: no public value; a rough
+    estimate is one or two full-size frames at 100 Gbps. It is 0 for now.
+  - The transfer buffer does not work with `EnableVoqFabric` yet: the VOQ
+    traffic manager hands each port one frame at a time itself.
+  - The queue depth: the dequeued packet does not count in `deq_qdepth` (as in
+    BMv2), and neither do the frames in the transfer buffer.
 
 ### Store and forward, or cut-through?
 - **Today.** Every hop is store and forward: a device gets a frame only when its
@@ -64,8 +63,12 @@ line (bridge ports only, the old timing model) and gets no more changes.
     time commands of `pna_nic_CLI`), and it does not load its `FlowTablePath`.
   - `P4Controller` works on v1model switches only.
 - **`PipelineDelay` follow-ups (#59).**
-  - Separate ingress and egress delays: needs the FIFO after the egress (see
-    above).
+  - No separate egress delay (decided November 2026): one delay before the TM is
+    enough. With the same total and a port that takes its packets early enough
+    to keep the line busy, a second delay after the TM would send the same frames
+    in the same order at the same times (by analysis, not measured). Only the
+    timestamps that the P4 program sees and the timing of egress clones would
+    differ.
   - A model per stage (Tofino's ingress and egress share a fixed number of
     match-action stages; register accesses may add time). BMv2's JSON has no
     stage allocation, so p4sim cannot see the stages.
