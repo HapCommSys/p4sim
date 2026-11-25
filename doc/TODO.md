@@ -113,6 +113,3 @@ line (bridge ports only, the old timing model) and gets no more changes.
     manager's thread even when the manager was never started, which crashes
     with glibc 2.43 (Ubuntu 26.04). P4sim is not affected: its switches have a
     device manager without ports instead of BMI.
-- **The last lost packet of the examples** (PDR 99.911 %) is ns-3's ARP: its
-  pending queue holds 3 packets. Not p4sim; the examples could enlarge
-  `ArpCache::PendingQueueSize`.
