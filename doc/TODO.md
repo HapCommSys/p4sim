@@ -56,11 +56,10 @@ line (bridge ports only, the old timing model) and gets no more changes.
 ## Feature gaps
 
 - **PSA and PNA.**
-  - PNA ignores `PipelineDelay`.
   - PSA clones to a multicast group have no test: the `.stf` files of
     `p4-packet` configure multicast on v1model only.
   - PNA has no Thrift service of its own (BMv2's `pna_nic` has one, for the
-    time commands of `pna_nic_CLI`), and it does not load its `FlowTablePath`.
+    time commands of `pna_nic_CLI`); its `FlowTablePath` runs in `bm_CLI`.
   - `P4Controller` works on v1model switches only.
 - **`PipelineDelay` follow-ups (#59).**
   - No separate egress delay (decided November 2026): one delay before the TM is

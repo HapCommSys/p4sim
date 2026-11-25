@@ -32,15 +32,15 @@ No environment variable is needed, and suites can run in parallel.
 | `p4-config-swap` | `EnableSwap`: an idle switch swaps its program at once, a busy one when its last packet has left; frames that arrive meanwhile wait and use the new program (v1model through `P4Controller` and `simple_switch_CLI`, PSA; also with frames in the transfer buffer); without `EnableSwap` the program stays |
 | `p4-egress` | a congested switched-Ethernet port sends back to back at its line rate; a switch with a full egress queue, or one whose port just refused a frame, can be destroyed |
 | `p4-switch-rate` | `SwitchRate` limits the whole pipeline, 0 means no limit, a full input buffer drops |
-| `p4-pipeline-delay` | `PipelineDelay` delays every packet by the same time without lowering the throughput (default egress path, VOQ, PSA, pipeline core, with `SwitchRate`, on a congested port), once per pass for recirculated frames and clones; a switch with packets in its pipeline can be destroyed |
+| `p4-pipeline-delay` | `PipelineDelay` delays every packet by the same time without lowering the throughput (default egress path, VOQ, PSA, PNA, pipeline core, with `SwitchRate`, on a congested port), once per pass for recirculated frames and clones; a switch with packets in its pipeline can be destroyed |
 | `p4-transfer-buffer` | `TransferBufferSize`: a congested port holds that many frames after the egress and still sends back to back (v1model, PSA; default 0); a high-priority frame does not overtake the frames in the buffer; a packet that the egress drops does not free a sending port |
 | `p4-bridge-port` | CSMA and point-to-point bridge ports next to a switched-Ethernet port |
-| `p4-pna` | a PNA switch forwards, and drops what its program does not send; a full output queue drops |
+| `p4-pna` | a PNA switch forwards, and drops what its program does not send; its flow table file runs in `bm_CLI`; a full output queue drops |
 | `link-framing` | Ethernet framing (preamble, FCS, padding, interframe gap) on the switched-Ethernet channel and the P4 point-to-point device; between two hosts, through a switch, and in a switch's estimate for a point-to-point bridge port |
 | `switched-ethernet-traffic-control` | flow control on host devices: a queue disc schedules the backlog of a host, `FqCoDelQueueDisc` is the default, `DisableFlowControl()` installs none |
 
 `p4-controller` also needs `simple_switch_CLI` and `psa_switch_CLI`, `p4-config-swap`
-`simple_switch_CLI`.
+`simple_switch_CLI`, `p4-pna` `bm_CLI`.
 
 [`examples-to-run.py`](examples-to-run.py) lists the examples that `test.py` runs
 as smoke tests: each must exit with 0. It keeps the examples from breaking unnoticed.

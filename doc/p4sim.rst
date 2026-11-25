@@ -131,8 +131,9 @@ Scope and Limitations
   (``patches/bmv2-spdlog-cxx20.patch``).
 * The P4 program sees every frame, ARP included, and must forward it; the
   example programs do.
-* PNA ignores ``PipelineDelay``, has no Thrift service of its own, and does not
-  load its ``FlowTablePath``.
+* PNA has no Thrift service of its own: its ``FlowTablePath`` runs in BMv2's
+  generic ``bm_CLI``, which has the table commands but not the time commands of
+  ``pna_nic_CLI``.
 * ``P4Controller`` works on v1model switches only.
 * ``digest()`` sends its records to the notification socket of BMv2; nothing in
   the simulation receives them.
