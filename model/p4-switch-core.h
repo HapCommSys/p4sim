@@ -401,7 +401,7 @@ class P4SwitchCore : public bm::Switch
     {
         Ptr<Packet> packet;  //!< the frame
         uint16_t protocol;   //!< its protocol
-        Address destination; //!< its destination address
+        int addressIndex;    //!< index of its destination address in m_destinationList
     };
 
     /**
@@ -466,7 +466,8 @@ class P4SwitchCore : public bm::Switch
     std::deque<PipelinePacket> m_pipelinePackets; //!< the packets in the pipeline, oldest first
     EventId m_pipelineEvent;                      //!< the pending ReleaseFromPipeline()
 
-    /// Whether a packet of this switch exists, as BMv2 counts them for a swap
+    /// Whether the switch holds a packet, as BMv2 counts them for a swap, or a frame
+    /// in a transfer buffer
     bool HoldsPackets();
 
     /// Do the waiting swap if the switch holds no packet, then let in the held frames

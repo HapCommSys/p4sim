@@ -15,7 +15,7 @@ No environment variable is needed, and suites can run in parallel.
 
 ## Suites
 
-19 suites, 121 test cases. The first seven do not need BMv2.
+19 suites, 123 test cases. The first seven do not need BMv2.
 
 | Suite | Checks |
 |---|---|

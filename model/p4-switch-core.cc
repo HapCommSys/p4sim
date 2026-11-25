@@ -372,6 +372,15 @@ P4SwitchCore::CheckPendingSwap()
 bool
 P4SwitchCore::HoldsPackets()
 {
+    // Frames in a transfer buffer have passed the pipeline and hold no PHV, but
+    // they have not left the switch
+    for (const auto& kv : m_transferBuffers)
+    {
+        if (!kv.second.empty())
+        {
+            return true;
+        }
+    }
     const std::unique_ptr<bm::PHVSourceIface>& phvSource = this->*PhvSource(PhvSourceTag{});
     for (bm::cxt_id_t cxt = 0; cxt < get_nb_cxts(); cxt++)
     {

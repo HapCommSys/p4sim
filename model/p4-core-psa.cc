@@ -341,7 +341,7 @@ P4CorePsa::EventDrivenEgressDequeue(uint32_t port)
     int addr_index = RegisterAccess::get_ns_address(bm_packet.get());
     Ptr<Packet> ns_packet = this->ConvertToNs3Packet(std::move(bm_packet));
     SendOrBuffer(static_cast<uint32_t>(out_port),
-                 TransferFrame{ns_packet, protocol, m_destinationList[addr_index]});
+                 TransferFrame{ns_packet, protocol, addr_index});
 }
 
 bool
@@ -373,13 +373,14 @@ P4CorePsa::TransmitNext(uint32_t port)
     std::deque<TransferFrame>& buffer = m_transferBuffers[port];
     TransferFrame frame = std::move(buffer.front());
     buffer.pop_front();
+    CheckPendingSwap(); // the last buffered frame may leave the switch now
 
     auto& pstate = m_portTxState[port];
     pstate.busy = true;
     if (!m_switchNetDevice->SendNs3Packet(frame.packet,
                                           static_cast<int>(port),
                                           frame.protocol,
-                                          frame.destination))
+                                          m_destinationList[frame.addressIndex]))
     {
         // Dropped by the device: nothing is on the wire, free the port.
         pstate.txCompleteEvent = Simulator::ScheduleNow(&P4CorePsa::PortTxComplete, this, port);

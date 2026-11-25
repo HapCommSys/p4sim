@@ -90,7 +90,8 @@ number is the order in which the ports are added.
    ``TransferBufferSize`` (v1model and PSA; 0 by default), it also takes packets
    while its transfer buffer, the port queue after the egress, has room: they
    pass the egress pipeline then and wait there in order, and are not overtaken
-   any more; v1model's ``deq_timedelta`` does not contain this wait.  The links
+   any more; v1model's ``deq_timedelta`` does not contain this wait.  A pending
+   program swap waits for these frames too.  The links
    serialise every frame at their data rate, and every device stores a frame
    completely before it forwards it.
 
@@ -373,7 +374,7 @@ Troubleshooting
 Validation
 **********
 
-The module has 19 test suites with 121 test cases, from unit tests of
+The module has 19 test suites with 123 test cases, from unit tests of
 single classes to packet tests that send frames through a switch and check the
 frames that leave it (``p4-packet``, with test files in the format of p4c's
 STF).  Among them:

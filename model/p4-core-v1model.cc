@@ -454,7 +454,7 @@ P4CoreV1model::EventDrivenEgressDequeue(uint32_t port)
                                                               << " bytes, Port: " << out_port);
 
     SendOrBuffer(static_cast<uint32_t>(out_port),
-                 TransferFrame{ns_packet, protocol, m_destinationList[addr_index]});
+                 TransferFrame{ns_packet, protocol, addr_index});
 }
 
 bool
@@ -486,6 +486,7 @@ P4CoreV1model::TransmitNext(uint32_t port)
     std::deque<TransferFrame>& buffer = m_transferBuffers[port];
     TransferFrame frame = std::move(buffer.front());
     buffer.pop_front();
+    CheckPendingSwap(); // the last buffered frame may leave the switch now
 
     // Mark the port busy so that any re-entrant Enqueue() correctly sees it as
     // occupied, then transmit. The device calls PortTxComplete() once the
@@ -495,7 +496,7 @@ P4CoreV1model::TransmitNext(uint32_t port)
     if (!m_switchNetDevice->SendNs3Packet(frame.packet,
                                           static_cast<int>(port),
                                           frame.protocol,
-                                          frame.destination))
+                                          m_destinationList[frame.addressIndex]))
     {
         // Dropped by the device: nothing is on the wire, free the port.
         pstate.txCompleteEvent = Simulator::ScheduleNow(&P4CoreV1model::PortTxComplete, this, port);
