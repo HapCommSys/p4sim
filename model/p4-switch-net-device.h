@@ -150,17 +150,19 @@ class P4SwitchNetDevice : public NetDevice
     /**
      * \brief Receive a frame from the channel.
      *
-     * Called by SwitchedEthernetChannel::PropagationCompleteEvent() after the
+     * Scheduled by SwitchedEthernetChannel::TransmitEnd() after the
      * propagation delay.  The packet arrives as a complete Ethernet frame
      * (header already present).
      *
-     * In switch mode the frame is injected into the P4 pipeline.
+     * In switch mode the frame is injected into the P4 pipeline, on the port
+     * that is attached to \p channel in \p slot.
      * In NIC mode the frame is delivered up the protocol stack.
      *
      * \param packet Full Ethernet frame.
-     * \param sender The device that transmitted the frame.
+     * \param channel The channel that carried the frame.
+     * \param slot The slot of this device in \p channel (see Attach()).
      */
-    void Receive(Ptr<Packet> packet, Ptr<P4SwitchNetDevice> sender);
+    void Receive(Ptr<Packet> packet, Ptr<SwitchedEthernetChannel> channel, uint32_t slot);
 
     // -----------------------------------------------------------------------
     // Egress from P4 pipeline (called by pipeline cores)
@@ -203,7 +205,10 @@ class P4SwitchNetDevice : public NetDevice
     /** \return Channel at port \p n, or nullptr if out of range. */
     Ptr<SwitchedEthernetChannel> GetPortChannel(uint32_t n) const;
 
-    /** \return Port index of \p sender, or UINT32_MAX if not found. */
+    /**
+     * \return Index of the switched-Ethernet port whose other end is the P4
+     *         device \p sender, or UINT32_MAX if there is none (or \p sender is null).
+     */
     uint32_t GetPortNumber(Ptr<P4SwitchNetDevice> sender) const;
 
     /** \return Number of ports of both kinds, the same as GetNPorts() (main's name). */

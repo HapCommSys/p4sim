@@ -424,7 +424,7 @@ P4SwitchNetDevice::Attach(Ptr<SwitchedEthernetChannel> channel)
 // ---------------------------------------------------------------------------
 
 void
-P4SwitchNetDevice::Receive(Ptr<Packet> packet, Ptr<P4SwitchNetDevice> sender)
+P4SwitchNetDevice::Receive(Ptr<Packet> packet, Ptr<SwitchedEthernetChannel> channel, uint32_t slot)
 {
     NS_LOG_FUNCTION_NOARGS();
     NS_LOG_DEBUG("UID=" << packet->GetUid());
@@ -464,11 +464,20 @@ P4SwitchNetDevice::Receive(Ptr<Packet> packet, Ptr<P4SwitchNetDevice> sender)
         return;
     }
 
-    // Switch mode: find the ingress port from the sender device.
-    uint32_t inPort = GetPortNumber(sender);
+    // Switch mode: the ingress port is the one attached to this channel in this
+    // slot. (The other end may be a host device, which is not a P4SwitchNetDevice.)
+    uint32_t inPort = UINT32_MAX;
+    for (uint32_t i = 0; i < m_portChannels.size(); ++i)
+    {
+        if (m_portChannels[i] == channel && m_portDeviceIds[i] == slot)
+        {
+            inPort = i;
+            break;
+        }
+    }
     if (inPort == UINT32_MAX)
     {
-        NS_LOG_WARN("Receive: sender not found in port list — dropping");
+        NS_LOG_WARN("Receive: the channel is not attached to a port — dropping");
         return;
     }
 
@@ -854,7 +863,12 @@ P4SwitchNetDevice::GetPortChannel(uint32_t n) const
 uint32_t
 P4SwitchNetDevice::GetPortNumber(Ptr<P4SwitchNetDevice> sender) const
 {
-    // Find the port whose far end is `sender`.
+    // Find the port whose far end is `sender`. A host's slot has no P4 device,
+    // so a null sender would match the first port that leads to a host.
+    if (!sender)
+    {
+        return UINT32_MAX;
+    }
     for (uint32_t i = 0; i < m_portChannels.size(); ++i)
     {
         if (!m_portChannels[i])
