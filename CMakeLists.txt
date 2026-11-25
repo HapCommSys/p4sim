@@ -10,6 +10,18 @@ endif()
 add_compile_definitions(P4SIM_NS3_MINOR=${P4SIM_NS3_MINOR})
 message(STATUS "P4sim: ns-${NS3_VER}, C++${CMAKE_CXX_STANDARD}")
 
+# The core headers of ns-3.39 and ns-3.40 name constructors Singleton<T>(...),
+# which GCC 14 and newer report in every file that includes them
+# (-Wtemplate-id-cdtor). ns-3.41 fixed the headers, so only this one warning is
+# off, and only for these two releases.
+if(P4SIM_NS3_MINOR LESS 41)
+  include(CheckCXXCompilerFlag)
+  check_cxx_compiler_flag(-Wtemplate-id-cdtor P4SIM_HAS_WTEMPLATE_ID_CDTOR)
+  if(P4SIM_HAS_WTEMPLATE_ID_CDTOR)
+    add_compile_options(-Wno-template-id-cdtor)
+  endif()
+endif()
+
 # Check if stdint.h is supported
 check_include_file_cxx(stdint.h HAVE_STDINT_H)
 if(HAVE_STDINT_H)
@@ -209,7 +221,6 @@ build_lib(
         test/p4-p2p-channel-test-suite.cc
         test/p4-queue-test-suite.cc
         test/p4-packet-test-suite.cc
-        ${examples_as_tests_sources}
 )
 
 # GetP4SimDir() (utils/format-utils.cc) returns the p4sim folder of this build,
