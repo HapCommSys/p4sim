@@ -47,6 +47,7 @@
 #include <netinet/in.h>
 #include <sstream>
 #include <sys/file.h>
+#include <sys/mman.h>
 #include <sys/socket.h>
 #include <unistd.h>
 
@@ -854,11 +855,15 @@ P4SwitchCore::ExecuteCliCommands(const std::string& commandsFile)
                                         << commandsFile);
         }
         // The CLI repeats the last command for an empty line and does not know
-        // comments, so it gets neither
+        // comments or the byte order mark of UTF-8, so it gets none of them
         uint32_t number = 0;
         for (std::string line; std::getline(file, line);)
         {
             number++;
+            if (number == 1 && line.rfind("\xEF\xBB\xBF", 0) == 0)
+            {
+                line.erase(0, 3);
+            }
             size_t start = line.find_first_not_of(" \t\r");
             if (start != std::string::npos && line[start] != '#')
             {
@@ -894,17 +899,17 @@ P4SwitchCore::ExecuteCliCommands(const std::string& commandsFile)
                                      "of the target (e.g. mirroring_add) are not available");
     }
 
-    // The CLI reads the commands from a file and its output comes back through a pipe
-    char inputFile[] = "/tmp/p4sim-cli-XXXXXX";
-    int fd = mkstemp(inputFile);
+    // The CLI inherits the commands in a file in memory, which leaves nothing on the
+    // disk if this process is killed, and its output comes back through a pipe
+    int fd = memfd_create("p4sim-cli", 0);
     std::string text = input.str();
     if (fd < 0 || write(fd, text.data(), text.size()) != static_cast<ssize_t>(text.size()))
     {
-        NS_FATAL_ERROR("Cannot write " << inputFile << " for the runtime CLI");
+        NS_FATAL_ERROR("Switch ID " << m_p4SwitchId
+                                    << ": cannot pass the flow table to the runtime CLI");
     }
-    close(fd);
-    std::string cmd =
-        m_thriftCommand + " --thrift-port " + std::to_string(port) + " < " + inputFile + " 2>&1";
+    std::string cmd = m_thriftCommand + " --thrift-port " + std::to_string(port) +
+                      " < /proc/self/fd/" + std::to_string(fd) + " 2>&1";
     NS_LOG_DEBUG("Executing CLI command: " << cmd);
 
     std::string output;
@@ -915,7 +920,7 @@ P4SwitchCore::ExecuteCliCommands(const std::string& commandsFile)
         output.append(buffer.data(), n);
     }
     int result = cli ? pclose(cli) : -1;
-    unlink(inputFile);
+    close(fd);
     ReportCliErrors(commandsFile, commands, output, result);
     return result;
 }

@@ -20,6 +20,7 @@
 #include <bm/bm_sim/logger.h>
 #include <cstdlib>
 #include <filesystem>
+#include <fstream>
 #include <map>
 #include <netinet/in.h>
 #include <sys/socket.h>
@@ -277,8 +278,9 @@ class P4BmLogLevelDefaultTestCase : public P4TestCase
  * \ingroup p4sim-tests
  * Comments and empty lines of a flow table are skipped. A command that the runtime
  * CLI reports as an error is printed with its file and line, and the rest of the
- * file still runs. A CLI that cannot run is reported, too. (A flow table that
- * cannot be opened ends the process.)
+ * file still runs. A CLI that cannot run is reported, too. The byte order mark that
+ * some editors write at the start of a file is no error. (A flow table that cannot be
+ * opened ends the process.)
  */
 class P4FlowTableErrorsTestCase : public P4TestCase
 {
@@ -303,7 +305,19 @@ class P4FlowTableErrorsTestCase : public P4TestCase
         setenv("PATH", "/nonexistent", 1);
         CreateSwitch(0, dir + "simple_v1model.json", "off", dir + "flowtable_0.txt");
         setenv("PATH", path.c_str(), 1);
+        std::ostringstream bomErrors;
+        std::cerr.rdbuf(bomErrors.rdbuf());
+        std::string bomTable = CreateTempDirFilename("flowtable_bom.txt");
+        std::ofstream(bomTable)
+            << "\xEF\xBB\xBF"
+            << "table_add ipv4_nhop ipv4_forward 0x0a010101 => 00:00:00:00:00:01 0\n";
+        Ptr<P4SwitchNetDevice> bom = CreateSwitch(0, dir + "simple_v1model.json", "off", bomTable);
         std::cerr.rdbuf(cerrBuffer);
+
+        NS_TEST_EXPECT_MSG_EQ(bomErrors.str(), "", "The byte order mark is no error");
+        std::size_t bomEntries = 0;
+        bom->GetCore()->mt_get_num_entries(0, "MyIngress.ipv4_nhop", &bomEntries);
+        NS_TEST_EXPECT_MSG_EQ(bomEntries, 1, "The line with the byte order mark must run");
 
         NS_TEST_EXPECT_MSG_NE(noCli.str().find("flowtable_0.txt\n    simple_switch_CLI failed"),
                               std::string::npos,
