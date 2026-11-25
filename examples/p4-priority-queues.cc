@@ -23,11 +23,14 @@
  * 83 us (1042 bytes at 100 Mbps): strict priority does not pre-empt. With
  * --priority=0 the classification table is emptied before the simulation
  * starts: both flows share queue 0, and the small flow waits behind the bulk
- * and loses about as many of its packets. Both sources send at a constant
- * rate, so how many packets of the small flow find the queue full depends on
- * how they line up with the bulk flow's: with --bulkRate=150Mbps, each of them
- * arrives together with a bulk packet, just after the place that a departure
- * freed is taken again, and the small flow loses 95% of its packets.
+ * and loses packets too. How many is a matter of timing, not of the queue: both
+ * sources send at a constant rate, so whether a packet of the small flow finds
+ * the queue full depends on when it arrives relative to the bulk packets. With
+ * the defaults the small flow loses 35% of its packets, close to the bulk
+ * flow's 32%, but only because both flows start at the same time: starting it 3
+ * to 79 us later gives 38% to 96%, while the bulk flow still loses 31% to 32%.
+ * Other rates vary in the same way. With the priority, the small flow loses
+ * nothing.
  *
  * The receiver measures the one-way delay of every packet from the time its
  * sender wrote into it (SeqTsSizeHeader). The P4 program counts, per queue,
