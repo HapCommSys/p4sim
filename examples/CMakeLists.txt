@@ -17,6 +17,13 @@ set(P4SIM_BASE_LIBS
 set(P4SIM_CSMA_LIBS ${P4SIM_BASE_LIBS} ${libcsma})
 
 # ========================= V1model Architecture =======================
+# 3 hosts, 1 switch — the first example, and a test bed for own P4 programs
+build_lib_example(
+  NAME p4-hello
+  SOURCE_FILES p4-hello.cc
+  LIBRARIES_TO_LINK ${P4SIM_BASE_LIBS}
+)
+
 # 2 hosts, 1 switch - Calculator P4 program
 build_lib_example(
   NAME p4-calc

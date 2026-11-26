@@ -151,12 +151,12 @@ installed BMv2 is not changed.
 ### 4. Run an example and the tests
 
 ```bash
-./ns3 run p4-v1model-ipv4-forwarding
+./ns3 run p4-hello
 ./test.py -s p4-packet
 ```
 
-[examples.md](examples.md) lists the examples, and
-[test/Readme.md](../test/Readme.md) the test suites.
+[getting-started.md](getting-started.md) continues from here. [examples.md](examples.md)
+lists the examples, and [test/Readme.md](../test/Readme.md) the test suites.
 
 ---
 

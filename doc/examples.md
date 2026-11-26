@@ -23,6 +23,7 @@ port, set up by `SwitchedEthernetHelper`; and **bridge** ports, ordinary ns-3 de
 
 | Example | What it shows | Architecture | Ports | P4 files (`examples/p4src/`) |
 |---|---|---|---|---|
+| `p4-hello` | The first example, and a test bed for own P4 programs: `--json`, `--flowTable`, `--hosts` ([getting-started.md](getting-started.md)) | v1model | switched Ethernet | `hello` |
 | `p4-v1model-ipv4-forwarding` | Two hosts and a switch with IPv4 forwarding; `--model=1` runs an ns-3 bridge instead, as a baseline | v1model | switched Ethernet | `simple_v1model` |
 | `p4-v1model-ipv4-forwarding-bridge` | The same over bridge ports: `--channelType=p2p` (default) or `csma` | v1model | P4 point-to-point or CSMA | `simple_v1model` |
 | `p4-psa-ipv4-forwarding` | Two hosts and a switch with IPv4 forwarding | PSA | CSMA | `simple_psa` |
