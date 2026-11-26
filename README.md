@@ -1,6 +1,7 @@
 # P4sim in ns-3
 
 <p align="center">
+  <a href="https://mingyumaz.github.io/p4sim/"><img src="https://img.shields.io/badge/Website-P4sim%20overview-0969da?logo=githubpages&logoColor=white" alt="P4sim website"></a>
   <a href="https://arxiv.org/abs/2503.17554"><img src="https://img.shields.io/badge/arXiv-2503.17554-red" alt="arXiv 2503.17554"></a>
   <a href="https://github.com/HapCommSys/p4sim-artifact-icns3"><img src="https://img.shields.io/badge/GitHub-HapCommSys%2Fp4sim--artifact--icns3-blue?logo=github" alt="GitHub HapCommSys/p4sim-artifact-icns3"></a>
   <a href="https://github.com/p4lang/gsoc/blob/main/program/2025/README.md"><img src="https://img.shields.io/badge/P4%20GSoC-2025-fbbc05?style=flat&logo=google-summer-of-code" alt="P4 GSoC 2025"></a>
@@ -8,6 +9,8 @@
 </p>
 
 P4sim runs P4 programs in the [ns-3 network simulator](https://www.nsnam.org/): switches execute their P4 program on the BMv2 behavioral model, while ns-3 provides the topology, the traffic and the time. This lets you evaluate programmable networks in end-to-end simulations.
+
+**Website:** [mingyumaz.github.io/p4sim](https://mingyumaz.github.io/p4sim/) gives an overview of P4sim, the [roadmap](https://mingyumaz.github.io/p4sim/roadmap/) and an animated look [inside the switch](https://mingyumaz.github.io/p4sim/inside/).
 
 P4sim is open-source software licensed under the Apache License 2.0; some files are under GPL-2.0-only (see [License](#license)).
 
@@ -168,6 +171,8 @@ The [paper](https://dl.acm.org/doi/10.1145/3747204.3747210) evaluates P4sim with
 ---
 
 ## Documentation
+
+For a first look, the [P4sim website](https://mingyumaz.github.io/p4sim/) explains the switch with figures and animations. The files below are the reference.
 
 | File | Contents |
 |---|---|
