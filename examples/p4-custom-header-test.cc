@@ -6,6 +6,8 @@
  * Authors: Mingyu Ma <mingyu.ma@tu-dresden.de>
  */
 
+#include "example-check.h"
+
 #include "ns3/core-module.h"
 #include "ns3/custom-header.h"
 #include "ns3/log.h"
@@ -264,5 +266,8 @@ main()
     NS_LOG_INFO("******** Changed Packet:");
     PrintPacketHeaders(packet);
 
-    return 0;
+    return p4sim_example::Check(newHeader.GetField("Field1") == 0xAB &&
+                                    newHeader.GetField("Field2") == 0x1234 &&
+                                    newHeader.GetField("Field3") == 0x89ABCDEF,
+                                "the header read back has the values written");
 }

@@ -1,8 +1,8 @@
 #! /usr/bin/env python3
 # -*- Mode: python; py-indent-offset: 4; indent-tabs-mode: nil; coding: utf-8; -*-
 
-# Smoke tests: test.py runs every example below and only checks that it
-# finishes with exit code 0. Tests that check results live in the test suites.
+# test.py runs every example below and checks that it finishes with exit code 0.
+# The examples check their results and exit with 1 if a check fails.
 #
 # Each tuple is (example name with arguments, do_run, do_valgrind_run). test.py
 # reads this file as text: write every argument literally (no variables) and do

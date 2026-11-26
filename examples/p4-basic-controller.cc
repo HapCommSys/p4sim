@@ -37,6 +37,8 @@
  *  └────────┘     └────────┘    └────────┘     └────────┘
  */
 
+#include "example-check.h"
+
 #include "ns3/applications-module.h"
 #include "ns3/bridge-helper.h"
 #include "ns3/core-module.h"
@@ -143,6 +145,20 @@ RxCallback(Ptr<const Packet> packet, const Address& addr)
     {
         totalRxBytes += packet->GetSize();
         last_packet_received_time_rx = Simulator::Now().GetSeconds();
+    }
+}
+
+const double REROUTE_TIME = 4.5; ///< when the controller changes the route (s)
+/// data frames that switch 0 sent before and after REROUTE_TIME, by port
+std::map<uint32_t, std::pair<uint32_t, uint32_t>> g_frames;
+
+void
+CountFrame(uint32_t port, Ptr<const Packet> packet)
+{
+    if (packet->GetSize() > 500)
+    {
+        auto& [before, after] = g_frames[port];
+        (Simulator::Now() < Seconds(REROUTE_TIME) ? before : after)++;
     }
 }
 
@@ -297,25 +313,34 @@ main(int argc, char* argv[])
             if (p4sw)
             {
                 controller.RegisterSwitch(p4sw);
-                controller.ConnectToSwitchEvents(0); // connect early
-
-                Simulator::Schedule(Seconds(2.0), [&controller]() {
-                    controller.PrintTableEntryCount(0, "MyIngress.ipv4_nhop");
-                });
-
-                Simulator::Schedule(Seconds(3.0), [&controller]() {
-                    controller.PrintFlowEntries(0, "MyIngress.ipv4_nhop");
-                });
-
-                Simulator::Schedule(Seconds(4.0), [&, p4sw]() {
-                    p4sw->EmitSwitchEvent(0, "Hello world from test event");
-                });
             }
             else
             {
                 NS_LOG_WARN("Failed to cast device at index " << j << " to P4SwitchNetDevice");
             }
         }
+    }
+
+    controller.ConnectToSwitchEvents(0);
+    Simulator::Schedule(Seconds(2.0), [&controller]() {
+        controller.PrintTableEntryCount(0, "MyIngress.ipv4_nhop");
+        controller.PrintFlowEntries(0, "MyIngress.ipv4_nhop");
+    });
+
+    // At 4.5 s the controller moves the flow to host 3 from the path through switch 3 (port
+    // 3 of switch 0) to the path through switch 2 (port 2): it changes the entry of 10.1.1.4,
+    // the fourth of the table (handle 3)
+    Simulator::Schedule(Seconds(REROUTE_TIME), [&controller]() {
+        bm::ActionData action;
+        action.push_back_action_data(bm::Data(7)); // MAC address of host 3
+        action.push_back_action_data(bm::Data(2)); // port
+        controller.ModifyFlowEntry(0, "MyIngress.ipv4_nhop", 3, "MyIngress.ipv4_forward", action);
+    });
+    for (uint32_t port : {2, 3})
+    {
+        switchNodes[0].switchDevices.Get(port)->TraceConnectWithoutContext(
+            "MacTx",
+            MakeBoundCallback(&CountFrame, port));
     }
 
     // === Configuration for Link: h0 -----> h1 ===
@@ -361,6 +386,7 @@ main(int argc, char* argv[])
     NS_LOG_INFO("Running simulation...");
     unsigned long simulate_start = getTickCount();
     Simulator::Stop(Seconds(global_stop_time));
+    p4sim_example::CountTraffic();
     Simulator::Run();
     Simulator::Destroy();
 
@@ -372,5 +398,11 @@ main(int argc, char* argv[])
 
     PrintFinalThroughput();
 
-    return 0;
+    std::cout << "Frames of switch 0: port 3 " << g_frames[3].first << " before and "
+              << g_frames[3].second << " after " << REROUTE_TIME << " s, port 2 "
+              << g_frames[2].first << " before and " << g_frames[2].second << " after\n";
+    int failed = p4sim_example::Check(g_frames[3].first > 0 && g_frames[3].second == 0 &&
+                                          g_frames[2].first == 0 && g_frames[2].second > 0,
+                                      "the controller moved the flow from port 3 to port 2");
+    return failed | p4sim_example::CheckDelivery();
 }

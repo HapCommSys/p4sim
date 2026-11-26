@@ -39,6 +39,8 @@
  *  └────────┘     └────────┘    └────────┘     └────────┘
  */
 
+#include "example-check.h"
+
 #include "ns3/applications-module.h"
 #include "ns3/bridge-helper.h"
 #include "ns3/core-module.h"
@@ -371,6 +373,7 @@ main(int argc, char* argv[])
     NS_LOG_INFO("Running simulation...");
     unsigned long simulate_start = getTickCount();
     Simulator::Stop(Seconds(global_stop_time));
+    p4sim_example::CountTraffic();
     Simulator::Run();
     Simulator::Destroy();
 
@@ -382,5 +385,5 @@ main(int argc, char* argv[])
 
     PrintFinalThroughput();
 
-    return 0;
+    return p4sim_example::CheckDelivery();
 }

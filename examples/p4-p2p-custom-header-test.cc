@@ -41,6 +41,8 @@ ns3::Ipv4Header (tos 0x0 DSCP Default ECN Not-ECT ttl 64 id 0 protocol 17 offset
 [none] length: 1028 10.1.1.1 > 10.1.1.2) ns3::UdpHeader (length: 1000 49153 > 12000) Payload
 (size=1000)
  */
+#include "example-check.h"
+
 #include "ns3/core-module.h"
 #include "ns3/custom-p2p-net-device.h"
 #include "ns3/internet-module.h"
@@ -146,8 +148,9 @@ main(int argc, char* argv[])
     p2phelper.EnablePcapAll("p4-p2p-custom-header-test");
 
     Simulator::Stop(Seconds(global_stop_time));
+    p4sim_example::CountTraffic();
     Simulator::Run();
     Simulator::Destroy();
 
-    return 0;
+    return p4sim_example::CheckDelivery();
 }

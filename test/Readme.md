@@ -44,7 +44,8 @@ No environment variable is needed, and suites can run in parallel.
 `simple_switch_CLI`, `p4-pna` `bm_CLI`.
 
 [`examples-to-run.py`](examples-to-run.py) lists the examples that `test.py` runs
-as smoke tests: each must exit with 0. It keeps the examples from breaking unnoticed.
+and that must exit with 0. The examples check their results: they print `[PASS]` or
+`[FAIL]` and exit with 1 if a check fails (`examples/example-check.h`).
 
 ## Test data
 
