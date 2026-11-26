@@ -13,6 +13,7 @@
 # reserves its own Thrift port (see the ThriftPort attribute).
 
 cpp_examples = [
+    ("p4-hello", "True", "False"),
     ("p4-v1model-ipv4-forwarding", "True", "False"),
     ("p4-psa-ipv4-forwarding", "True", "False"),
     ("p4-pna-ipv4-forwarding", "True", "False"),

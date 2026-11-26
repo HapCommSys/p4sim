@@ -289,7 +289,7 @@ Attributes of ``ns3::P4SwitchNetDevice``:
      - V1model: use the VOQ + fabric traffic manager instead of the output queues
    * - ``BmLogLevel``
      - off
-     - Level of the BMv2 pipeline log in ``/tmp/bmv2-<thrift port>-pipeline.log``; ``off`` writes none, ``trace`` logs every packet and is slower
+     - Level of the BMv2 pipeline log in ``/tmp/bmv2-<thrift port>-pipeline.log.txt``; ``off`` writes none, ``trace`` logs every packet and is slower
    * - ``ThriftPort``
      - 0
      - Thrift port of the runtime CLI; 0 picks the first free port

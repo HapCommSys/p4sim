@@ -83,11 +83,11 @@ docker run --rm p4sim ./ns3 run p4-v1model-ipv4-forwarding
 
 ```bash
 cd ~/workdir/ns3.39
-./ns3 run p4-v1model-ipv4-forwarding
+./ns3 run p4-hello
 ./test.py -s p4-packet
 ```
 
-[doc/examples.md](doc/examples.md) lists the examples and [test/Readme.md](test/Readme.md) the test suites. P4sim reads the P4 files (programs, flow tables, topologies) from the p4sim folder of the build, so no path needs to be set, and several ns-3 trees can live side by side. Earlier versions asked you to set `P4SIM_DIR` in `~/.bashrc`; it is no longer needed.
+**[doc/getting-started.md](doc/getting-started.md)** continues from here: change the flow table and the P4 program of `p4-hello`, then write your own. [doc/examples.md](doc/examples.md) lists the examples and [test/Readme.md](test/Readme.md) the test suites. P4sim reads the P4 files (programs, flow tables, topologies) from the p4sim folder of the build, so no path needs to be set, and several ns-3 trees can live side by side. Earlier versions asked you to set `P4SIM_DIR` in `~/.bashrc`; it is no longer needed.
 
 ---
 
@@ -119,7 +119,7 @@ The P4 program and its flow tables define the forwarding; the P4 program sees ev
 | `TransferBufferSize` | Frames a port holds after the egress pipeline, besides the one it sends (the hardware port queue); 0 (default) = none. v1model and PSA, not with `EnableVoqFabric` |
 | `EnableVoqFabric` | v1model: use the VOQ + fabric traffic manager instead of the output queues ([doc/traffic-manager.md](doc/traffic-manager.md)) |
 | `EnableSwap` | Allow swapping the P4 program at run time (`load_new_config` and `swap_configs` of the runtime CLI, or `P4Controller`). The swap waits until the switch holds no packet (PNA: except those in its output queues) |
-| `BmLogLevel` | Level of the BMv2 pipeline log in `/tmp/bmv2-<thrift port>-pipeline.log`, `trace` to `off`. `off` (default) writes none; `trace` logs every step of every packet, which helps to debug a P4 program but slows the simulation down |
+| `BmLogLevel` | Level of the BMv2 pipeline log in `/tmp/bmv2-<thrift port>-pipeline.log.txt`, `trace` to `off`. `off` (default) writes none; `trace` logs every step of every packet, which helps to debug a P4 program but slows the simulation down |
 | `ThriftPort` | Thrift port of the runtime CLI. 0 (default) picks the first free port from `$P4SIM_THRIFT_PORT_BASE` (9090), so simulations can run in parallel |
 | `ChannelType`, `EnableTracing` | Deprecated, no effect; removed in the next major version. Trace packets with the trace sources of the devices (`MacTx`, `MacRx`, ...), `PacketSink` or `FlowMonitor` |
 
@@ -144,10 +144,11 @@ A switch has two kinds of port, which can be mixed. The port number is the order
 
 ## Examples
 
-[doc/examples.md](doc/examples.md) describes all 26 examples. A selection:
+[doc/examples.md](doc/examples.md) describes all 27 examples. A selection:
 
 | Example | Description |
 |---|---|
+| `p4-hello` | The first example, and a test bed for own P4 programs without C++ |
 | `p4-v1model-ipv4-forwarding` | Two hosts and a switch with IPv4 forwarding (v1model) |
 | `p4-v1model-ipv4-forwarding-bridge` | The same over point-to-point or CSMA bridge ports |
 | `p4-psa-ipv4-forwarding`, `p4-pna-ipv4-forwarding` | The same with PSA and PNA |
@@ -171,6 +172,7 @@ The [paper](https://dl.acm.org/doi/10.1145/3747204.3747210) evaluates P4sim with
 | File | Contents |
 |---|---|
 | [doc/installation.md](doc/installation.md) | Installation: quick, step by step, or in a virtual machine; checks |
+| [doc/getting-started.md](doc/getting-started.md) | The first steps, the learning path, and common errors |
 | [doc/docker.md](doc/docker.md) | Building and running P4sim in Docker |
 | [doc/examples.md](doc/examples.md) | All examples and the format of their P4 files |
 | [doc/switch.md](doc/switch.md) | Pipeline and queues of the switch, switched-Ethernet ports and host devices, timing on the wire |

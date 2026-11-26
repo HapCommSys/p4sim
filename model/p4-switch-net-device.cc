@@ -114,7 +114,7 @@ P4SwitchNetDevice::GetTypeId()
             .AddAttribute(
                 "BmLogLevel",
                 "Level of the BMv2 pipeline log written to "
-                "/tmp/bmv2-<thrift port>-pipeline.log: trace, debug, info, notice, "
+                "/tmp/bmv2-<thrift port>-pipeline.log.txt: trace, debug, info, notice, "
                 "warn, error, critical, alert, emerg or off. With off (the default), "
                 "no log file is written; trace logs every step of every packet, "
                 "which helps to debug a P4 program but slows the simulation down. "

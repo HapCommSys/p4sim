@@ -389,5 +389,5 @@ if [ ${#TIMES[@]} -gt 0 ]; then
     printf '  %s\n' "${TIMES[@]}"
     echo "  total                       $(( $(date +%s) - T0 )) s"
 fi
-echo "Next: cd $NS3 && ./ns3 run p4-v1model-ipv4-forwarding"
+echo "Next: cd $NS3 && ./ns3 run p4-hello, then contrib/p4sim/doc/getting-started.md"
 echo "Logs: $LOGDIR"
