@@ -60,6 +60,12 @@ line (bridge ports only, the old timing model) and gets no more changes.
     time commands of `pna_nic_CLI`); its `FlowTablePath` runs in `bm_CLI`.
   - PSA and PNA give no digest records: BMv2's `psa_switch` and `pna_nic` do
     not pass digests on either.
+  - A program swap on PNA does not wait for the frames in its output queues,
+    although `EnableSwap` promises that the switch swaps once it holds no
+    packet: PNA turns a frame into an ns-3 packet before it queues it, so the
+    frame no longer holds a PHV, which is what `HoldsPackets()` counts besides
+    the transfer buffers. These frames have passed the whole pipeline, so they
+    are not processed again either way.
 - **The pipeline core** (`P4SwitchArch` 3) ignores `mcast_grp`, clones,
   resubmit and recirculation, without a warning: a v1model program that floods
   (L2 learning, for example) sends nothing. Proposal: give it the packet
@@ -100,6 +106,9 @@ line (bridge ports only, the old timing model) and gets no more changes.
     (`CMakeLists.txt`, `patches/bmv2-spdlog-cxx20.patch`).
   - Build BMv2 with optimisation (-O2).
   - Find BMv2 with CMake imported targets instead of the fixed `/usr/local/lib`.
+  - `set_pkg_config_env.sh` also writes `boost_system.pc` (Boost 1.83,
+    `-lboost_system`), which P4sim does not use; Ubuntu 26.04 has Boost 1.90 and
+    no `libboost_system`. Drop it, or derive the Boost version.
   - Upstream fix for `psa_switch_CLI` (1.15.8): `mirroring_delete` calls
     `mirroring_mapping_delete`, which the `psa_switch` service does not have;
     and the CLI does not import `InvalidMirroringOperation`, so any failed
@@ -113,3 +122,5 @@ line (bridge ports only, the old timing model) and gets no more changes.
   (`bm::entry_handle_t`) and one for a meter array (`size_t`): an `int` argument
   does not compile, and the type of the variable picks the overload. Proposal:
   name the meter-array ones `MeterSetRates()`, ... as `P4RuntimeApi` does.
+  No test checks what `GetMeterRates()` returns: in the review of #90, a
+  changed getter passed all suites.

@@ -2,7 +2,9 @@
 
 The `Dockerfile` of this repository builds ns-3 with P4sim on BMv2 1.15.8 and
 Thrift 0.16.0, with the P4 compiler p4c 1.2.5.19, on Ubuntu 24.04: the versions
-P4sim is tested with. Only Docker is needed; nothing else is installed on the host.
+the CI of P4sim tests. Only Docker is needed; nothing else is installed on the host.
+To install P4sim on the host itself, see the quick installation in
+[installation.md](installation.md#quick-installation).
 
 ## Build
 

@@ -41,7 +41,7 @@ port, set up by `SwitchedEthernetHelper`; and **bridge** ports, ordinary ns-3 de
 | `p4-spine-leaf-topo` | A spine-leaf network with ECMP load balancing (tutorial `load_balance` [7]) | v1model | CSMA and P4 point-to-point | `load_balance` |
 | `p4-topo-fattree` | A k-ary fat tree with generated flow tables (`FattreeTopoHelper`, `BuildFlowtableHelper`); `--model=1` runs ns-3 bridges instead | v1model | CSMA and P4 point-to-point | `fat-tree` |
 | `topo-fattree` | The same fat tree from plain ns-3 nodes, without P4, as a baseline | – | CSMA | – |
-| `p4-ipv4-animation` | IPv4 forwarding with a NetAnim trace (`topology.xml`) | v1model | CSMA | `simple_v1model` |
+| `p4-ipv4-animation` | IPv4 forwarding with a NetAnim trace (`topology.xml`); needs the ns-3 module `netanim`, which the quick installation does not build | v1model | CSMA | `simple_v1model` |
 | `p4-voq-fabric-integration` | The VOQ + fabric traffic manager (`EnableVoqFabric`) end to end, and the default path | v1model | switched Ethernet | `simple_v1model` |
 | `p4-voq-fabric-throughput` | Goodput of the traffic manager path under overload | v1model | switched Ethernet | `simple_v1model` |
 | `p4-voq-fabric-priority` | Strict priority in the traffic manager: two flows into one port | v1model | switched Ethernet | `qos` |
@@ -58,7 +58,7 @@ Each folder of `examples/p4src/` holds:
 
 - the P4 program (`.p4`) and the program compiled by `p4c` for BMv2 (`.json`);
 - one flow table per switch, `flowtable_<i>.txt`: commands of `simple_switch_CLI`
-  (v1model) or `psa_switch_CLI` (PSA), run when the switch starts;
+  (v1model), `psa_switch_CLI` (PSA) or `bm_CLI` (PNA), run when the switch starts;
 - `topo.txt`, if the example reads its topology from a file (`P4TopologyReaderHelper`).
 
 `topo.txt` starts with the numbers of switches, hosts and links. The switches are nodes
