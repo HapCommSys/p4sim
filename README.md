@@ -13,7 +13,7 @@ P4sim is open-source software licensed under the Apache License 2.0; some files 
 
 ### Key Features
 
-* **BMv2 behaviour**: the pipeline is [BMv2](https://github.com/p4lang/behavioral-model), the reference model of the P4 community. P4 programs and flow-table files written for BMv2 run unchanged, for v1model, PSA and PNA.
+* **BMv2 behaviour**: the pipeline is [BMv2](https://github.com/p4lang/behavioral-model), the reference model of the P4 community. P4 programs written for BMv2 run unchanged, for v1model, PSA and PNA, and so do their flow-table files (on PNA without the time commands of `pna_nic_CLI`).
 * **ns-3 integration**: topology, traffic and timing come from ns-3 (ns-3.39 to ns-3.49), so P4sim combines with the other ns-3 modules.
 * **Timing**: links serialise every frame at their data rate, a congested port sends back to back at its line rate, and the pipeline can have a packet rate (`SwitchRate`) and a latency (`PipelineDelay`). Optional: a port queue after the egress (`TransferBufferSize`), and a traffic manager with virtual output queues that models the fabric of a switch.
 * **Control plane**: flow-table files at start-up; during the simulation, `P4Controller` changes tables, counters, meters, registers and mirroring sessions, learns from `digest()` records and swaps the P4 program.
@@ -51,7 +51,7 @@ P4sim is an ns-3 module: it lives in `contrib/p4sim` of an ns-3 tree and needs B
 | Way | Time | Where |
 |---|---|---|
 | **[Quick installation](#quick-installation)** with `install.sh` | about 6 minutes on 16 cores | Ubuntu 24.04 or 26.04, also in WSL2 |
-| **[Docker](doc/docker.md)** | 6 to 30 minutes on 32 to 8 cores | any host with Docker; nothing is installed on the host |
+| **[Docker](doc/docker.md)** | 6 to 30 minutes on 32 to 8 cores | any x86-64 host with Docker; nothing is installed on the host |
 | [Step by step](doc/installation.md#install-step-by-step), with the P4 tools of p4lang/tutorials | 1 to 2 hours, 15 GB | Ubuntu 24.04 |
 | [Virtual machine](doc/installation.md#install-in-a-virtual-machine) | 1 to 2 hours | Vagrant and VirtualBox |
 
@@ -111,14 +111,14 @@ The P4 program and its flow tables define the forwarding; the P4 program sees ev
 | `JsonPath` | Path to the compiled P4 program (JSON) |
 | `FlowTablePath` | Path to the flow-table file, run in the runtime CLI of the architecture at start-up |
 | `P4SwitchArch` | Architecture: 0 V1model, 1 PSA, 2 PNA, 3 Pipeline |
-| `SwitchRate` | Packet rate of the whole P4 pipeline, in packets per second; 0 (default) = no limit |
+| `SwitchRate` | v1model and PSA: packet rate of the whole P4 pipeline, in packets per second; 0 (default) = no limit |
 | `PipelineDelay` | Latency of every packet in the P4 pipeline; 0 (default) = none |
-| `InputBufferSizeLow` | Input buffer for the packets received on the ports, in packets |
+| `InputBufferSizeLow` | v1model and PSA: input buffer for the packets received on the ports, in packets (PNA: 1024) |
 | `InputBufferSizeHigh` | v1model: input buffer for resubmitted and recirculated packets, served first |
 | `QueueBufferSize` | Each output queue, in packets: per port and priority (v1model, PSA), or per port (PNA) |
 | `TransferBufferSize` | Frames a port holds after the egress pipeline, besides the one it sends (the hardware port queue); 0 (default) = none. v1model and PSA, not with `EnableVoqFabric` |
 | `EnableVoqFabric` | v1model: use the VOQ + fabric traffic manager instead of the output queues ([doc/traffic-manager.md](doc/traffic-manager.md)) |
-| `EnableSwap` | Allow swapping the P4 program at run time (`load_new_config` and `swap_configs` of the runtime CLI, or `P4Controller`). The swap waits until the switch holds no packet |
+| `EnableSwap` | Allow swapping the P4 program at run time (`load_new_config` and `swap_configs` of the runtime CLI, or `P4Controller`). The swap waits until the switch holds no packet (PNA: except those in its output queues) |
 | `BmLogLevel` | Level of the BMv2 pipeline log in `/tmp/bmv2-<thrift port>-pipeline.log`, `trace` to `off`. `off` (default) writes none; `trace` logs every step of every packet, which helps to debug a P4 program but slows the simulation down |
 | `ThriftPort` | Thrift port of the runtime CLI. 0 (default) picks the first free port from `$P4SIM_THRIFT_PORT_BASE` (9090), so simulations can run in parallel |
 | `ChannelType`, `EnableTracing` | Deprecated, no effect; removed in the next major version. Trace packets with the trace sources of the devices (`MacTx`, `MacRx`, ...), `PacketSink` or `FlowMonitor` |
@@ -202,7 +202,7 @@ In the ns-3 tree, with all of ns-3 configured:
 
 ```bash
 sudo apt install doxygen graphviz dia
-./ns3 configure --enable-tests --enable-examples
+./ns3 configure --enable-tests --enable-examples --enable-modules='' --filter-module-examples-and-tests=''
 ./ns3 build
 ./ns3 docs doxygen
 xdg-open doc/html/index.html

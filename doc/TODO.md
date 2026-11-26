@@ -106,6 +106,9 @@ line (bridge ports only, the old timing model) and gets no more changes.
     (`CMakeLists.txt`, `patches/bmv2-spdlog-cxx20.patch`).
   - Build BMv2 with optimisation (-O2).
   - Find BMv2 with CMake imported targets instead of the fixed `/usr/local/lib`.
+  - `set_pkg_config_env.sh` also writes `boost_system.pc` (Boost 1.83,
+    `-lboost_system`), which P4sim does not use; Ubuntu 26.04 has Boost 1.90 and
+    no `libboost_system`. Drop it, or derive the Boost version.
   - Upstream fix for `psa_switch_CLI` (1.15.8): `mirroring_delete` calls
     `mirroring_mapping_delete`, which the `psa_switch` service does not have;
     and the CLI does not import `InvalidMirroringOperation`, so any failed

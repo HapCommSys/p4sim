@@ -76,12 +76,13 @@ number is the order in which the ports are added.
 **Packet path and timing.**
 
 1. A frame received on a port enters the input buffer of the pipeline
-   (``InputBufferSizeLow`` packets; on v1model, resubmitted and recirculated
-   packets use a second buffer, ``InputBufferSizeHigh``, which is served first).
-   A full input buffer drops the frame (trace ``MacRxDrop``).
-2. The pipeline takes the packets at ``SwitchRate`` packets per second (0, the
-   default, means no limit) and delays each of them by ``PipelineDelay`` (0 by
-   default).
+   (``InputBufferSizeLow`` packets on v1model and PSA, 1024 on PNA; on v1model,
+   resubmitted and recirculated packets use a second buffer,
+   ``InputBufferSizeHigh``, which is served first). A full input buffer drops the
+   frame (trace ``MacRxDrop``). The pipeline core has no input buffer.
+2. On v1model and PSA, the pipeline takes the packets at ``SwitchRate`` packets
+   per second (0, the default, means no limit). Every architecture delays each
+   packet by ``PipelineDelay`` (0 by default).
 3. The packets then wait in output queues of ``QueueBufferSize`` packets: one
    per port and priority (v1model, PSA) or one per port (PNA).  On v1model,
    ``EnableVoqFabric`` replaces the output queues with a traffic manager of
@@ -267,13 +268,13 @@ Attributes of ``ns3::P4SwitchNetDevice``:
      - Architecture: 0 V1model, 1 PSA, 2 PNA, 3 Pipeline
    * - ``SwitchRate``
      - 0
-     - Packets per second that the pipeline takes; 0 means no limit
+     - V1model and PSA: packets per second that the pipeline takes; 0 means no limit
    * - ``PipelineDelay``
      - 0 s
      - Latency of every packet in the pipeline
    * - ``InputBufferSizeLow``
      - 128
-     - Input buffer for the packets received on the ports, in packets
+     - V1model and PSA: input buffer for the packets received on the ports, in packets (PNA: 1024)
    * - ``InputBufferSizeHigh``
      - 128
      - V1model: input buffer for resubmitted and recirculated packets
@@ -294,7 +295,7 @@ Attributes of ``ns3::P4SwitchNetDevice``:
      - Thrift port of the runtime CLI; 0 picks the first free port
    * - ``EnableSwap``
      - false
-     - Swapping the P4 program at run time; the swap waits until the switch holds no packet
+     - Swapping the P4 program at run time; the swap waits until the switch holds no packet (PNA: except those in its output queues)
    * - ``Mtu``
      - 1500
      - Maximum transmission unit

@@ -42,24 +42,31 @@ passed test suites and examples.
 | `test` | p4c, the runtime CLIs, one example, then all test suites and examples of P4sim | |
 
 Without arguments, `install.sh` runs the four steps and downloads and builds BMv2
-while apt and ns-3 are busy. It can run again at any time; BMv2 is built only
-once. A single step runs with its name, for example `install.sh ns3` after a
-change to P4sim, or `install.sh test`.
+while apt and ns-3 are busy. It can run again: BMv2 is built only once, and an
+ns-3 tree that is configured already keeps its modules. A single step runs with
+its name, for example `install.sh test`, which needs no sudo. After a change to
+P4sim, `./ns3 build` is enough.
 
-- P4sim compiles against the headers and the Thrift service libraries of BMv2,
-  which the prebuilt BMv2 packages do not have, so BMv2 is built from source.
-- ns-3 is configured with `--enable-modules='p4sim;nix-vector-routing'` (and the
-  modules they need) and `--filter-module-examples-and-tests=p4sim`, which keeps
-  the build short. The example `p4-ipv4-animation` needs netanim and is not
-  built. To build all of ns-3 later:
+- P4sim compiles against the headers and the Thrift service libraries of BMv2 in
+  `/usr/local` (`set_pkg_config_env.sh` registers that place), so BMv2 is built
+  from source and installed there.
+- A new ns-3 configuration gets `--enable-modules='p4sim;nix-vector-routing'`
+  (and the modules they need) and `--filter-module-examples-and-tests=p4sim`,
+  which keeps the build short. The example `p4-ipv4-animation` needs netanim and
+  is not built. To build all of ns-3 later:
 
   ```bash
-  ./ns3 configure --enable-tests --enable-examples
+  ./ns3 configure --enable-tests --enable-examples --enable-modules='' --filter-module-examples-and-tests=''
   ./ns3 build
   ```
 
-- If a BMv2 is installed already, for example by p4lang/tutorials, `install.sh`
-  uses it; `BMV2_REBUILD=1` replaces it by BMv2 1.15.8.
+- If a BMv2 is installed in `/usr/local` already, for example by p4lang/tutorials,
+  `install.sh` uses it; `BMV2_REBUILD=1` replaces it by BMv2 1.15.8. A BMv2
+  elsewhere, such as the package `p4lang-bmv2` in `/usr`, is not used.
+- With a Python virtual environment or conda active: `install.sh` installs BMv2's
+  Python modules for the system Python, but the runtime CLIs run the `python3`
+  found first in `PATH`, so that environment needs the package `thrift`
+  (`pip install thrift`), or deactivate it.
 - ns-3.39's `./ns3` does not run on Python 3.14, the Python of Ubuntu 26.04:
   Python 3.14 rejects the way it declares its sub-commands. `install.sh` then
   changes these lines of `ns3` in your tree, as later ns-3 releases did.
@@ -67,16 +74,18 @@ change to P4sim, or `install.sh test`.
   `~/workdir`), not under `/mnt/c`, where builds are much slower. WSL adds the
   Windows folders to `PATH`; `install.sh` leaves them out, because
   `./ns3 configure` stores `PATH` and every start of a runtime CLI would then
-  search them.
+  search them. A later `./ns3 configure` in a normal WSL shell stores them again;
+  `appendWindowsPath = false` in the `[interop]` section of `/etc/wsl.conf`
+  (then `wsl --shutdown`) leaves them out for good.
 
 Settings, as environment variables (for example `JOBS=4 ns3.39/contrib/p4sim/install.sh`):
 
 | Variable | Default | Meaning |
 |---|---|---|
 | `JOBS` | one per CPU | Parallel build jobs; use fewer on a machine with little memory |
-| `NS3_MODULES` | `p4sim;nix-vector-routing` | The ns-3 modules to build |
-| `BMV2_REBUILD` | `0` | `1` replaces an installed BMv2 by BMv2 1.15.8 |
-| `LOGDIR` | `/tmp/p4sim-install-<user id>` | Logs: `install.log`, and one file per build part |
+| `NS3_MODULES` | `p4sim;nix-vector-routing` | The ns-3 modules to build; set it to change the modules of a configured tree |
+| `BMV2_REBUILD` | `0` | `1` builds and installs BMv2 1.15.8 even if a BMv2 is installed |
+| `LOGDIR` | `~/.cache/p4sim-install` | Logs: `install.log`, and one file per build part |
 
 ---
 
