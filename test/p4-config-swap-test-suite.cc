@@ -163,7 +163,8 @@ ConfigSwapTestCase::Swap()
     case SwapBy::CLI: {
         std::string commands = CreateTempDirFilename("swap-cli.txt");
         std::ofstream(commands) << "load_new_config_file " << json << "\nswap_configs\n";
-        NS_TEST_EXPECT_MSG_EQ(core->ExecuteCliCommands(commands), 0, "simple_switch_CLI failed");
+        int status = core->ExecuteCliCommands(commands); // the macro may evaluate it twice
+        NS_TEST_EXPECT_MSG_EQ(status, 0, "simple_switch_CLI failed");
         break;
     }
     }

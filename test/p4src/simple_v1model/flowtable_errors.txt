@@ -1,0 +1,11 @@
+# Comments and empty lines are skipped
+table_add ipv4_nhop ipv4_forward 0x0a010101 => 00:00:00:00:00:01 0
+
+  # an indented comment
+table_add no_such_table ipv4_forward 0x0a010103 => 00:00:00:00:00:03 2
+table_add ipv4_nhop ipv4_forward 0x0a010102 => 00:00:00:00:00:02
+no_such_command 1 2
+table_add ipv4_nhop ipv4_forward 0x0a010101 => 00:00:00:00:00:01 0
+table_add ipv4_nhop ipv4_forward 0x0a010104 => 00:00:00:00:00:04 3
+EOF
+table_add ipv4_nhop ipv4_forward 0x0a010105 => 00:00:00:00:00:05 4

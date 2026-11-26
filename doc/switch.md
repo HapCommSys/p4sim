@@ -67,7 +67,9 @@ the pipeline core), `psa_switch_CLI` (PSA) or `bm_CLI` (PNA). On v1model and PSA
 besides the table commands, it can use `mirroring_add`, `mirroring_add_mc`,
 `set_queue_depth` and `set_queue_rate`, and on v1model `mirroring_delete`: BMv2 1.15.8's
 `psa_switch_CLI` stops at `mirroring_delete`, as at any failed mirroring command,
-and skips the rest of the file.
+and skips the rest of the file. P4sim prints the commands that fail, with the file
+and the line; a flow-table file that cannot be opened ends the simulation. Empty
+lines and lines that start with `#` are skipped.
 
 ## Timing on the wire
 

@@ -393,9 +393,11 @@ Troubleshooting
 * If ``./ns3 configure`` reports that ``bm`` is not found, re-run
   ``sudo ./set_pkg_config_env.sh`` and verify with
   ``pkg-config --modversion bm``.
-* If a simulation fails with "file not found" for JSON or flow-table
-  paths, check that the file is in ``contrib/p4sim/examples/p4src/`` of
-  the ns-3 tree that you built.
+* If a simulation ends with "failed to load P4 JSON" or "cannot open the flow
+  table", check that the file is in ``contrib/p4sim/examples/p4src/`` of the
+  ns-3 tree that you built.
+* P4sim prints each command of a flow table that the runtime CLI rejects, with
+  the file and the line, and goes on.
 * BMv2 writes no pipeline log by default. To see how a P4 program handles
   each packet, set ``BmLogLevel`` to ``trace`` (for example with
   ``--ns3::P4SwitchNetDevice::BmLogLevel=trace``); the log slows long
@@ -404,7 +406,7 @@ Troubleshooting
 Validation
 **********
 
-The module has 20 test suites with 146 test cases, from unit tests of
+The module has 20 test suites with 147 test cases, from unit tests of
 single classes to packet tests that send frames through a switch and check the
 frames that leave it (``p4-packet``, with test files in the format of p4c's
 STF).  Among them:
