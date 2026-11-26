@@ -13,9 +13,10 @@ P4sim is open-source software licensed under the Apache License 2.0; some files 
 
 ### Key Features
 
-* **BMv2 behaviour**: the pipeline is [BMv2](https://github.com/p4lang/behavioral-model), the reference model of the P4 community. P4 programs and flow-table files written for BMv2 run unchanged.
-* **ns-3 integration**: topology, traffic and timing come from ns-3, so P4sim combines with the other ns-3 modules.
-* **Timing**: links serialise every frame at their data rate, a congested port sends back to back at its line rate, and the pipeline can have a packet rate (`SwitchRate`) and a latency (`PipelineDelay`). An optional traffic manager with virtual output queues models the fabric of a switch.
+* **BMv2 behaviour**: the pipeline is [BMv2](https://github.com/p4lang/behavioral-model), the reference model of the P4 community. P4 programs written for BMv2 run unchanged, for v1model, PSA and PNA, and so do their flow-table files (on PNA without the time commands of `pna_nic_CLI`).
+* **ns-3 integration**: topology, traffic and timing come from ns-3 (ns-3.39 to ns-3.49), so P4sim combines with the other ns-3 modules.
+* **Timing**: links serialise every frame at their data rate, a congested port sends back to back at its line rate, and the pipeline can have a packet rate (`SwitchRate`) and a latency (`PipelineDelay`). Optional: a port queue after the egress (`TransferBufferSize`), and a traffic manager with virtual output queues that models the fabric of a switch.
+* **Control plane**: flow-table files at start-up; during the simulation, `P4Controller` changes tables, counters, meters, registers and mirroring sessions, learns from `digest()` records and swaps the P4 program.
 * **Scale**: built for large networks and high traffic rates.
 
 ---
@@ -45,117 +46,82 @@ Our implementation builds upon the P4-driven Network Simulator Module described 
 
 ## Installation & Setup
 
-The following steps set up a local environment to run P4sim with **ns-3.39** on **Ubuntu 24.04 LTS**. P4sim builds with ns-3.39 to ns-3.49 and is tested with ns-3.39 and ns-3.49, BMv2 1.15.8 and p4c 1.2.5.19.
+P4sim is an ns-3 module: it lives in `contrib/p4sim` of an ns-3 tree and needs BMv2 and the P4 compiler p4c. It builds with ns-3.39 to ns-3.49 and is tested with ns-3.39 and ns-3.49 and BMv2 1.15.8. There are four ways to set it up:
 
-> **Note:** The BMv2 and P4 software installation will take **1–2 hours** and consume up to **15 GB** of disk space.
+| Way | Time | Where |
+|---|---|---|
+| **[Quick installation](#quick-installation)** with `install.sh` | about 6 minutes on 16 cores | Ubuntu 24.04 or 26.04, also in WSL2 |
+| **[Docker](doc/docker.md)** | 6 to 30 minutes on 32 to 8 cores | any x86-64 host with Docker; nothing is installed on the host |
+| [Step by step](doc/installation.md#install-step-by-step), with the P4 tools of p4lang/tutorials | 1 to 2 hours, 15 GB | Ubuntu 24.04 |
+| [Virtual machine](doc/installation.md#install-in-a-virtual-machine) | 1 to 2 hours | Vagrant and VirtualBox |
 
-> **Docker:** `docker build -t p4sim .` in this repository builds P4sim with the tested versions, p4c included, in 6 to 30 minutes (32 to 8 cores) and about 2 GB, without installing anything on the host; see [doc/docker.md](doc/docker.md).
+### Quick installation
 
-> **Other ns-3 releases:** for ns-3.40 to ns-3.49, check out that tag in Step 3 (for example `git checkout ns-3.49`). From ns-3.41 on, ns-3 builds as C++20 or C++23, and the spdlog that BMv2 bundles does not compile as C++20; P4sim then builds with a copy of these headers that has the fix ([patches/bmv2-spdlog-cxx20.patch](patches/bmv2-spdlog-cxx20.patch)). The installed BMv2 is not changed.
-
-> **Ubuntu 26.04:** P4sim runs there with BMv2 1.15.8 built from source and ns-3.49 (tested). ns-3.39's `./ns3` script does not run on Python 3.14, the Python of Ubuntu 26.04.
-
-### Step 1: Initialize the Working Directory
+On Ubuntu 24.04 or 26.04 (also in WSL2):
 
 ```bash
-sudo apt update
-sudo apt install git vim cmake
-mkdir ~/workdir && cd ~/workdir
+sudo apt update && sudo apt install -y git
+mkdir -p ~/workdir && cd ~/workdir
+git clone --depth 1 -b ns-3.39 https://github.com/nsnam/ns-3-dev-git.git ns3.39
+git clone https://github.com/HapCommSys/p4sim.git ns3.39/contrib/p4sim
+ns3.39/contrib/p4sim/install.sh
 ```
 
-### Step 2: Install BMv2 and P4 Dependencies
+[`install.sh`](install.sh) asks for your sudo password, installs the Ubuntu packages and p4c (prebuilt, from the p4lang repository), builds BMv2 1.15.8 into `/usr/local`, and builds and tests ns-3 with P4sim. It ends with the number of passed test suites and examples. For ns-3.49, replace `ns-3.39` and `ns3.39` by `ns-3.49` and `ns3.49`. [doc/installation.md](doc/installation.md#quick-installation) explains what it changes, its settings and how to rerun single steps.
 
-Install all required libraries and tools via the official [p4lang/tutorials](https://github.com/p4lang/tutorials) repository:
+### Docker
 
 ```bash
-cd ~
-git clone https://github.com/p4lang/tutorials
-mkdir ~/src && cd ~/src
-../tutorials/vm-ubuntu-24.04/install.sh |& tee log.txt
+git clone https://github.com/HapCommSys/p4sim.git && cd p4sim
+docker build -t p4sim .
+docker run --rm p4sim ./ns3 run p4-v1model-ipv4-forwarding
 ```
 
-Verify the installation:
+[doc/docker.md](doc/docker.md) shows how to run your own simulations and compile P4 programs in the image.
+
+### First steps
 
 ```bash
-simple_switch --version
-```
-
-### Step 3: Clone and Build ns-3.39 with P4sim
-
-```bash
-cd ~/workdir
-git clone https://github.com/nsnam/ns-3-dev-git.git ns3.39
-cd ns3.39 && git checkout ns-3.39
-```
-
-Add the P4sim module:
-
-```bash
-cd contrib
-git clone https://github.com/HapCommSys/p4sim.git
-cd p4sim && sudo ./set_pkg_config_env.sh
-```
-
-Configure and build:
-
-```bash
-cd ../..
-./ns3 configure --enable-tests --enable-examples
-./ns3 build
-```
-
-### Step 4: Run an Example and a Test Suite
-
-```bash
+cd ~/workdir/ns3.39
 ./ns3 run p4-v1model-ipv4-forwarding
 ./test.py -s p4-packet
 ```
 
-[doc/examples.md](doc/examples.md) lists the examples and [test/Readme.md](test/Readme.md) the test suites. [doc/vm-env.md](doc/vm-env.md) has the same steps, the setup in a virtual machine, and checks of the installation.
-
-P4sim reads the P4 files (programs, flow tables, topologies) from the p4sim folder of the build, so no path needs to be set, and several ns-3 trees can live side by side.
-
-> **Note:** Earlier versions asked you to set `P4SIM_DIR` in `~/.bashrc`. It is no longer needed; you can remove it. If it names another p4sim folder, it is ignored and a notice says so.
+[doc/examples.md](doc/examples.md) lists the examples and [test/Readme.md](test/Readme.md) the test suites. P4sim reads the P4 files (programs, flow tables, topologies) from the p4sim folder of the build, so no path needs to be set, and several ns-3 trees can live side by side. Earlier versions asked you to set `P4SIM_DIR` in `~/.bashrc`; it is no longer needed.
 
 ---
 
 ## Supported P4 Architectures
 
-| Value | Architecture | BMv2 Target |
-|-------|-------------|-------------|
-| 0 | V1model | `simple_switch` |
-| 1 | PSA | `psa_switch` |
-| 2 | PNA | `pna_nic` |
-| 3 | Pipeline (`P4CorePipeline`) | – |
+| `P4SwitchArch` | Architecture | BMv2 target | Runtime CLI of the flow table | Notes |
+|---|---|---|---|---|
+| 0 | V1model | `simple_switch` | `simple_switch_CLI` | output queues per port and priority, or the VOQ traffic manager; digests |
+| 1 | PSA | `psa_switch` | `psa_switch_CLI` | output queues per port and priority |
+| 2 | PNA | `pna_nic` | `bm_CLI` | one output queue per port; no time commands in the CLI |
+| 3 | Pipeline (`P4CorePipeline`) | – | `simple_switch_CLI` | no output queue, no packet replication; digests |
 
 ---
 
 ## Switch Parameters
 
-The P4 program and its flow tables define the forwarding. These attributes of `ns3::P4SwitchNetDevice` set up the switch in the simulation ([doc/p4sim.rst](doc/p4sim.rst) has their defaults):
+The P4 program and its flow tables define the forwarding; the P4 program sees every frame, ARP included, and must forward it. These attributes of `ns3::P4SwitchNetDevice` set up the switch in the simulation ([doc/p4sim.rst](doc/p4sim.rst) has their defaults, [doc/switch.md](doc/switch.md#pipeline-and-queues-of-the-switch) the details):
 
 | Attribute | Description |
 |---|---|
 | `JsonPath` | Path to the compiled P4 program (JSON) |
-| `FlowTablePath` | Path to the flow-table file |
+| `FlowTablePath` | Path to the flow-table file, run in the runtime CLI of the architecture at start-up |
 | `P4SwitchArch` | Architecture: 0 V1model, 1 PSA, 2 PNA, 3 Pipeline |
-| `SwitchRate` | Packet rate of the whole P4 pipeline, in packets per second; 0 (default) = no limit |
-| `PipelineDelay` | Latency of every packet in the P4 pipeline; 0 (default) = none. v1model, PSA and the pipeline core |
-| `InputBufferSizeLow` | Input buffer for the packets received on the ports, in packets |
+| `SwitchRate` | v1model and PSA: packet rate of the whole P4 pipeline, in packets per second; 0 (default) = no limit |
+| `PipelineDelay` | Latency of every packet in the P4 pipeline; 0 (default) = none |
+| `InputBufferSizeLow` | v1model and PSA: input buffer for the packets received on the ports, in packets (PNA: 1024) |
 | `InputBufferSizeHigh` | v1model: input buffer for resubmitted and recirculated packets, served first |
 | `QueueBufferSize` | Each output queue, in packets: per port and priority (v1model, PSA), or per port (PNA) |
 | `TransferBufferSize` | Frames a port holds after the egress pipeline, besides the one it sends (the hardware port queue); 0 (default) = none. v1model and PSA, not with `EnableVoqFabric` |
 | `EnableVoqFabric` | v1model: use the VOQ + fabric traffic manager instead of the output queues ([doc/traffic-manager.md](doc/traffic-manager.md)) |
-| `EnableSwap` | Allow swapping the P4 program at run time (`load_new_config` and `swap_configs` of the runtime CLI, or `P4Controller`). The swap waits until the switch holds no packet; frames that arrive meanwhile wait and use the new program |
+| `EnableSwap` | Allow swapping the P4 program at run time (`load_new_config` and `swap_configs` of the runtime CLI, or `P4Controller`). The swap waits until the switch holds no packet (PNA: except those in its output queues) |
 | `BmLogLevel` | Level of the BMv2 pipeline log in `/tmp/bmv2-<thrift port>-pipeline.log`, `trace` to `off`. `off` (default) writes none; `trace` logs every step of every packet, which helps to debug a P4 program but slows the simulation down |
 | `ThriftPort` | Thrift port of the runtime CLI. 0 (default) picks the first free port from `$P4SIM_THRIFT_PORT_BASE` (9090), so simulations can run in parallel |
 | `ChannelType`, `EnableTracing` | Deprecated, no effect; removed in the next major version. Trace packets with the trace sources of the devices (`MacTx`, `MacRx`, ...), `PacketSink` or `FlowMonitor` |
-
-> **Notes:**
-> 1. The P4 program sees every frame, ARP included, and must forward it.
-> 2. `SwitchRate` models a slower switch, such as a software switch: an idle pipeline takes a packet at once, and packets that arrive while it is busy wait in the input buffer, or are dropped (`MacRxDrop`) when it is full. Resubmitted and recirculated passes count too. With the default, 0, only the links limit the traffic, as in a hardware switch. `PipelineDelay` adds a fixed latency instead and does not change the throughput.
-> 3. `TransferBufferSize` stands for the port queue after the egress of a hardware switch: a port takes packets from the output queues while this buffer has room, and they pass the egress then. A frame in the buffer is not overtaken any more: a high-priority packet that arrives later waits behind it. The backlog of a congested port stays in the output queues, where the priorities apply, and `enq_qdepth`/`deq_qdepth` count only those. On v1model, `deq_timedelta` likewise ends when the packet leaves its output queue: it does not contain the wait in this buffer. A port can hold `TransferBufferSize` more frames than `QueueBufferSize` allows, and a pending program swap (`EnableSwap`) waits for them too.
-> 4. The flow-table file runs in `simple_switch_CLI` (v1model), `psa_switch_CLI` (PSA) or `bm_CLI` (PNA). Besides the table commands it can use `mirroring_add`, `mirroring_add_mc`, `set_queue_depth` and `set_queue_rate`, and on v1model `mirroring_delete`: BMv2 1.15.8's `psa_switch_CLI` stops at `mirroring_delete`, as at any failed mirroring command, and skips the rest of the file. P4sim prints the commands that fail, with the file and the line; a flow-table file that cannot be opened ends the simulation. Empty lines and lines that start with `#` are skipped.
 
 ### Switch ports
 
@@ -204,10 +170,10 @@ The [paper](https://dl.acm.org/doi/10.1145/3747204.3747210) evaluates P4sim with
 
 | File | Contents |
 |---|---|
-| [doc/vm-env.md](doc/vm-env.md) | Installation, locally or in a virtual machine |
+| [doc/installation.md](doc/installation.md) | Installation: quick, step by step, or in a virtual machine; checks |
 | [doc/docker.md](doc/docker.md) | Building and running P4sim in Docker |
 | [doc/examples.md](doc/examples.md) | All examples and the format of their P4 files |
-| [doc/switch.md](doc/switch.md) | Switched-Ethernet ports and host devices, timing on the wire, host queues |
+| [doc/switch.md](doc/switch.md) | Pipeline and queues of the switch, switched-Ethernet ports and host devices, timing on the wire |
 | [doc/traffic-manager.md](doc/traffic-manager.md) | The VOQ + fabric traffic manager |
 | [doc/event-driven-tm-scheduler.md](doc/event-driven-tm-scheduler.md) | How the egress sends the next frame when a port is free |
 | [doc/p4sim.rst](doc/p4sim.rst) | The model in the format of the ns-3 documentation |
@@ -233,12 +199,14 @@ The [paper](https://dl.acm.org/doi/10.1145/3747204.3747210) evaluates P4sim with
 
 ## Generating Doxygen Documentation
 
+In the ns-3 tree, with all of ns-3 configured:
+
 ```bash
 sudo apt install doxygen graphviz dia
-./ns3 configure --enable-tests --enable-examples
+./ns3 configure --enable-tests --enable-examples --enable-modules='' --filter-module-examples-and-tests=''
 ./ns3 build
 ./ns3 docs doxygen
-xdg-open build/doxygen/html/index.html
+xdg-open doc/html/index.html
 ```
 
 ---

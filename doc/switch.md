@@ -34,6 +34,47 @@ NetDeviceContainer hostDevs = eth.Install(sw, terminals);
 // hostDevs.Get(i) is the device of terminals.Get(i)
 ```
 
+## Pipeline and queues of the switch
+
+On v1model and PSA, a frame that arrives on a port enters the input buffer of
+the pipeline (`InputBufferSizeLow` packets), passes the P4 pipeline and waits in
+the output queues (`QueueBufferSize` packets each) until its port is free;
+[event-driven-tm-scheduler.md](event-driven-tm-scheduler.md) describes how a port
+takes its next frame. PNA takes the same path with an input buffer of 1024
+packets. The pipeline core sends a frame to its port after the pipeline (and
+`PipelineDelay`), without input buffer or output queues. The attributes of
+`P4SwitchNetDevice` set the timing:
+
+- **`SwitchRate`** (v1model and PSA) models a slower switch, such as a software
+  switch: an idle pipeline takes a packet at once, and packets that arrive while
+  it is busy wait in the input buffer, or are dropped (`MacRxDrop`) when it is
+  full. Resubmitted and recirculated passes count too. With the default, 0, only
+  the links limit the traffic, as in a hardware switch.
+- **`PipelineDelay`** adds a fixed latency to every packet instead and does not
+  change the throughput.
+- **`TransferBufferSize`** stands for the port queue after the egress of a
+  hardware switch (v1model and PSA): a port takes packets from the output queues
+  while this buffer has room, and they pass the egress then. A frame in the
+  buffer is not overtaken any more: a high-priority packet that arrives later
+  waits behind it. The backlog of a congested port stays in the output queues,
+  where the priorities apply, and `enq_qdepth`/`deq_qdepth` count only those. On
+  v1model, `deq_timedelta` likewise ends when the packet leaves its output queue:
+  it does not contain the wait in this buffer. A port can hold
+  `TransferBufferSize` more frames than `QueueBufferSize` allows.
+- **`EnableSwap`** allows swapping the P4 program at run time. The swap waits
+  until the switch holds no packet, the frames in the transfer buffers included;
+  frames that arrive meanwhile wait and use the new program. On PNA it does not
+  wait for the frames in the output queues ([TODO.md](TODO.md)).
+
+The flow-table file (`FlowTablePath`) runs in `simple_switch_CLI` (v1model and
+the pipeline core), `psa_switch_CLI` (PSA) or `bm_CLI` (PNA). On v1model and PSA,
+besides the table commands, it can use `mirroring_add`, `mirroring_add_mc`,
+`set_queue_depth` and `set_queue_rate`, and on v1model `mirroring_delete`: BMv2 1.15.8's
+`psa_switch_CLI` stops at `mirroring_delete`, as at any failed mirroring command,
+and skips the rest of the file. P4sim prints the commands that fail, with the file
+and the line; a flow-table file that cannot be opened ends the simulation. Empty
+lines and lines that start with `#` are skipped.
+
 ## Timing on the wire
 
 A frame takes (its bytes × 8 / `DataRate`) on the wire, then `Delay` to reach

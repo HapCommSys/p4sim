@@ -102,7 +102,8 @@ path uses it as the traffic manager's `PortRate`; the default path only logs it.
   room. A frame in it has passed the egress and is not overtaken any more, so a
   high-priority packet that arrives later waits behind it. The backlog of a
   congested port stays in the egress queues, and `enq_qdepth` and `deq_qdepth`
-  do not count the frames in the transfer buffer.
+  do not count the frames in the transfer buffer. A program swap (`EnableSwap`)
+  waits for these frames too.
 - **Clones and recirculation.** Egress clones go through `Enqueue()`, like any
   packet. A recirculated packet goes back to the ingress input buffer
   (`AdmitToIngress()`), and `EgressDone()` lets the port take its next packet.
@@ -118,8 +119,8 @@ path uses it as the traffic manager's `PortRate`; the default path only logs it.
 ## PNA
 
 PNA has no egress pipeline: its main pipeline puts each frame into a FIFO queue
-of the frame's port (`QueueBufferSize` frames; a frame that finds the queue full
-is dropped). `ScheduleTxIfNeeded(port)` hands the oldest frame to the device when
+of the frame's port, after `PipelineDelay` if one is set (`QueueBufferSize`
+frames; a frame that finds the queue full is dropped). `ScheduleTxIfNeeded(port)` hands the oldest frame to the device when
 the port is free, and the same port-TX-done callback calls `PortTxComplete(port)`.
 
 ## Files
