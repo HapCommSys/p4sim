@@ -18,6 +18,9 @@
 #endif
 
 #include <bm/spdlog/spdlog.h>
+// The externs of PSA and PNA programs (before the #undef: they include syslog.h)
+#include "../utils/psa_externs/psa_counter.h"
+#include "../utils/psa_externs/psa_meter.h"
 #undef LOG_INFO
 #undef LOG_ERROR
 #undef LOG_DEBUG
@@ -484,6 +487,142 @@ P4SwitchCore::swap_configs()
         TrySwap();
     }
     return bm::RuntimeInterface::SUCCESS;
+}
+
+// The counter and meter calls of the runtime API, as in BMv2's psa_switch: a
+// name of a Counter or Meter extern reaches the extern; any other name goes
+// to BMv2's counter and meter arrays. The extern is looked up in its own
+// block: the lookup holds a lock that BMv2's array calls take again.
+
+bm::Counter::CounterErrorCode
+P4SwitchCore::read_counters(bm::cxt_id_t cxt_id,
+                            const std::string& counter_name,
+                            size_t index,
+                            bm::MatchTableAbstract::counter_value_t* bytes,
+                            bm::MatchTableAbstract::counter_value_t* packets)
+{
+    {
+        auto ex = get_context(cxt_id)->get_extern_instance(counter_name);
+        if (auto* counter = dynamic_cast<bm::psa::PSA_Counter*>(ex.get()))
+        {
+            if (index >= counter->size())
+            {
+                return bm::Counter::CounterErrorCode::INVALID_INDEX;
+            }
+            return counter->get_counter(index).query_counter(bytes, packets);
+        }
+    }
+    return bm::Switch::read_counters(cxt_id, counter_name, index, bytes, packets);
+}
+
+bm::Counter::CounterErrorCode
+P4SwitchCore::reset_counters(bm::cxt_id_t cxt_id, const std::string& counter_name)
+{
+    {
+        auto ex = get_context(cxt_id)->get_extern_instance(counter_name);
+        if (auto* counter = dynamic_cast<bm::psa::PSA_Counter*>(ex.get()))
+        {
+            return counter->reset_counters();
+        }
+    }
+    return bm::Switch::reset_counters(cxt_id, counter_name);
+}
+
+bm::Counter::CounterErrorCode
+P4SwitchCore::write_counters(bm::cxt_id_t cxt_id,
+                             const std::string& counter_name,
+                             size_t index,
+                             bm::MatchTableAbstract::counter_value_t bytes,
+                             bm::MatchTableAbstract::counter_value_t packets)
+{
+    {
+        auto ex = get_context(cxt_id)->get_extern_instance(counter_name);
+        if (auto* counter = dynamic_cast<bm::psa::PSA_Counter*>(ex.get()))
+        {
+            if (index >= counter->size())
+            {
+                return bm::Counter::CounterErrorCode::INVALID_INDEX;
+            }
+            return counter->get_counter(index).write_counter(bytes, packets);
+        }
+    }
+    return bm::Switch::write_counters(cxt_id, counter_name, index, bytes, packets);
+}
+
+bm::Meter::MeterErrorCode
+P4SwitchCore::meter_array_set_rates(bm::cxt_id_t cxt_id,
+                                    const std::string& meter_name,
+                                    const std::vector<bm::Meter::rate_config_t>& configs)
+{
+    {
+        auto ex = get_context(cxt_id)->get_extern_instance(meter_name);
+        if (auto* meter = dynamic_cast<bm::psa::PSA_Meter*>(ex.get()))
+        {
+            return meter->set_rates(configs);
+        }
+    }
+    return bm::Switch::meter_array_set_rates(cxt_id, meter_name, configs);
+}
+
+bm::Meter::MeterErrorCode
+P4SwitchCore::meter_set_rates(bm::cxt_id_t cxt_id,
+                              const std::string& meter_name,
+                              size_t idx,
+                              const std::vector<bm::Meter::rate_config_t>& configs)
+{
+    {
+        auto ex = get_context(cxt_id)->get_extern_instance(meter_name);
+        if (auto* meter = dynamic_cast<bm::psa::PSA_Meter*>(ex.get()))
+        {
+            if (idx >= meter->size())
+            {
+                return bm::Meter::MeterErrorCode::INVALID_INDEX;
+            }
+            return meter->get_meter(idx).set_rates(configs);
+        }
+    }
+    return bm::Switch::meter_set_rates(cxt_id, meter_name, idx, configs);
+}
+
+bm::Meter::MeterErrorCode
+P4SwitchCore::meter_get_rates(bm::cxt_id_t cxt_id,
+                              const std::string& meter_name,
+                              size_t idx,
+                              std::vector<bm::Meter::rate_config_t>* configs)
+{
+    {
+        auto ex = get_context(cxt_id)->get_extern_instance(meter_name);
+        if (auto* meter = dynamic_cast<bm::psa::PSA_Meter*>(ex.get()))
+        {
+            if (idx >= meter->size())
+            {
+                return bm::Meter::MeterErrorCode::INVALID_INDEX;
+            }
+            for (const auto& config : meter->get_meter(idx).get_rates())
+            {
+                configs->push_back(config);
+            }
+            return bm::Meter::MeterErrorCode::SUCCESS;
+        }
+    }
+    return bm::Switch::meter_get_rates(cxt_id, meter_name, idx, configs);
+}
+
+bm::Meter::MeterErrorCode
+P4SwitchCore::meter_reset_rates(bm::cxt_id_t cxt_id, const std::string& meter_name, size_t idx)
+{
+    {
+        auto ex = get_context(cxt_id)->get_extern_instance(meter_name);
+        if (auto* meter = dynamic_cast<bm::psa::PSA_Meter*>(ex.get()))
+        {
+            if (idx >= meter->size())
+            {
+                return bm::Meter::MeterErrorCode::INVALID_INDEX;
+            }
+            return meter->get_meter(idx).reset_rates();
+        }
+    }
+    return bm::Switch::meter_reset_rates(cxt_id, meter_name, idx);
 }
 
 bool

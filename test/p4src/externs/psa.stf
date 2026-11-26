@@ -1,0 +1,23 @@
+# The PSA externs of externs_psa.p4. The frames are sent at once; the meter has
+# no rates and gives green (1). Expected values computed independently:
+# CRC-16/ARC (BMv2's crc16) of the 8 bytes a..d, and the Internet checksum of
+# the 4 words a..d. The random number is not known: rnd_ok = 1 says that it
+# is from 100 to 200.
+#              ext: idx color a    b    c    d    crc  csum rnd  ok pad
+packet 0 000000000001 000000000002 88b5  00 00  4500 0030 1234 abcd 0000 0000 0000 00 00
+expect 1 000000000001 000000000002 88b5  00 01  4500 0030 1234 abcd 187e fccd **** 01 00
+packet 2 000000000001 000000000002 88b5  03 00  ffff 0001 0000 0000 0000 0000 0000 00 00
+expect 1 000000000001 000000000002 88b5  03 01  ffff 0001 0000 0000 cb7d fffe **** 01 00
+# Index 4 is out of range (4 counters, 4 meters): nothing is counted, the meter
+# leaves the color unset, and the frame goes on (CRC-16 of zeros is 0, the
+# checksum ffff)
+packet 0 000000000001 000000000002 88b5  04 00  0000 0000 0000 0000 0000 0000 0000 00 00
+expect 1 000000000001 000000000002 88b5  04 **  0000 0000 0000 0000 0000 ffff **** 01 00
+# Not EtherType 0x88b5: dropped, not counted
+packet 0 000000000001 000000000002 0800  4500 0030
+
+# The counter, read through the runtime API: one frame at index 0 and one at 3
+counter IngressImpl.frames 0 1
+counter IngressImpl.frames 1 0
+counter IngressImpl.frames 2 0
+counter IngressImpl.frames 3 1

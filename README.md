@@ -223,6 +223,7 @@ The [paper](https://dl.acm.org/doi/10.1145/3747204.3747210) evaluates P4sim with
 - ns-3.39 to ns-3.49; tested with ns-3.39 and ns-3.49.
 - PNA has no Thrift service of its own: its `FlowTablePath` runs in BMv2's generic `bm_CLI`, which has the table commands but not the time commands of `pna_nic_CLI`.
 - PSA and PNA programs give no digest records, as BMv2's `psa_switch` and `pna_nic` give none.
+- PSA and PNA programs can use the externs `Counter`, `Meter`, `Hash`, `InternetChecksum` and `Random` (BMv2's, in [utils/psa_externs](utils/psa_externs)). p4c does not compile `DirectCounter` and `DirectMeter`, or a `Counter` in a PNA program, for BMv2 yet. Their meters measure simulation time; the meters of v1model programs measure the wall clock, as in BMv2.
 - The pipeline core (`P4SwitchArch` 3) has no output queue: a congested port can lose frames. It has no packet replication engine either: multicast (`mcast_grp`), clones, resubmit and recirculation have no effect, and the frame goes to `egress_spec` only.
 - The Thrift server of a switch runs in its own thread: use the runtime CLIs before and after the simulation, and `P4Controller` during it. BMv2 cannot stop the server, so the Thrift port of a destroyed switch stays open; it answers every call with an error.
 
@@ -250,7 +251,7 @@ P4sim is licensed under the [Apache License 2.0](LICENSE). The header of each fi
   - code based on ns-3 and on Jeff Young's switched Ethernet channel: `custom-p2p-net-device`, `p4-p2p-channel`, `p4-p2p-helper`, `p4-topology-reader`, `p4-topology-reader-helper`, `switched-ethernet-channel` and `test/p4-p2p-channel-test-suite.cc`;
   - `p4-core-pipeline`;
   - files with code by Vineet Goel: `eth-net-device`, `p4-switch-net-device`, `p4-traffic-manager`; the tests `channel-state-test-suite.cc`, `p4-controller-test-suite.cc` and `p4-traffic-manager-test-suite.cc`; the examples `p4-basic-controller`, `p4-controller-action-profile`, `p4-source-routing` and `p4-voq-fabric-*`.
-- **Apache 2.0 with the notices of BMv2's authors**: the parts taken from BMv2 (`p4-core-v1model`, `p4-core-psa`, `p4-nic-pna`, `p4-queue`, `primitives-v1model.h`, `primitives-pna.h`, `register-access-v1model.h`, `patches/config.h`).
+- **Apache 2.0 with the notices of BMv2's authors**: the parts taken from BMv2 (`p4-core-v1model`, `p4-core-psa`, `p4-nic-pna`, `p4-queue`, `primitives-v1model.h`, `primitives-pna.h`, `register-access-v1model.h`, `utils/psa_externs`, `patches/config.h`).
 - **MIT**: `patches/bmv2-spdlog-cxx20.patch`, a change to spdlog (Copyright (c) 2014 Gabi Melman) as bundled with BMv2.
 - Code taken from [P4Simulator](https://github.com/kphf1995cm/P4Simulator) (Apache 2.0) says so in its header.
 

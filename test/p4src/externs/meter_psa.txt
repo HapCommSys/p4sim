@@ -1,0 +1,3 @@
+# Rates of the meter extern of externs_psa.p4 for p4-externs, in psa_switch_CLI:
+# committed 0.001 packets/us (1 per ms), peak 0.002 packets/us, bursts of 1 packet
+meter_array_set_rates IngressImpl.meter 0.001:1 0.002:1

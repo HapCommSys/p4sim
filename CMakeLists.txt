@@ -139,6 +139,11 @@ build_lib(
         utils/p4-queue.cc
         utils/p4-traffic-manager.cc
         utils/fattree-topo-helper.cc
+        utils/psa_externs/psa_counter.cpp
+        utils/psa_externs/psa_hash.cpp
+        utils/psa_externs/psa_internet_checksum.cpp
+        utils/psa_externs/psa_meter.cpp
+        utils/psa_externs/psa_random.cpp
         model/switched-ethernet-channel.cc
         model/link-framing.cc
         model/eth-net-device.cc
@@ -170,6 +175,7 @@ build_lib(
         utils/register-access-v1model.h
         utils/primitives-v1model.h
         utils/primitives-pna.h
+        utils/psa_externs/psa-externs.h
         utils/fattree-topo-helper.h
         utils/p4sim-ns3-compat.h
         model/switched-ethernet-channel.h
@@ -219,6 +225,7 @@ build_lib(
         test/link-framing-test-suite.cc
         test/p4-controller-test-suite.cc
         test/p4-digest-test-suite.cc
+        test/p4-externs-test-suite.cc
         test/p4sim-test-suite.cc
         test/format-utils-test-suite.cc
         test/p4-topology-reader-test-suite.cc
