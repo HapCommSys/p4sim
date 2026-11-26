@@ -16,11 +16,8 @@ FROM ubuntu:24.04
 
 ARG THRIFT_VERSION=0.16.0
 ARG BMV2_VERSION=1.15.8
-ARG NS3_VERSION=ns-3.39
 # Parallel build jobs; empty means one per CPU
 ARG JOBS=
-# "yes" keeps the debug information of the ns-3 build (about 2 GB more)
-ARG DEBUG_INFO=no
 
 ENV DEBIAN_FRONTEND=noninteractive
 
@@ -65,18 +62,31 @@ COPY --from=p4c /usr/local/bin/p4c /usr/local/bin/p4c-bm2-ss /usr/local/bin/p4c-
      /usr/local/bin/p4c-bm2-pna /usr/local/bin/
 COPY --from=p4c /usr/local/share/p4c /usr/local/share/p4c
 
-# ns-3 with P4sim from this repository. Without DEBUG_INFO=yes, the debug
-# information is stripped from the objects, libraries and programs; strip -p keeps
-# their times, so ./ns3 does not rebuild them. ns-3 is configured twice because
-# ns-3.49 changes some compile flags the second time; otherwise the first program
-# added to scratch/ would rebuild about 200 objects of other modules.
+# ns-3 with P4sim from this repository, in two steps: first the ns-3 modules that
+# P4sim and its examples use, then P4sim. Only the second step depends on this
+# repository, so after a change to P4sim the first one comes from the build cache.
+#
+# Without DEBUG_INFO=yes, the debug information is stripped from the objects,
+# libraries and programs; strip -p keeps their times, so ./ns3 does not rebuild
+# them. ns-3 is configured twice because ns-3.49 changes some compile flags the
+# second time; otherwise the first program added to scratch/ would rebuild about
+# 200 objects of other modules.
+ARG NS3_VERSION=ns-3.39
+# Tests and examples are built for the modules listed here, separated by ";";
+# empty means all modules of the image. The CI uses NS3_FILTER=p4sim, which
+# halves the time of the ns-3 build.
+ARG NS3_FILTER=
+# "yes" keeps the debug information of the ns-3 build (about 2 GB more)
+ARG DEBUG_INFO=no
+# The ns-3 modules besides P4sim: those it needs, and netanim and
+# nix-vector-routing for two of its examples
+ARG NS3_MODULES="applications;bridge;csma;point-to-point;traffic-control;netanim;nix-vector-routing"
+
 RUN git clone --depth 1 -b ${NS3_VERSION} https://github.com/nsnam/ns-3-dev-git.git /ns3
-COPY . /ns3/contrib/p4sim
 WORKDIR /ns3
-RUN bash contrib/p4sim/set_pkg_config_env.sh \
-    && for i in 1 2; do \
-           ./ns3 configure --enable-tests --enable-examples \
-               --enable-modules="p4sim;netanim;nix-vector-routing" || exit 1; \
+RUN for i in 1 2; do \
+           ./ns3 configure --enable-tests --enable-examples --enable-modules="$NS3_MODULES" \
+               ${NS3_FILTER:+--filter-module-examples-and-tests="$NS3_FILTER"} || exit 1; \
        done \
     && ./ns3 build -j ${JOBS:-$(nproc)} \
     && if [ "$DEBUG_INFO" != yes ]; then \
@@ -84,5 +94,22 @@ RUN bash contrib/p4sim/set_pkg_config_env.sh \
                \( -name '*.o' -o -name '*.so' -o -name 'ns3.*-default' \) \
                -exec strip --strip-debug -p {} + ; \
        fi
+
+# P4sim; only the files built in this step are stripped, so that the image does
+# not hold a second copy of the ns-3 build
+COPY . /ns3/contrib/p4sim
+RUN bash contrib/p4sim/set_pkg_config_env.sh \
+    && touch /tmp/p4sim-start \
+    && for i in 1 2; do \
+           ./ns3 configure --enable-tests --enable-examples --enable-modules="p4sim;$NS3_MODULES" \
+               ${NS3_FILTER:+--filter-module-examples-and-tests="$NS3_FILTER"} || exit 1; \
+       done \
+    && ./ns3 build -j ${JOBS:-$(nproc)} \
+    && if [ "$DEBUG_INFO" != yes ]; then \
+           find build cmake-cache -type f -newer /tmp/p4sim-start \
+               \( -name '*.o' -o -name '*.so' -o -name 'ns3.*-default' \) \
+               -exec strip --strip-debug -p {} + ; \
+       fi \
+    && rm /tmp/p4sim-start
 
 CMD ["bash"]
