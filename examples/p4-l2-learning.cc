@@ -24,6 +24,8 @@
  * sends a digest.
  */
 
+#include "example-check.h"
+
 #include "ns3/applications-module.h"
 #include "ns3/core-module.h"
 #include "ns3/format-utils.h"
@@ -173,5 +175,5 @@ main(int argc, char* argv[])
               << "Entries in dmac: " << controller->GetTableEntryCount(0, "MyIngress.dmac") << "\n";
 
     Simulator::Destroy();
-    return 0;
+    return p4sim_example::Check(g_echoes == 10, std::to_string(g_echoes) + " of 10 echo replies");
 }

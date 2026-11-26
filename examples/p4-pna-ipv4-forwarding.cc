@@ -57,6 +57,8 @@
  * @endcode
  */
 
+#include "example-check.h"
+
 #include "ns3/applications-module.h"
 #include "ns3/bridge-helper.h"
 #include "ns3/core-module.h"
@@ -390,6 +392,7 @@ main(int argc, char* argv[])
     NS_LOG_INFO("Starting simulation (stop at " << g_simStopTime << " s)");
     unsigned long simStart = getTickCount();
     Simulator::Stop(Seconds(g_simStopTime));
+    p4sim_example::CountTraffic();
     Simulator::Run();
     Simulator::Destroy();
 
@@ -398,5 +401,5 @@ main(int argc, char* argv[])
     NS_LOG_INFO("Total wall time      : " << (wallEnd - g_wallClockStart) << " ms");
 
     PrintFinalResults();
-    return 0;
+    return p4sim_example::CheckDelivery();
 }

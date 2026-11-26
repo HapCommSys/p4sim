@@ -39,6 +39,8 @@
  * at the end.
  */
 
+#include "example-check.h"
+
 #include "ns3/applications-module.h"
 #include "ns3/core-module.h"
 #include "ns3/csma-module.h"
@@ -398,4 +400,5 @@ main(int argc, char* argv[])
     std::cout << "Host Num: " << hostNum << " Switch Num: " << switchNum << std::endl;
     std::cout << "Program Running time: " << end - mainStart << "ms" << std::endl;
     std::cout << "Simulate Running time: " << end - simulateStart << "ms" << std::endl;
+    return p4sim_example::CheckDelivery(totalTx, totalRx);
 }

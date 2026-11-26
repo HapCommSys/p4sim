@@ -18,6 +18,8 @@
  *          Mingyu Ma <mingyu.ma@tu-dresden.de>
  */
 
+#include "example-check.h"
+
 #include "ns3/applications-module.h"
 #include "ns3/bridge-helper.h"
 #include "ns3/core-module.h"
@@ -472,6 +474,7 @@ main(int argc, char* argv[])
     unsigned long simulate_start = getTickCount();
     Simulator::Stop(Seconds(global_stop_time));
     Simulator::Run();
+    uint64_t received = DynamicCast<PacketSink>(sinkApp1.Get(0))->GetTotalRx();
     Simulator::Destroy();
 
     unsigned long end = getTickCount();
@@ -480,5 +483,7 @@ main(int argc, char* argv[])
                                           << std::endl
                                           << "Run successfully!");
 
-    return 0;
+    return p4sim_example::Check(received == 2 * pktSize,
+                                "h2 received " + std::to_string(received) + " of " +
+                                    std::to_string(2 * pktSize) + " bytes");
 }

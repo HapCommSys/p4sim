@@ -33,6 +33,8 @@
  * queueing; the shortest delay measured matches it in every run.
  */
 
+#include "example-check.h"
+
 #include "ns3/applications-module.h"
 #include "ns3/core-module.h"
 #include "ns3/format-utils.h"
@@ -196,6 +198,7 @@ main(int argc, char* argv[])
 
     std::cout << "run                        sent  received   one-way delay (us): no queue      min"
                  "     mean      max   in the queue (P4, mean us)\n";
+    bool pass = true;
     for (const Scenario& s : scenarios)
     {
         Result r = Run(s, seconds);
@@ -213,6 +216,7 @@ main(int argc, char* argv[])
                   << std::setw(10) << n << std::fixed << std::setprecision(2) << std::setw(30)
                   << s.NoQueue().GetNanoSeconds() / 1000.0 << std::setw(9) << min << std::setw(9)
                   << mean << std::setw(9) << max << std::setw(15) << r.queueTime << "\n";
+        pass = pass && n > 0 && std::abs(min - s.NoQueue().GetNanoSeconds() / 1000.0) < 0.01;
     }
-    return 0;
+    return p4sim_example::Check(pass, "the smallest delay of each run is the one without queueing");
 }

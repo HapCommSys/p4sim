@@ -1,11 +1,9 @@
-table_set_default arp_table drop
-table_add arp_table arp_forward 0x0a010103 => 00:00:00:00:00:05 0x0
-table_add arp_table arp_forward 0x0a010104 => 00:00:00:00:00:07 0x1
-table_add arp_table arp_forward 0x0a010101 => 00:00:00:00:00:01 0x2
-table_add arp_table arp_forward 0x0a010102 => 00:00:00:00:00:03 0x3
-table_set_default ipv4_exact drop
-table_add ipv4_exact ipv4_forward 0x0a010103 => 00:00:00:00:00:05 0x0
-table_add ipv4_exact ipv4_forward 0x0a010104 => 00:00:00:00:00:07 0x1
-table_add ipv4_exact ipv4_forward 0x0a010101 => 00:00:00:00:00:01 0x2
-table_add ipv4_exact ipv4_forward 0x0a010102 => 00:00:00:00:00:03 0x3
+# host => its MAC address, port (0: host 1, 1: switch 1, 2: switch 3)
+table_add arp_table arp_forward 10.1.1.1 => 00:00:00:00:00:01 1
+table_add ipv4_exact ipv4_forward 10.1.1.1 => 00:00:00:00:00:01 1
+table_add arp_table arp_forward 10.1.1.2 => 00:00:00:00:00:03 0
+table_add ipv4_exact ipv4_forward 10.1.1.2 => 00:00:00:00:00:03 0
+table_add arp_table arp_forward 10.1.1.3 => 00:00:00:00:00:05 2
+table_add ipv4_exact ipv4_forward 10.1.1.3 => 00:00:00:00:00:05 2
+# the ID that the switch writes into the probes
 table_set_default swid set_swid 2
