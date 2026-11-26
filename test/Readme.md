@@ -15,7 +15,7 @@ No environment variable is needed, and suites can run in parallel.
 
 ## Suites
 
-20 suites, 146 test cases. The first seven do not need BMv2.
+20 suites, 147 test cases. The first seven do not need BMv2.
 
 | Suite | Checks |
 |---|---|
@@ -26,7 +26,7 @@ No environment variable is needed, and suites can run in parallel.
 | `switched-ethernet-host` | the transmit queue of a host device; short frames keep the exact line rate on 100 and 400 Gbps links and at the default rate, 10 Gbps |
 | `p4-queue` | egress queue: capacity, rate, FIFO, per-port rate, priorities |
 | `p4-traffic-manager` | the VOQ + fabric traffic manager |
-| `p4sim` | v1model, PSA and PNA load their program; Thrift ports; `BmLogLevel` and its default, `off`; the deprecated `ChannelType` and `EnableTracing` are still accepted |
+| `p4sim` | v1model, PSA and PNA load their program; Thrift ports; `BmLogLevel` and its default, `off`; errors in a flow table are printed with file and line; the deprecated `ChannelType` and `EnableTracing` are still accepted |
 | `p4-packet` | frames sent into a switch and the frames that leave it, on v1model, PNA, PSA and the pipeline core; a frame from a host on a switched-Ethernet port enters on that port |
 | `p4-controller` | `P4Controller`, read back from the switch: flow entries on v1model, PSA, PNA and the pipeline core, action profiles and a meter array on v1model, mirroring sessions on v1model and PSA; `P4RuntimeApi` with a null output argument fails; the mirroring, queue and time commands of `simple_switch_CLI` and `psa_switch_CLI`; the Thrift port of a destroyed switch answers with an error |
 | `p4-digest` | every `digest()` gives one record to the `Digest` trace, with the fields of its learn list, when the ingress processes the frame (v1model, pipeline core); after a program swap the records follow the new program; L2 learning with `P4Controller`'s digest callback: learned hosts are no longer flooded; a destroyed controller gets no digests, and each switch is registered once |

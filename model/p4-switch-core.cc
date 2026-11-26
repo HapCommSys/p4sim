@@ -29,27 +29,95 @@
 #include "ns3/simulator.h"
 
 #include <algorithm>
+#include <array>
 #include <bm/bm_runtime/bm_runtime.h>
 #include <bm/bm_sim/dev_mgr.h>
 #include <bm/bm_sim/options_parse.h>
 #include <bm/bm_sim/port_monitor.h>
 #include <cctype>
+#include <cerrno>
 #include <cstdlib>
+#include <cstring>
 #include <fcntl.h>
+#include <filesystem>
 #include <fstream>
+#include <iostream>
 #include <json/json.h>
 #include <map>
 #include <memory>
 #include <netinet/in.h>
+#include <spawn.h>
 #include <sstream>
 #include <sys/file.h>
+#include <sys/mman.h>
 #include <sys/socket.h>
+#include <sys/wait.h>
 #include <unistd.h>
+
+#ifndef MFD_NOEXEC_SEAL // glibc before 2.39
+#define MFD_NOEXEC_SEAL 0x0008U
+#endif
 
 NS_LOG_COMPONENT_DEFINE("P4SwitchCore");
 
 namespace
 {
+
+/**
+ * Run a shell command with this standard input and return what it writes to its
+ * standard output and error. The command gets no other descriptor of this process:
+ * a runtime CLI that held the listening Thrift sockets of the switches would wait
+ * for itself forever if this process ended while it runs. (With glibc before 2.34,
+ * which cannot close them, it inherits them as before.)
+ */
+std::string
+RunWithInput(const std::string& command, int input)
+{
+    int out[2];
+    if (pipe2(out, O_CLOEXEC) != 0)
+    {
+        return std::string("cannot create a pipe: ") + std::strerror(errno);
+    }
+    posix_spawn_file_actions_t actions;
+    posix_spawn_file_actions_init(&actions);
+    posix_spawn_file_actions_adddup2(&actions, input, STDIN_FILENO);
+    posix_spawn_file_actions_adddup2(&actions, out[1], STDOUT_FILENO);
+    posix_spawn_file_actions_adddup2(&actions, out[1], STDERR_FILENO);
+#if defined(__GLIBC__) && __GLIBC_PREREQ(2, 34)
+    posix_spawn_file_actions_addclosefrom_np(&actions, STDERR_FILENO + 1);
+#endif
+    const char* argv[] = {"sh", "-c", command.c_str(), nullptr};
+    pid_t pid;
+    int rc =
+        posix_spawn(&pid, "/bin/sh", &actions, nullptr, const_cast<char* const*>(argv), environ);
+    posix_spawn_file_actions_destroy(&actions);
+    close(out[1]);
+    std::string output;
+    if (rc != 0)
+    {
+        output = std::string("cannot run /bin/sh: ") + std::strerror(rc);
+    }
+    else
+    {
+        std::array<char, 4096> buffer;
+        for (ssize_t n; (n = read(out[0], buffer.data(), buffer.size())) != 0;)
+        {
+            if (n > 0)
+            {
+                output.append(buffer.data(), n);
+            }
+            else if (errno != EINTR)
+            {
+                break;
+            }
+        }
+        while (waitpid(pid, nullptr, 0) < 0 && errno == EINTR)
+        {
+        }
+    }
+    close(out[0]);
+    return output;
+}
 
 /**
  * BMv2 swaps the P4 program only when no packet of the switch holds a PHV
@@ -777,6 +845,59 @@ P4SwitchCore::LoadFlowTableToSwitch(const std::string& flowTablePath)
     return ExecuteCliCommands(flowTablePath);
 }
 
+bool
+P4SwitchCore::ReportCliErrors(const std::string& file,
+                              const std::vector<std::pair<uint32_t, std::string>>& commands,
+                              const std::string& output) const
+{
+    // The CLI prints its prompt before the output of each command, and once more
+    // at the end of the commands
+    const std::string prompt = "RuntimeCmd: ";
+    const std::vector<std::string> signs = {"Error: ", "Invalid ", "*** Unknown syntax"};
+    size_t command = 0;
+    std::string last;    // the last line of this command that is not empty
+    bool errors = false; // whether an error was printed
+    auto report = [&](const std::string& error) {
+        errors = true;
+        std::cerr << file;
+        if (command >= 1 && command <= commands.size())
+        {
+            const auto& [number, text] = commands[command - 1];
+            std::cerr << ":" << number << ": " << text;
+        }
+        std::cerr << "\n    " << error << std::endl;
+    };
+
+    std::istringstream lines(output);
+    for (std::string line; std::getline(lines, line);)
+    {
+        while (line.rfind(prompt, 0) == 0)
+        {
+            command++;
+            last.clear();
+            line.erase(0, prompt.size());
+        }
+        if (std::any_of(signs.begin(), signs.end(), [&line](const std::string& sign) {
+                return line.rfind(sign, 0) == 0;
+            }))
+        {
+            report(line);
+        }
+        if (!line.empty())
+        {
+            last = line;
+        }
+    }
+    if (command <= commands.size())
+    {
+        report(m_thriftCommand +
+               (command == 0 ? " failed, the file is skipped"
+                             : " stopped here, the rest of the file is skipped") +
+               (last.empty() ? "" : ": " + last));
+    }
+    return errors;
+}
+
 int
 P4SwitchCore::ExecuteCliCommands(const std::string& commandsFile)
 {
@@ -789,12 +910,38 @@ P4SwitchCore::ExecuteCliCommands(const std::string& commandsFile)
         return 1;
     }
 
-    // Check if the commands file exists
-    std::ifstream infile(commandsFile);
-    if (!infile.good())
+    // Without a flow table the tables keep the entries of the P4 program
+    if (commandsFile.empty())
     {
-        NS_LOG_ERROR("Commands file not found: " << commandsFile);
-        return 1;
+        return 0;
+    }
+    std::vector<std::pair<uint32_t, std::string>> commands; // (line number, command)
+    std::ostringstream input;
+    {
+        std::ifstream file(commandsFile);
+        if (!file || std::filesystem::is_directory(commandsFile))
+        {
+            NS_FATAL_ERROR("Switch ID " << m_p4SwitchId << ": cannot open the flow table "
+                                        << commandsFile);
+        }
+        // The CLI repeats the last command for an empty line and does not know
+        // comments or the byte order mark of UTF-8, so it gets none of them
+        uint32_t number = 0;
+        for (std::string line; std::getline(file, line);)
+        {
+            number++;
+            if (number == 1 && line.rfind("\xEF\xBB\xBF", 0) == 0)
+            {
+                line.erase(0, 3);
+            }
+            size_t start = line.find_first_not_of(" \t\r");
+            if (start != std::string::npos && line[start] != '#')
+            {
+                line.erase(line.find_last_not_of(" \t\r") + 1);
+                commands.emplace_back(number, line);
+                input << line << "\n";
+            }
+        }
     }
 
     // Get runtime port and start the server
@@ -822,22 +969,29 @@ P4SwitchCore::ExecuteCliCommands(const std::string& commandsFile)
                                      "of the target (e.g. mirroring_add) are not available");
     }
 
-    // Construct the CLI command
-    std::ostringstream cmdStream;
-    cmdStream << m_thriftCommand << " --thrift-port " << port << " < " << commandsFile
-              << " > /dev/null 2>&1";
-    std::string cmd = cmdStream.str();
-
-    NS_LOG_DEBUG("Executing CLI command: " << cmd);
-
-    // Run the CLI command to populate table entries
-    int result = std::system(cmd.c_str());
-    if (result != 0)
+    // The CLI reads the commands from a file in memory, which leaves nothing on the
+    // disk if this process is killed. Hosts with vm.memfd_noexec=2 want the flag,
+    // and Linux before 6.3 does not know it.
+    int fd = memfd_create("p4sim-cli", MFD_NOEXEC_SEAL);
+    if (fd < 0 && errno == EINVAL)
     {
-        NS_LOG_WARN("CLI command returned non-zero exit code: " << result);
+        fd = memfd_create("p4sim-cli", 0);
     }
-
-    return result;
+    std::string text = input.str();
+    if (fd < 0 || write(fd, text.data(), text.size()) != static_cast<ssize_t>(text.size()) ||
+        lseek(fd, 0, SEEK_SET) != 0)
+    {
+        NS_FATAL_ERROR("Switch ID " << m_p4SwitchId
+                                    << ": cannot pass the flow table to the runtime CLI");
+    }
+    // The encoding lets the CLI read bytes that are not UTF-8: it reads the commands
+    // in blocks, so such a byte would end it before the commands above run
+    std::string cmd = "PYTHONIOENCODING=utf-8:surrogateescape " + m_thriftCommand +
+                      " --thrift-port " + std::to_string(port);
+    NS_LOG_DEBUG("Executing CLI command: " << cmd);
+    std::string output = RunWithInput(cmd, fd);
+    close(fd);
+    return ReportCliErrors(commandsFile, commands, output) ? 1 : 0;
 }
 
 uint64_t
