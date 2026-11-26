@@ -28,7 +28,8 @@ Design
 A ``P4SwitchNetDevice`` is an |ns3| ``NetDevice`` that forwards frames with a P4
 program.  Each switch loads a P4 program compiled for BMv2 (JSON) and, at
 start-up, runs a flow-table file with the runtime CLI of its architecture
-(``simple_switch_CLI`` or ``psa_switch_CLI``) on its own Thrift port.  BMv2 is
+(``simple_switch_CLI``, ``psa_switch_CLI``, or ``bm_CLI`` for PNA) on its own
+Thrift port.  BMv2 is
 linked as a library: the parser, the match-action tables, the externs and the
 deparser are those of BMv2, while |ns3| provides the ports, the queues and the
 time.
@@ -131,7 +132,7 @@ Scope and Limitations
   and queues above; it does not model the stages of a hardware pipeline, and it
   does not forward cut-through.
 * P4sim builds with ns-3.39 to ns-3.49 and is tested with ns-3.39 and ns-3.49,
-  BMv2 1.15.8 and p4c 1.2.5.19 on Ubuntu 24.04.  From ns-3.41 on, |ns3| builds as
+  BMv2 1.15.8, on Ubuntu 24.04 and 26.04.  From ns-3.41 on, |ns3| builds as
   C++20 or C++23, and the spdlog that BMv2 bundles does not compile as C++20;
   P4sim then uses a copy of these headers with the fix
   (``patches/bmv2-spdlog-cxx20.patch``).
@@ -176,14 +177,26 @@ Usage
 Prerequisites
 =============
 
-1. Install BMv2, p4c and their dependencies with the install script of
-   `p4lang/tutorials <https://github.com/p4lang/tutorials>`_ (Ubuntu 24.04).
+The quickest way is ``install.sh`` in ``contrib/p4sim``: on Ubuntu 24.04 or
+26.04, it installs the packages, p4c and BMv2 1.15.8, then builds and tests
+|ns3| with P4sim::
+
+  git clone --depth 1 -b ns-3.39 https://github.com/nsnam/ns-3-dev-git.git ns3.39
+  git clone https://github.com/HapCommSys/p4sim.git ns3.39/contrib/p4sim
+  ns3.39/contrib/p4sim/install.sh
+
+Otherwise:
+
+1. Install BMv2, p4c and their dependencies, for example with the install
+   script of `p4lang/tutorials <https://github.com/p4lang/tutorials>`_
+   (Ubuntu 24.04).
 2. Run ``sudo ./set_pkg_config_env.sh`` inside ``contrib/p4sim/`` to
    register the ``bm`` pkg-config package.
 3. No environment variable is needed: P4sim reads the P4 files from the
    p4sim folder of the build.
 
-``doc/vm-env.md`` has the full step-by-step guide.
+``doc/installation.md`` has the full guide, and ``doc/docker.md`` describes
+the Docker image.
 
 Building
 ========
@@ -257,7 +270,7 @@ Attributes of ``ns3::P4SwitchNetDevice``:
      - Packets per second that the pipeline takes; 0 means no limit
    * - ``PipelineDelay``
      - 0 s
-     - Latency of every packet in the pipeline (not PNA)
+     - Latency of every packet in the pipeline
    * - ``InputBufferSizeLow``
      - 128
      - Input buffer for the packets received on the ports, in packets
