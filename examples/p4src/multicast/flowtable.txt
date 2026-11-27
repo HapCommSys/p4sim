@@ -1,0 +1,10 @@
+# Switch s1 of the multicast exercise of p4lang/tutorials (de28e7a), from
+# solution/s1-runtime.json. P4sim numbers ports from 0: tutorial port n is port n-1.
+table_add MyIngress.mac_lookup MyIngress.mac_forward 08:00:00:00:01:11 => 0
+table_add MyIngress.mac_lookup MyIngress.mac_forward 08:00:00:00:02:22 => 1
+table_add MyIngress.mac_lookup MyIngress.mac_forward 08:00:00:00:03:33 => 2
+table_add MyIngress.mac_lookup MyIngress.mac_forward 08:00:00:00:04:44 => 3
+# Multicast group 1, replica instance 1, on every port
+mc_mgrp_create 1
+mc_node_create 1 0 1 2 3
+mc_node_associate 1 0

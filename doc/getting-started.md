@@ -135,12 +135,15 @@ addresses, the traffic, the result. The rules that most first programs miss:
 | | `p4-psa-ipv4-forwarding`, `p4-pna-ipv4-forwarding` | other architectures |
 | | `p4-psa-meter`, `p4-psa-ecmp` | PSA externs (`Meter`, `Counter`, `Hash`) and `P4RuntimeApi` |
 | | `p4-v1model-ipv4-forwarding-bridge` | CSMA and point-to-point links as ports |
+| | `p4-multicast` | multicast groups; your own solution of the p4lang exercise with `--json` |
 | Advanced | `p4-priority-queues`, `p4-latency` | queues and timing |
+| | `p4-ecn`, `p4-mri` | queue depth in the P4 program: ECN marks, in-band records |
 | | `p4-spine-leaf-topo`, `p4-topo-fattree` | ECMP, generated topologies and tables |
 | | `p4-voq-fabric-*` | the traffic manager |
 
-[examples.md](examples.md) lists all examples, and [test/Readme.md](../test/Readme.md)
-shows how to test a P4 program with packets (`.stf` files).
+[examples.md](examples.md) lists all examples, [tutorials.md](tutorials.md) the exercises
+of p4lang/tutorials that they follow, and [test/Readme.md](../test/Readme.md) shows how to
+test a P4 program with packets (`.stf` files).
 
 ## If it does not work
 

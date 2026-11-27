@@ -101,6 +101,27 @@ build_lib_example(
   LIBRARIES_TO_LINK ${P4SIM_CSMA_LIBS}
 )
 
+# 5 hosts, 3 switches — ECN marking at a congested port (tutorial ecn)
+build_lib_example(
+  NAME p4-ecn
+  SOURCE_FILES p4-ecn.cc
+  LIBRARIES_TO_LINK ${P4SIM_BASE_LIBS}
+)
+
+# 5 hosts, 3 switches — multi-hop route inspection (tutorial mri)
+build_lib_example(
+  NAME p4-mri
+  SOURCE_FILES p4-mri.cc
+  LIBRARIES_TO_LINK ${P4SIM_BASE_LIBS}
+)
+
+# 4 hosts, 1 switch — multicast to a group of ports (tutorial multicast)
+build_lib_example(
+  NAME p4-multicast
+  SOURCE_FILES p4-multicast.cc
+  LIBRARIES_TO_LINK ${P4SIM_BASE_LIBS}
+)
+
 # Runtime controller — flow-table updates
 build_lib_example(
   NAME p4-basic-controller

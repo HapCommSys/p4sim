@@ -147,7 +147,7 @@ A switch has two kinds of port, which can be mixed. The port number is the order
 
 ## Examples
 
-[doc/examples.md](doc/examples.md) describes all 29 examples. A selection:
+[doc/examples.md](doc/examples.md) describes all 32 examples, and [doc/tutorials.md](doc/tutorials.md) maps the exercises of [p4lang/tutorials](https://github.com/p4lang/tutorials) to them. A selection:
 
 | Example | Description |
 |---|---|
@@ -161,6 +161,7 @@ A switch has two kinds of port, which can be mixed. The port number is the order
 | `p4-l2-learning` | L2 learning: `P4Controller` fills the tables from the digests of the switch |
 | `p4-basic-tunnel` | A tunnel with a custom header |
 | `p4-firewall` | A stateful TCP firewall |
+| `p4-ecn`, `p4-mri`, `p4-multicast` | The p4lang tutorials `ecn`, `mri` and `multicast`, with their solutions unchanged; they also check your own solution |
 | `p4-spine-leaf-topo` | A spine-leaf network with ECMP load balancing |
 | `p4-topo-fattree` | A generated k-ary fat tree with its flow tables |
 | `p4-priority-queues` | Strict-priority queues, with the classification in the P4 program |
@@ -181,6 +182,7 @@ For a first look, the [P4sim website](https://mingyumaz.github.io/p4sim/) explai
 | [doc/getting-started.md](doc/getting-started.md) | The first steps, the learning path, and common errors |
 | [doc/docker.md](doc/docker.md) | Building and running P4sim in Docker |
 | [doc/examples.md](doc/examples.md) | All examples and the format of their P4 files |
+| [doc/tutorials.md](doc/tutorials.md) | The exercises of p4lang/tutorials, their examples, and the way from Mininet to ns-3 |
 | [doc/switch.md](doc/switch.md) | Pipeline and queues of the switch, switched-Ethernet ports and host devices, timing on the wire |
 | [doc/traffic-manager.md](doc/traffic-manager.md) | The VOQ + fabric traffic manager |
 | [doc/event-driven-tm-scheduler.md](doc/event-driven-tm-scheduler.md) | How the egress sends the next frame when a port is free |

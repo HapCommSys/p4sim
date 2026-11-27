@@ -112,6 +112,11 @@ line (bridge ports only, the old timing model) and gets no more changes.
 
 ## Bugs and cleanups
 
+- **`examples/p4src/source_routing/source_routing.p4`**: `drop()` has its
+  `mark_to_drop()` commented out, so a frame without source routes is not dropped
+  but goes to port 0. The tutorial's solution drops it; the program also keeps the
+  `TODO` comments of the exercise's starter code. Found in November 2026 while
+  comparing the programs with the tutorials ([tutorials.md](tutorials.md)).
 - **The branches `ns-3.39` and `ns-3.49`** are based on P4sim 1.x (main at #35).
   `main` now builds with ns-3.39 to ns-3.49, so `ns-3.49` is no longer needed.
 - **BMv2.**
