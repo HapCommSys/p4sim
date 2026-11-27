@@ -1,0 +1,6 @@
+# Switch s1 of the ecn exercise of p4lang/tutorials (de28e7a), from
+# s1-runtime.json. P4sim numbers ports from 0: tutorial port n is port n-1.
+table_add MyIngress.ipv4_lpm MyIngress.ipv4_forward 10.0.1.1/32 => 08:00:00:00:01:01 1
+table_add MyIngress.ipv4_lpm MyIngress.ipv4_forward 10.0.1.11/32 => 08:00:00:00:01:11 0
+table_add MyIngress.ipv4_lpm MyIngress.ipv4_forward 10.0.2.0/24 => 08:00:00:00:02:00 2
+table_add MyIngress.ipv4_lpm MyIngress.ipv4_forward 10.0.3.0/24 => 08:00:00:00:03:00 3

@@ -147,7 +147,7 @@ A switch has two kinds of port, which can be mixed. The port number is the order
 
 ## Examples
 
-[doc/examples.md](doc/examples.md) describes all 27 examples. A selection:
+[doc/examples.md](doc/examples.md) describes all 30 examples. A selection:
 
 | Example | Description |
 |---|---|
@@ -160,6 +160,7 @@ A switch has two kinds of port, which can be mixed. The port number is the order
 | `p4-l2-learning` | L2 learning: `P4Controller` fills the tables from the digests of the switch |
 | `p4-basic-tunnel` | A tunnel with a custom header |
 | `p4-firewall` | A stateful TCP firewall |
+| `p4-ecn`, `p4-mri`, `p4-multicast` | The p4lang tutorials `ecn`, `mri` and `multicast`, with their solutions unchanged; they also check your own solution |
 | `p4-spine-leaf-topo` | A spine-leaf network with ECMP load balancing |
 | `p4-topo-fattree` | A generated k-ary fat tree with its flow tables |
 | `p4-priority-queues` | Strict-priority queues, with the classification in the P4 program |
