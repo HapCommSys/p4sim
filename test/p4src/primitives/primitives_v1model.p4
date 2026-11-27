@@ -2,8 +2,9 @@
 // Copyright (c) 2025 TU Dresden. Author: Mingyu Ma <mingyu.ma@tu-dresden.de>
 
 // Packet test program for v1model primitives with arguments that BMv2 stores
-// outside the PHV or checks first. Every frame goes to port 1. The low 4 bits
-// of the EtherType select the operation:
+// outside the PHV or checks first, or with a result that depends on time or on
+// the random seed. Every frame goes to port 1. The low 4 bits of the EtherType
+// select the operation:
 //   1  digest(): the frame leaves unchanged
 //   2  hash() with max 0, which BMv2 treats as 1: the result is the base, 7,
 //      which goes into the low 16 bits of the source MAC
@@ -11,6 +12,10 @@
 //      initial value, 0, which goes into the low byte of the source MAC (p4c
 //      drops an assignment to meta.r just before random(), whose result is an
 //      out parameter)
+//   4  random() from 0 to 2^32 - 1, which goes into the low 32 bits of the
+//      source MAC
+//   5  mtr.execute_meter() at index 0: the color goes into the low byte of
+//      the source MAC
 
 #include <core.p4>
 #include <v1model.p4>
@@ -32,6 +37,8 @@ struct learn_t {
 struct metadata_t {
     bit<16> h;
     bit<8> r;
+    bit<32> r32;
+    bit<8> color;
 }
 
 parser MyParser(packet_in pkt, out headers_t hdr, inout metadata_t meta,
@@ -48,6 +55,8 @@ control MyVerifyChecksum(inout headers_t hdr, inout metadata_t meta) {
 
 control MyIngress(inout headers_t hdr, inout metadata_t meta,
                   inout standard_metadata_t smeta) {
+    meter(1, MeterType.packets) mtr;
+
     apply {
         smeta.egress_spec = 1;
         if (hdr.ethernet.etherType[3:0] == 1) {
@@ -58,6 +67,12 @@ control MyIngress(inout headers_t hdr, inout metadata_t meta,
         } else if (hdr.ethernet.etherType[3:0] == 3) {
             random(meta.r, 8w10, 8w5);
             hdr.ethernet.srcAddr[7:0] = meta.r;
+        } else if (hdr.ethernet.etherType[3:0] == 4) {
+            random(meta.r32, 32w0, 32w0xffffffff);
+            hdr.ethernet.srcAddr[31:0] = meta.r32;
+        } else if (hdr.ethernet.etherType[3:0] == 5) {
+            mtr.execute_meter(32w0, meta.color);
+            hdr.ethernet.srcAddr[7:0] = meta.color;
         }
     }
 }

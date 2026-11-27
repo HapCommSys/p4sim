@@ -84,6 +84,10 @@ line (bridge ports only, the old timing model) and gets no more changes.
     stage allocation, so p4sim cannot see the stages.
   - The default is 0. No published figure covers the whole pipeline; the
     attribute's help text gives a measured one for scale.
+- **Direct meters count wall-clock time.** BMv2's match tables execute a
+  `direct_meter` in its core with the wall clock, out of reach of P4sim, so its
+  colors depend on how fast the simulation runs. `meter.execute_meter()` counts
+  simulation time. A fix needs a way to give BMv2's meters another clock.
 - **Runtime CLI during the simulation.** The Thrift server of a switch runs in
   its own thread, so a CLI that runs during the simulation changes the switch
   without synchronisation with it. The CLIs are for before and after the

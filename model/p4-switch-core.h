@@ -20,6 +20,8 @@
 #include <deque>
 #include <map>
 #include <memory>
+#include <random>
+#include <string>
 #include <thread>
 #include <unordered_map>
 #include <vector>
@@ -57,10 +59,26 @@ class P4SwitchCore : public bm::Switch
 
     /**
      * @brief Initialize the switch with the P4 program
+     *
+     * It also seeds RandomEngine() from ns-3's seed and run.
+     *
      * @param jsonPath the path to the JSON file
      * @return void
      */
     void InitializeSwitchFromP4Json(const std::string& jsonPath);
+
+    /**
+     * @brief The random number engine of the P4 programs
+     *
+     * random() of v1model draws from it. Each switch seeds it from ns-3's seed
+     * and run number (RngSeedManager, or --RngSeed and --RngRun) when it loads
+     * its program, so a simulation gives the same random numbers every time it
+     * runs with the same seed and run. All switches of a process share it; the
+     * P4 programs run in the simulation thread.
+     *
+     * @return the engine
+     */
+    static std::mt19937_64& RandomEngine();
 
     /**
      * @brief Set the BMv2 log level used by InitializeSwitchFromP4Json()

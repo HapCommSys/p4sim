@@ -26,6 +26,7 @@
 #include "ns3/p4-switch-core.h"
 #include "ns3/p4-switch-net-device.h"
 #include "ns3/p4sim-ns3-compat.h"
+#include "ns3/rng-seed-manager.h"
 #include "ns3/simulator.h"
 
 #include <algorithm>
@@ -788,6 +789,13 @@ P4SwitchCore::InitializeSwitchFromP4Json(const std::string& jsonPath)
     opt_parser.thrift_port = m_thriftPort;
     opt_parser.console_logging = false;
 
+    // The random numbers of the P4 programs follow ns-3's seed and run
+    uint64_t run = RngSeedManager::GetRun();
+    std::seed_seq seed{RngSeedManager::GetSeed(),
+                       static_cast<uint32_t>(run),
+                       static_cast<uint32_t>(run >> 32)};
+    RandomEngine().seed(seed);
+
     // Initialize the switch, with a device manager without ports (NoPortsDevMgr)
     status = init_from_options_parser(opt_parser, nullptr, std::make_unique<NoPortsDevMgr>());
     if (status != 0)
@@ -801,6 +809,13 @@ P4SwitchCore::InitializeSwitchFromP4Json(const std::string& jsonPath)
     }
 
     NS_LOG_INFO("P4 json applied successfully.");
+}
+
+std::mt19937_64&
+P4SwitchCore::RandomEngine()
+{
+    static std::mt19937_64 engine;
+    return engine;
 }
 
 void
