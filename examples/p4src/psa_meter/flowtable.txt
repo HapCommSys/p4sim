@@ -1,0 +1,4 @@
+# host => port: h0 10.0.0.1 on port 0, h1 10.0.0.2 on port 1, h2 10.0.0.3 on port 2
+table_add IngressImpl.ipv4_forward IngressImpl.forward 10.0.0.1 => 0
+table_add IngressImpl.ipv4_forward IngressImpl.forward 10.0.0.2 => 1
+table_add IngressImpl.ipv4_forward IngressImpl.forward 10.0.0.3 => 2

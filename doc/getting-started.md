@@ -133,6 +133,7 @@ addresses, the traffic, the result. The rules that most first programs miss:
 | | `p4-basic-tunnel`, `p4-source-routing` | own headers on the hosts |
 | | `p4-basic-controller`, `p4-l2-learning` | tables changed during the simulation, digests |
 | | `p4-psa-ipv4-forwarding`, `p4-pna-ipv4-forwarding` | other architectures |
+| | `p4-psa-meter`, `p4-psa-ecmp` | PSA externs (`Meter`, `Counter`, `Hash`) and `P4RuntimeApi` |
 | | `p4-v1model-ipv4-forwarding-bridge` | CSMA and point-to-point links as ports |
 | | `p4-multicast` | multicast groups; your own solution of the p4lang exercise with `--json` |
 | Advanced | `p4-priority-queues`, `p4-latency` | queues and timing |

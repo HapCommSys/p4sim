@@ -30,6 +30,8 @@ port, set up by `SwitchedEthernetHelper`; and **bridge** ports, ordinary ns-3 de
 | `p4-v1model-ipv4-forwarding` | Two hosts and a switch with IPv4 forwarding; `--model=1` runs an ns-3 bridge instead, as a baseline | v1model | switched Ethernet | `simple_v1model` |
 | `p4-v1model-ipv4-forwarding-bridge` | The same over bridge ports: `--channelType=p2p` (default) or `csma` | v1model | P4 point-to-point or CSMA | `simple_v1model` |
 | `p4-psa-ipv4-forwarding` | Two hosts and a switch with IPv4 forwarding | PSA | CSMA | `simple_psa` |
+| `p4-psa-meter` | A policer: a two-rate three-color `Meter` per port drops the frames over the peak rate, and a `Counter` counts each color; the control plane sets the rates and reads the counter with `P4RuntimeApi` | PSA | switched Ethernet | `psa_meter` |
+| `p4-psa-ecmp` | ECMP: the CRC-16 of the 5-tuple (`Hash`) spreads the flows over two links, all packets of a flow on one; a `Counter` of the next switch shows which link each flow took | PSA | switched Ethernet | `psa_ecmp` |
 | `p4-pna-ipv4-forwarding` | Two hosts and a NIC-style switch with IPv4 forwarding | PNA | CSMA | `simple_pna` |
 | `p4-basic-example` | Four hosts and four switches with IPv4 forwarding and ARP (tutorial `basic` [1]) | v1model | CSMA | `p4_basic` |
 | `p4-basic-controller` | `p4-basic-example` with flow entries that `P4Controller` changes during the simulation | v1model | CSMA | `p4_basic` |

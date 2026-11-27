@@ -1,0 +1,2 @@
+# s0: h1 (10.0.0.2) over the links on ports 1 and 2, picked by the hash of the flow
+table_add IngressImpl.ipv4_forward IngressImpl.ecmp 10.0.0.2 => 1
