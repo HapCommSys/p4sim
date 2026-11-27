@@ -4,9 +4,10 @@
 /*
  * Switch set-up: every architecture loads its P4 program and uses no BMv2 port
  * manager, Thrift ports never collide, BmLogLevel controls the BMv2 pipeline log
- * (off by default), the deprecated attributes are still accepted, and errors in
- * a flow table are reported. The switches have no ports, so no packet is sent, and
- * only those of the last test case have a flow table and so a Thrift server.
+ * (off by default), the deprecated attributes are still accepted, errors in a
+ * flow table are reported, and a switch runs commands again during the
+ * simulation. The switches have no ports, so no packet is sent, and only those of
+ * the last two test cases have a flow table and so a Thrift server.
  */
 
 #include "ns3/core-module.h"
