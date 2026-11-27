@@ -188,7 +188,8 @@ class P4SwitchNetDevice : public NetDevice
      *                      when the frame was accepted onto the channel (left
      *                      unchanged when the frame was dropped).
      * \return true if the frame was handed to the channel; false if it was
-     *         dropped (null packet, drop port, invalid port, or channel busy).
+     *         dropped (null packet, drop port, invalid port, a frame shorter
+     *         than an Ethernet header, or channel busy).
      */
     bool SendNs3Packet(Ptr<Packet> packetOut,
                        int outPort,

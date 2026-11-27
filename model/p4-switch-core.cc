@@ -952,21 +952,27 @@ P4SwitchCore::ExecuteCliCommands(const std::string& commandsFile)
     // listens (at most 5 s): then the services of this switch are registered
     // after BMv2's, and only to its own processor, never to the server of
     // another switch.
-    auto previousProcessor = bm_runtime::processor_;
-    bm_runtime::start_server(this, port);
-    for (int i = 0; i < 500 && !ServerListens(port); i++)
+    // The server is started once per switch: later calls use it. A second
+    // server could not bind the port, and BMv2 would end the process.
+    if (!m_thriftServerStarted)
     {
-        std::this_thread::sleep_for(std::chrono::milliseconds(10));
-    }
-    if (ServerListens(port) && bm_runtime::processor_ != previousProcessor)
-    {
-        GuardThriftServices();
-    }
-    else
-    {
-        NS_LOG_WARN("Switch ID: " << m_p4SwitchId
-                                  << " Thrift server not started in time, so the commands "
-                                     "of the target (e.g. mirroring_add) are not available");
+        m_thriftServerStarted = true;
+        auto previousProcessor = bm_runtime::processor_;
+        bm_runtime::start_server(this, port);
+        for (int i = 0; i < 500 && !ServerListens(port); i++)
+        {
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        }
+        if (ServerListens(port) && bm_runtime::processor_ != previousProcessor)
+        {
+            GuardThriftServices();
+        }
+        else
+        {
+            NS_LOG_WARN("Switch ID: " << m_p4SwitchId
+                                      << " Thrift server not started in time, so the commands "
+                                         "of the target (e.g. mirroring_add) are not available");
+        }
     }
 
     // The CLI reads the commands from a file in memory, which leaves nothing on the

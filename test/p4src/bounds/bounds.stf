@@ -1,0 +1,29 @@
+# Register, counter and meter indices out of bounds (see bounds_v1model.p4).
+# The arrays have 4 elements: the indices 4 and 0xffffffff are outside. Without
+# the checks, the index 0xffffffff reads or writes memory far outside the array.
+
+#        dst          src          type op index    value old  color
+packet 0 000000000001 000000000002 88b5 02 00000001 1111  0000 00   # reg[1] = 0x1111
+packet 0 000000000001 000000000002 88b5 02 00000004 2222  0000 00   # skipped
+packet 0 000000000001 000000000002 88b5 02 ffffffff 3333  0000 00   # skipped
+packet 0 000000000001 000000000002 88b5 01 00000001 0000  dead 00   # reads 0x1111
+packet 0 000000000001 000000000002 88b5 01 00000004 0000  dead 00   # skipped
+packet 0 000000000001 000000000002 88b5 01 ffffffff 0000  dead 00   # skipped
+packet 0 000000000001 000000000002 88b5 03 ffffffff 0000  0000 00   # skipped
+packet 0 000000000001 000000000002 88b5 04 00000001 0000  0000 ee   # green
+packet 0 000000000001 000000000002 88b5 04 ffffffff 0000  0000 ee   # skipped
+
+expect 1 000000000001 000000000002 88b5 02 00000001 1111  0000 00
+expect 1 000000000001 000000000002 88b5 02 00000004 2222  0000 00
+expect 1 000000000001 000000000002 88b5 02 ffffffff 3333  0000 00
+expect 1 000000000001 000000000002 88b5 01 00000001 0000  1111 00   # the value of reg[1]
+expect 1 000000000001 000000000002 88b5 01 00000004 0000  dead 00   # unchanged
+expect 1 000000000001 000000000002 88b5 01 ffffffff 0000  dead 00   # unchanged
+expect 1 000000000001 000000000002 88b5 03 ffffffff 0000  0000 00
+expect 1 000000000001 000000000002 88b5 04 00000001 0000  0000 00   # green
+expect 1 000000000001 000000000002 88b5 04 ffffffff 0000  0000 ee   # unchanged
+
+register MyIngress.reg 0 0
+register MyIngress.reg 1 4369
+register MyIngress.reg 2 0
+register MyIngress.reg 3 0

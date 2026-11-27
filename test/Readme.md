@@ -15,7 +15,7 @@ No environment variable is needed, and suites can run in parallel.
 
 ## Suites
 
-20 suites, 147 test cases. The first seven do not need BMv2.
+20 suites, 150 test cases. The first seven do not need BMv2.
 
 | Suite | Checks |
 |---|---|
@@ -26,7 +26,7 @@ No environment variable is needed, and suites can run in parallel.
 | `switched-ethernet-host` | the transmit queue of a host device; short frames keep the exact line rate on 100 and 400 Gbps links and at the default rate, 10 Gbps |
 | `p4-queue` | egress queue: capacity, rate, FIFO, per-port rate, priorities |
 | `p4-traffic-manager` | the VOQ + fabric traffic manager |
-| `p4sim` | v1model, PSA and PNA load their program; Thrift ports; `BmLogLevel` and its default, `off`; errors in a flow table are printed with file and line; the deprecated `ChannelType` and `EnableTracing` are still accepted |
+| `p4sim` | v1model, PSA and PNA load their program; Thrift ports; `BmLogLevel` and its default, `off`; errors in a flow table are printed with file and line; a switch runs commands again during the simulation; the deprecated `ChannelType` and `EnableTracing` are still accepted |
 | `p4-packet` | frames sent into a switch and the frames that leave it, on v1model, PNA, PSA and the pipeline core; a frame from a host on a switched-Ethernet port enters on that port |
 | `p4-controller` | `P4Controller`, read back from the switch: flow entries on v1model, PSA, PNA and the pipeline core, action profiles and a meter array on v1model, mirroring sessions on v1model and PSA; `P4RuntimeApi` with a null output argument fails; the mirroring, queue and time commands of `simple_switch_CLI` and `psa_switch_CLI`; the Thrift port of a destroyed switch answers with an error |
 | `p4-digest` | every `digest()` gives one record to the `Digest` trace, with the fields of its learn list, when the ingress processes the frame (v1model, pipeline core); after a program swap the records follow the new program; L2 learning with `P4Controller`'s digest callback: learned hosts are no longer flooded; a destroyed controller gets no digests, and each switch is registered once |
@@ -66,8 +66,10 @@ ingress and in the egress, on v1model and the pipeline core. [`p4src/priority`](
 priority queues of v1model, [`p4src/resubmit`](p4src/resubmit) and
 [`p4src/recirculate`](p4src/recirculate) its resubmit and recirculation,
 [`p4src/clone`](p4src/clone) its clones and those of PSA (also to a multicast group), [`p4src/primitives`](p4src/primitives)
-`digest()`, `hash()` with max 0 and `random()` with lo > hi, and [`p4src/lag`](p4src/lag)
-the LAG member that its multicast picks. The format is a subset of p4c's STF:
+`digest()`, `hash()` with max 0 and `random()` with lo > hi, [`p4src/lag`](p4src/lag)
+the LAG member that its multicast picks, and [`p4src/bounds`](p4src/bounds) register,
+counter and meter indices out of bounds and a frame that `truncate()` makes shorter
+than an Ethernet header. The format is a subset of p4c's STF:
 
 ```
 # comment
