@@ -15,7 +15,7 @@ No environment variable is needed, and suites can run in parallel.
 
 ## Suites
 
-20 suites, 147 test cases. The first seven do not need BMv2.
+20 suites, 148 test cases. The first seven do not need BMv2.
 
 | Suite | Checks |
 |---|---|
@@ -66,8 +66,9 @@ ingress and in the egress, on v1model and the pipeline core. [`p4src/priority`](
 priority queues of v1model, [`p4src/resubmit`](p4src/resubmit) and
 [`p4src/recirculate`](p4src/recirculate) its resubmit and recirculation,
 [`p4src/clone`](p4src/clone) its clones and those of PSA (also to a multicast group), [`p4src/primitives`](p4src/primitives)
-`digest()`, `hash()` with max 0 and `random()` with lo > hi, and [`p4src/lag`](p4src/lag)
-the LAG member that its multicast picks. The format is a subset of p4c's STF:
+`digest()`, `hash()` with max 0 and `random()` with lo > hi, [`p4src/lag`](p4src/lag)
+the LAG member that its multicast picks, and [`p4src/bounds`](p4src/bounds) register,
+counter and meter indices out of bounds. The format is a subset of p4c's STF:
 
 ```
 # comment

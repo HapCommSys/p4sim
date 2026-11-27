@@ -594,7 +594,8 @@ SwitchedPortTestCase::DoRun()
 /// in the ingress and in the egress on v1model and the pipeline core; p4src/priority checks the
 /// priority queues of v1model, p4src/resubmit and p4src/recirculate its resubmit and recirculation,
 /// p4src/clone its clones (also to a multicast group), p4src/primitives digest(), hash() with max 0
-/// and random() with lo > hi, and p4src/lag the LAG member that its multicast picks
+/// and random() with lo > hi, p4src/lag the LAG member that its multicast picks, and
+/// p4src/bounds register, counter and meter indices out of bounds
 static class P4PacketTestSuite : public TestSuite
 {
   public:
@@ -644,6 +645,8 @@ static class P4PacketTestSuite : public TestSuite
             new StfTestCase("primitives", "v1model", P4SWITCH_ARCH_V1MODEL, "primitives.stf"),
             P4SIM_TEST_QUICK);
         AddTestCase(new StfTestCase("lag", "v1model", P4SWITCH_ARCH_V1MODEL, "lag.stf"),
+                    P4SIM_TEST_QUICK);
+        AddTestCase(new StfTestCase("bounds", "v1model", P4SWITCH_ARCH_V1MODEL, "bounds.stf"),
                     P4SIM_TEST_QUICK);
     }
 } g_p4PacketTestSuite;
