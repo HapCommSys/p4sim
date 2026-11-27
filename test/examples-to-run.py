@@ -15,6 +15,7 @@
 cpp_examples = [
     ("p4-hello", "True", "False"),
     ("p4-v1model-ipv4-forwarding", "True", "False"),
+    ("p4-v1model-ipv4-forwarding --model=1", "True", "False"),
     ("p4-psa-ipv4-forwarding", "True", "False"),
     ("p4-psa-meter", "True", "False"),
     ("p4-psa-ecmp", "True", "False"),
