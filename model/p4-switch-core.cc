@@ -599,10 +599,8 @@ P4SwitchCore::meter_get_rates(bm::cxt_id_t cxt_id,
             {
                 return bm::Meter::MeterErrorCode::INVALID_INDEX;
             }
-            for (const auto& config : meter->get_meter(idx).get_rates())
-            {
-                configs->push_back(config);
-            }
+            // Replace the caller's list, as BMv2 does for meter arrays (v1model)
+            *configs = meter->get_meter(idx).get_rates();
             return bm::Meter::MeterErrorCode::SUCCESS;
         }
     }

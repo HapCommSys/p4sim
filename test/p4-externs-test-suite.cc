@@ -266,6 +266,7 @@ class ExternMeterApiTestCase : public TestCase
                        CreateDataDirFilename("p4src/externs/externs_" + m_archName + ".json"),
                        "");
         P4RuntimeApi api(*s.sw->GetCore());
+        // One list for all calls: a get replaces its content, as on v1model
         std::vector<bm::Meter::rate_config_t> configs;
 
         NS_TEST_ASSERT_MSG_EQ(api.MeterSetRates(m_meter, 1, RATES), 0, "Set index 1");
@@ -276,7 +277,6 @@ class ExternMeterApiTestCase : public TestCase
             NS_TEST_EXPECT_MSG_EQ_TOL(configs[i].info_rate, RATES[i].info_rate, 1e-12, "Rate " << i);
             NS_TEST_EXPECT_MSG_EQ(configs[i].burst_size, RATES[i].burst_size, "Burst " << i);
         }
-        configs.clear();
         NS_TEST_ASSERT_MSG_EQ(api.MeterGetRates(m_meter, 0, &configs), 0, "Get index 0");
         NS_TEST_EXPECT_MSG_EQ(configs.size(), 0, "Index 0 has no rates");
 
@@ -287,7 +287,6 @@ class ExternMeterApiTestCase : public TestCase
         NS_TEST_ASSERT_MSG_EQ(api.SetMeterArrayRates(m_meter, RATES), 0, "Set the array");
         for (size_t idx = 0; idx < 4; idx++)
         {
-            configs.clear();
             NS_TEST_ASSERT_MSG_EQ(api.MeterGetRates(m_meter, idx, &configs), 0, "Get");
             NS_TEST_EXPECT_MSG_EQ(configs.size(), RATES.size(), "Rates of index " << idx);
         }
