@@ -25,6 +25,8 @@ same P4 names. So one set serves both; two sets in one program would collide.
 **Changes in P4sim**, everything else is as in BMv2 1.15.8:
 - `psa_meter.cpp` measures simulation time instead of the wall clock (`init()`
   and `execute()`), so that a meter's rates refer to the simulated traffic.
+- `psa_random.cpp` draws from `P4SwitchCore::RandomEngine()`, which follows
+  ns-3's seed and run, instead of an engine seeded with the thread id.
 - `Counter.count()` and `Meter.execute()` check the index in every build. BMv2
   checks it only without `NDEBUG` (BMv2 issue #1459), and an index out of range
   then writes past the array: p4c's sample `psa-counter3.p4` corrupted the heap.

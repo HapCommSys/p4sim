@@ -7,11 +7,13 @@
  *
  */
 
+// P4sim: before the BMv2 headers, as in psa_meter.cpp
+#include "ns3/p4-switch-core.h"
+
 #include "psa_random.h"
 #include <bm/bm_sim/logger.h>
 
 #include <random>
-#include <thread>
 #include <iostream>
 
 namespace bm {
@@ -31,12 +33,11 @@ PSA_Random::init() {
 
 void
 PSA_Random::read(Data &value) {
-  using engine = std::default_random_engine;
-  using hash = std::hash<std::thread::id>;
-  static thread_local engine generator(hash()(std::this_thread::get_id()));
+  // P4sim: the engine follows ns-3's seed and run, as random() of v1model,
+  // instead of an engine seeded with the thread id
   using distrib64 = std::uniform_int_distribution<uint64_t>;
   distrib64 distribution(min_val, max_val);
-  value.set(distribution(generator));
+  value.set(distribution(ns3::P4SwitchCore::RandomEngine()));
 }
 
 BM_REGISTER_EXTERN_W_NAME(Random, PSA_Random);

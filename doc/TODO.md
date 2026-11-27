@@ -75,19 +75,6 @@ line (bridge ports only, the old timing model) and gets no more changes.
     compiler bug on a PNA `Counter` (`PNA_CounterType_t`). Report these to p4c.
     The flow-table file of a PNA switch (`bm_CLI`) does not know the meter
     externs; `P4RuntimeApi` and `P4Controller` do.
-- **Meters of v1model programs** (`meter`, `direct_meter`) measure the wall
-  clock, as in BMv2: their token buckets fill with real time, not with
-  simulation time, so their colors depend on how fast the simulation runs. The
-  meter extern of PSA and PNA programs already uses simulation time
-  (`psa_meter.cpp`). For v1model, `execute_meter` in `primitives-v1model.h`
-  could pass the simulation time to `bm::Meter::execute()`; direct meters are
-  executed inside BMv2's tables, which would need a change in BMv2.
-- **p4c's sample `psa-register-read-write-2-bmv2.p4`** makes P4sim crash
-  (segmentation fault) when it loads; BMv2 1.15.8's `psa_switch` loads it.
-  Found in November 2026 while testing the PSA externs; not analysed.
-- **Random numbers** (`random()` of v1model, `Random` of PSA and PNA) come from
-  an engine that BMv2 seeds with the thread id, not from ns-3's seed and run
-  number.
 - **The pipeline core** (`P4SwitchArch` 3) ignores `mcast_grp`, clones,
   resubmit and recirculation, without a warning: a v1model program that floods
   (L2 learning, for example) sends nothing. Proposal: give it the packet
@@ -108,8 +95,9 @@ line (bridge ports only, the old timing model) and gets no more changes.
     attribute's help text gives a measured one for scale.
 - **Direct meters count wall-clock time.** BMv2's match tables execute a
   `direct_meter` in its core with the wall clock, out of reach of P4sim, so its
-  colors depend on how fast the simulation runs. `meter.execute_meter()` counts
-  simulation time. A fix needs a way to give BMv2's meters another clock.
+  colors depend on how fast the simulation runs. `meter.execute_meter()` and
+  the `Meter` extern of PSA and PNA count simulation time. A fix needs a way to
+  give BMv2's meters another clock.
 - **Runtime CLI during the simulation.** The Thrift server of a switch runs in
   its own thread, so a CLI that runs during the simulation changes the switch
   without synchronisation with it. The CLIs are for before and after the
