@@ -44,9 +44,11 @@ No environment variable is needed, and suites can run in parallel.
 `p4-controller` also needs `simple_switch_CLI` and `psa_switch_CLI`, `p4-config-swap`
 `simple_switch_CLI`, `p4-pna` `bm_CLI`, `p4-externs` `psa_switch_CLI`.
 
-[`examples-to-run.py`](examples-to-run.py) lists the examples that `test.py` runs
-and that must exit with 0. The examples check their results: they print `[PASS]` or
-`[FAIL]` and exit with 1 if a check fails (`examples/example-check.h`).
+[`examples-to-run.py`](examples-to-run.py) lists the examples that `test.py` and
+`run-tests.sh` run, with their arguments, and that must exit with 0. The examples
+check their results: they print `[PASS]` or `[FAIL]` and exit with 1 if a check
+fails (`examples/example-check.h`). `test.py --example` takes no arguments, so
+`run-tests.sh` runs an entry with arguments with `./ns3 run`.
 
 ## Test data
 
