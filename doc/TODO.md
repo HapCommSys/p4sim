@@ -60,6 +60,8 @@ line (bridge ports only, the old timing model) and gets no more changes.
     time commands of `pna_nic_CLI`); its `FlowTablePath` runs in `bm_CLI`.
   - PSA and PNA give no digest records: BMv2's `psa_switch` and `pna_nic` do
     not pass digests on either.
+  - PNA has no `recirculate()` and no `mirror_packet()`, as `pna_nic` has
+    neither; a PNA program that calls one is rejected when it loads.
   - A program swap on PNA does not wait for the frames in its output queues,
     although `EnableSwap` promises that the switch swaps once it holds no
     packet: PNA turns a frame into an ns-3 packet before it queues it, so the

@@ -68,6 +68,20 @@ class P4SwitchCore : public bm::Switch
     void InitializeSwitchFromP4Json(const std::string& jsonPath);
 
     /**
+     * @brief Look for a primitive that the P4 program calls and this architecture lacks
+     *
+     * BMv2 finds a primitive by its name alone: a PNA program that calls
+     * recirculate() meets the recirculate of v1model, and BMv2 reports a wrong
+     * number of parameters. InitializeSwitchFromP4Json() ends the simulation
+     * with this message instead, before BMv2 reads the program.
+     *
+     * @param jsonPath the path to the JSON file
+     * @return a message that names the first such call, its source line and
+     *         what to use instead; empty if there is none
+     */
+    std::string CheckPrimitives(const std::string& jsonPath) const;
+
+    /**
      * @brief The random number engine of the P4 programs
      *
      * random() of v1model draws from it. Each switch seeds it from ns-3's seed
@@ -375,6 +389,13 @@ class P4SwitchCore : public bm::Switch
      */
     void AddThriftService(const std::string& name,
                           std::shared_ptr<apache::thrift::TProcessor> processor);
+
+    /**
+     * @brief The primitives that this architecture lacks, for CheckPrimitives()
+     * @return for each primitive (as the P4 JSON names it), what the message
+     *         suggests instead. The default is none.
+     */
+    virtual std::map<std::string, std::string> GetMissingPrimitives() const;
 
     /**
      * @brief Ingress processing pipeline
