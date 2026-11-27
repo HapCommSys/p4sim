@@ -15,7 +15,7 @@ No environment variable is needed, and suites can run in parallel.
 
 ## Suites
 
-21 suites, 155 test cases. The first seven do not need BMv2.
+21 suites, 161 test cases. The first seven do not need BMv2.
 
 | Suite | Checks |
 |---|---|
@@ -26,8 +26,8 @@ No environment variable is needed, and suites can run in parallel.
 | `switched-ethernet-host` | the transmit queue of a host device; short frames keep the exact line rate on 100 and 400 Gbps links and at the default rate, 10 Gbps |
 | `p4-queue` | egress queue: capacity, rate, FIFO, per-port rate, priorities |
 | `p4-traffic-manager` | the VOQ + fabric traffic manager |
-| `p4sim` | v1model, PSA and PNA load their program; Thrift ports; `BmLogLevel` and its default, `off`; errors in a flow table are printed with file and line; the deprecated `ChannelType` and `EnableTracing` are still accepted |
-| `p4-packet` | frames sent into a switch and the frames that leave it, on v1model, PNA, PSA and the pipeline core; a frame from a host on a switched-Ethernet port enters on that port; the PSA and PNA externs `Counter`, `Meter`, `Hash`, `InternetChecksum` and `Random` |
+| `p4sim` | v1model, PSA and PNA load their program; Thrift ports; `BmLogLevel` and its default, `off`; errors in a flow table are printed with file and line; a switch runs commands again during the simulation; the deprecated `ChannelType` and `EnableTracing` are still accepted |
+| `p4-packet` | frames sent into a switch and the frames that leave it, on v1model, PNA, PSA and the pipeline core; a frame from a host on a switched-Ethernet port enters on that port; the PSA and PNA externs `Counter`, `Meter`, `Hash`, `InternetChecksum` and `Random`; `random()` follows ns-3's seed and run |
 | `p4-externs` | a meter extern of a PSA or PNA program counts simulation time (rates set by `psa_switch_CLI` or `P4RuntimeApi`); `P4RuntimeApi` reads, writes and resets a PSA counter extern and sets, reads and unsets meter rates, by index and for the whole array |
 | `p4-controller` | `P4Controller`, read back from the switch: flow entries on v1model, PSA, PNA and the pipeline core, action profiles and a meter array on v1model, mirroring sessions on v1model and PSA; `P4RuntimeApi` with a null output argument fails; the mirroring, queue and time commands of `simple_switch_CLI` and `psa_switch_CLI`; the Thrift port of a destroyed switch answers with an error |
 | `p4-digest` | every `digest()` gives one record to the `Digest` trace, with the fields of its learn list, when the ingress processes the frame (v1model, pipeline core); after a program swap the records follow the new program; L2 learning with `P4Controller`'s digest callback: learned hosts are no longer flooded; a destroyed controller gets no digests, and each switch is registered once |
@@ -37,7 +37,7 @@ No environment variable is needed, and suites can run in parallel.
 | `p4-pipeline-delay` | `PipelineDelay` delays every packet by the same time without lowering the throughput (default egress path, VOQ, PSA, PNA, pipeline core, with `SwitchRate`, on a congested port), once per pass for recirculated frames and clones; a switch with packets in its pipeline can be destroyed |
 | `p4-transfer-buffer` | `TransferBufferSize`: a congested port holds that many frames after the egress and still sends back to back (v1model, PSA; default 0); a high-priority frame does not overtake the frames in the buffer; a packet that the egress drops does not free a sending port |
 | `p4-bridge-port` | CSMA and point-to-point bridge ports next to a switched-Ethernet port |
-| `p4-pna` | a PNA switch forwards, and drops what its program does not send; its flow table file runs in `bm_CLI`; a full output queue drops |
+| `p4-pna` | a PNA switch forwards, and drops what its program does not send; its flow table file runs in `bm_CLI`; a full output queue drops; a program that calls `recirculate()` or `mirror_packet()` is rejected with a clear message |
 | `link-framing` | Ethernet framing (preamble, FCS, padding, interframe gap) on the switched-Ethernet channel and the P4 point-to-point device; between two hosts, through a switch, and in a switch's estimate for a point-to-point bridge port |
 | `switched-ethernet-traffic-control` | flow control on host devices: a queue disc schedules the backlog of a host, `FqCoDelQueueDisc` is the default, `DisableFlowControl()` installs none; byte queue limits (`SetQueueLimits()`) keep the backlog in the queue disc even when the device queue has room |
 
@@ -45,7 +45,8 @@ No environment variable is needed, and suites can run in parallel.
 `simple_switch_CLI`, `p4-pna` `bm_CLI`, `p4-externs` `psa_switch_CLI`.
 
 [`examples-to-run.py`](examples-to-run.py) lists the examples that `test.py` runs
-as smoke tests: each must exit with 0. It keeps the examples from breaking unnoticed.
+and that must exit with 0. The examples check their results: they print `[PASS]` or
+`[FAIL]` and exit with 1 if a check fails (`examples/example-check.h`).
 
 ## Test data
 
@@ -66,10 +67,13 @@ ingress and in the egress, on v1model and the pipeline core. [`p4src/priority`](
 priority queues of v1model, [`p4src/resubmit`](p4src/resubmit) and
 [`p4src/recirculate`](p4src/recirculate) its resubmit and recirculation,
 [`p4src/clone`](p4src/clone) its clones and those of PSA (also to a multicast group), [`p4src/primitives`](p4src/primitives)
-`digest()`, `hash()` with max 0 and `random()` with lo > hi, [`p4src/lag`](p4src/lag)
-the LAG member that its multicast picks, and [`p4src/externs`](p4src/externs) the
-externs of PSA and PNA programs (`externs_pna.p4` has no `Counter`: p4c cannot
-compile it for BMv2's PNA yet). The format is a subset of p4c's STF:
+`digest()`, `hash()` with max 0, `random()` with lo > hi and a meter on simulation
+time, [`p4src/lag`](p4src/lag) the LAG member that its multicast picks,
+[`p4src/bounds`](p4src/bounds) register, counter and meter indices out of bounds
+and a frame that `truncate()` makes shorter than an Ethernet header, and
+[`p4src/externs`](p4src/externs) the externs of PSA and PNA programs
+(`externs_pna.p4` has no `Counter`: p4c cannot compile it for BMv2's PNA yet).
+The format is a subset of p4c's STF:
 
 ```
 # comment
@@ -79,6 +83,8 @@ mc_set_lag_membership 3 1 2                   # v1model: LAG 3 has the ports 1 a
 mc_mgrp_create 1                              # multicast group 1
 mc_node_create 0 2 | 3                        # node 0 (rid 0): port 2 and LAG 3
 mc_node_associate 1 0                         # node 0 is in group 1
+meter_set_rates MyIngress.mtr 0 0.001:1 0.002:2   # as in simple_switch_CLI, per microsecond
+at 1100                                       # the following frames are sent at 1100 µs
 packet 0 0000000000fe 000000000010 0800 ...   # send this frame into port 0
 expect 1 000000000011 0000000000fe 0800 ...   # this frame leaves port 1
 register MyEgress.egress_frames 0 2           # after the run, this register holds 2
@@ -87,7 +93,8 @@ counter IngressImpl.frames 0 1                # after the run, this counter has 
 
 Frames are Ethernet frames in hex; spaces are ignored and `*` in `expect` matches
 any nibble. A test passes if each port sends exactly the frames expected on it, in
-that order. All frames are sent at the same time, so frames to one port queue up.
+that order. Frames are sent at 1 ms unless an `at` comes before them, so frames
+to one port queue up.
 To add a case, add an `.stf` file and its name in `p4-packet-test-suite.cc`; a new
 program goes in its own directory as `<dir>/<dir>_<arch>.p4`.
 

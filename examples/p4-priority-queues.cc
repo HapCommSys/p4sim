@@ -34,6 +34,8 @@
  * the packets, their time in the queue and the deepest queue, in registers.
  */
 
+#include "example-check.h"
+
 #include "ns3/applications-module.h"
 #include "ns3/core-module.h"
 #include "ns3/format-utils.h"
@@ -269,5 +271,11 @@ main(int argc, char* argv[])
     }
 
     Simulator::Destroy();
-    return 0;
+    if (!priority)
+    {
+        return 0; // one queue: both flows lose packets
+    }
+    const Flow& small = flows[0];
+    return p4sim_example::Check(small.sent > 0 && small.delay.size() == small.sent,
+                                "the priority flow lost no packet");
 }

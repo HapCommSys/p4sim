@@ -294,7 +294,7 @@ Attributes of ``ns3::P4SwitchNetDevice``:
      - V1model: use the VOQ + fabric traffic manager instead of the output queues
    * - ``BmLogLevel``
      - off
-     - Level of the BMv2 pipeline log in ``/tmp/bmv2-<thrift port>-pipeline.log``; ``off`` writes none, ``trace`` logs every packet and is slower
+     - Level of the BMv2 pipeline log in ``/tmp/bmv2-<thrift port>-pipeline.log.txt``; ``off`` writes none, ``trace`` logs every packet and is slower
    * - ``ThriftPort``
      - 0
      - Thrift port of the runtime CLI; 0 picks the first free port
@@ -412,7 +412,7 @@ Troubleshooting
 Validation
 **********
 
-The module has 21 test suites with 155 test cases, from unit tests of
+The module has 21 test suites with 161 test cases, from unit tests of
 single classes to packet tests that send frames through a switch and check the
 frames that leave it (``p4-packet``, with test files in the format of p4c's
 STF).  Among them:

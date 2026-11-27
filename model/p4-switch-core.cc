@@ -29,6 +29,7 @@
 #include "ns3/p4-switch-core.h"
 #include "ns3/p4-switch-net-device.h"
 #include "ns3/p4sim-ns3-compat.h"
+#include "ns3/rng-seed-manager.h"
 #include "ns3/simulator.h"
 
 #include <algorithm>
@@ -927,6 +928,19 @@ P4SwitchCore::InitializeSwitchFromP4Json(const std::string& jsonPath)
     opt_parser.thrift_port = m_thriftPort;
     opt_parser.console_logging = false;
 
+    std::string unsupported = CheckPrimitives(jsonPath);
+    if (!unsupported.empty())
+    {
+        NS_FATAL_ERROR(unsupported);
+    }
+
+    // The random numbers of the P4 programs follow ns-3's seed and run
+    uint64_t run = RngSeedManager::GetRun();
+    std::seed_seq seed{RngSeedManager::GetSeed(),
+                       static_cast<uint32_t>(run),
+                       static_cast<uint32_t>(run >> 32)};
+    RandomEngine().seed(seed);
+
     // Initialize the switch, with a device manager without ports (NoPortsDevMgr)
     status = init_from_options_parser(opt_parser, nullptr, std::make_unique<NoPortsDevMgr>());
     if (status != 0)
@@ -940,6 +954,59 @@ P4SwitchCore::InitializeSwitchFromP4Json(const std::string& jsonPath)
     }
 
     NS_LOG_INFO("P4 json applied successfully.");
+}
+
+std::string
+P4SwitchCore::CheckPrimitives(const std::string& jsonPath) const
+{
+    std::map<std::string, std::string> missing = GetMissingPrimitives();
+    if (missing.empty())
+    {
+        return "";
+    }
+    Json::Value root;
+    Json::CharReaderBuilder reader;
+    std::string errors;
+    std::ifstream config(jsonPath);
+    if (!config || !Json::parseFromStream(reader, config, &root, &errors))
+    {
+        return ""; // BMv2 reports a file that it cannot read
+    }
+    for (const Json::Value& action : root["actions"])
+    {
+        for (const Json::Value& primitive : action["primitives"])
+        {
+            auto it = missing.find(primitive["op"].asString());
+            if (it == missing.end())
+            {
+                continue;
+            }
+            std::ostringstream message;
+            message << "Switch ID " << m_p4SwitchId << ": ";
+            const Json::Value& source = primitive["source_info"];
+            if (source.isObject())
+            {
+                message << source["filename"].asString() << " line " << source["line"].asInt()
+                        << ": ";
+            }
+            message << it->first << "() is not supported: " << it->second;
+            return message.str();
+        }
+    }
+    return "";
+}
+
+std::map<std::string, std::string>
+P4SwitchCore::GetMissingPrimitives() const
+{
+    return {};
+}
+
+std::mt19937_64&
+P4SwitchCore::RandomEngine()
+{
+    static std::mt19937_64 engine;
+    return engine;
 }
 
 void
@@ -1091,21 +1158,27 @@ P4SwitchCore::ExecuteCliCommands(const std::string& commandsFile)
     // listens (at most 5 s): then the services of this switch are registered
     // after BMv2's, and only to its own processor, never to the server of
     // another switch.
-    auto previousProcessor = bm_runtime::processor_;
-    bm_runtime::start_server(this, port);
-    for (int i = 0; i < 500 && !ServerListens(port); i++)
+    // The server is started once per switch: later calls use it. A second
+    // server could not bind the port, and BMv2 would end the process.
+    if (!m_thriftServerStarted)
     {
-        std::this_thread::sleep_for(std::chrono::milliseconds(10));
-    }
-    if (ServerListens(port) && bm_runtime::processor_ != previousProcessor)
-    {
-        GuardThriftServices();
-    }
-    else
-    {
-        NS_LOG_WARN("Switch ID: " << m_p4SwitchId
-                                  << " Thrift server not started in time, so the commands "
-                                     "of the target (e.g. mirroring_add) are not available");
+        m_thriftServerStarted = true;
+        auto previousProcessor = bm_runtime::processor_;
+        bm_runtime::start_server(this, port);
+        for (int i = 0; i < 500 && !ServerListens(port); i++)
+        {
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        }
+        if (ServerListens(port) && bm_runtime::processor_ != previousProcessor)
+        {
+            GuardThriftServices();
+        }
+        else
+        {
+            NS_LOG_WARN("Switch ID: " << m_p4SwitchId
+                                      << " Thrift server not started in time, so the commands "
+                                         "of the target (e.g. mirroring_add) are not available");
+        }
     }
 
     // The CLI reads the commands from a file in memory, which leaves nothing on the

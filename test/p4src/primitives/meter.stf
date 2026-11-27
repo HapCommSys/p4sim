@@ -1,0 +1,23 @@
+# execute_meter() counts simulation time (op 5 of primitives_v1model.p4). The
+# meter has a committed rate of 0.001 packets per microsecond with a burst of
+# 1 (yellow when its bucket is empty) and a peak rate of 0.002 with a burst of
+# 2 (red when empty); BMv2 checks the peak rate first. On the wall clock, the
+# frames would pass the meter within microseconds of each other, and the last
+# one would be red.
+
+meter_set_rates MyIngress.mtr 0 0.001:1 0.002:2
+
+at 1000
+packet 0 000000000001 000000000000 9005  00000005   # peak 2 -> 1, committed 1 -> 0
+at 1100
+packet 0 000000000001 000000000000 9005  00000005   # peak 1 -> 0, committed empty
+at 1200
+packet 0 000000000001 000000000000 9005  00000005   # peak empty
+at 3000
+packet 0 000000000001 000000000000 9005  00000005   # both refilled
+
+#        dst          src          type
+expect 1 000000000001 000000000000 9005  00000005   # green, 0
+expect 1 000000000001 000000000001 9005  00000005   # yellow, 1
+expect 1 000000000001 000000000002 9005  00000005   # red, 2
+expect 1 000000000001 000000000000 9005  00000005   # green

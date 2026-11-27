@@ -1,6 +1,7 @@
 # P4sim in ns-3
 
 <p align="center">
+  <a href="https://mingyumaz.github.io/p4sim/"><img src="https://img.shields.io/badge/Website-P4sim%20overview-0969da?logo=githubpages&logoColor=white" alt="P4sim website"></a>
   <a href="https://arxiv.org/abs/2503.17554"><img src="https://img.shields.io/badge/arXiv-2503.17554-red" alt="arXiv 2503.17554"></a>
   <a href="https://github.com/HapCommSys/p4sim-artifact-icns3"><img src="https://img.shields.io/badge/GitHub-HapCommSys%2Fp4sim--artifact--icns3-blue?logo=github" alt="GitHub HapCommSys/p4sim-artifact-icns3"></a>
   <a href="https://github.com/p4lang/gsoc/blob/main/program/2025/README.md"><img src="https://img.shields.io/badge/P4%20GSoC-2025-fbbc05?style=flat&logo=google-summer-of-code" alt="P4 GSoC 2025"></a>
@@ -8,6 +9,8 @@
 </p>
 
 P4sim runs P4 programs in the [ns-3 network simulator](https://www.nsnam.org/): switches execute their P4 program on the BMv2 behavioral model, while ns-3 provides the topology, the traffic and the time. This lets you evaluate programmable networks in end-to-end simulations.
+
+**Website:** [mingyumaz.github.io/p4sim](https://mingyumaz.github.io/p4sim/) gives an overview of P4sim, the [roadmap](https://mingyumaz.github.io/p4sim/roadmap/) and an animated look [inside the switch](https://mingyumaz.github.io/p4sim/inside/).
 
 P4sim is open-source software licensed under the Apache License 2.0; some files are under GPL-2.0-only (see [License](#license)).
 
@@ -83,11 +86,11 @@ docker run --rm p4sim ./ns3 run p4-v1model-ipv4-forwarding
 
 ```bash
 cd ~/workdir/ns3.39
-./ns3 run p4-v1model-ipv4-forwarding
+./ns3 run p4-hello
 ./test.py -s p4-packet
 ```
 
-[doc/examples.md](doc/examples.md) lists the examples and [test/Readme.md](test/Readme.md) the test suites. P4sim reads the P4 files (programs, flow tables, topologies) from the p4sim folder of the build, so no path needs to be set, and several ns-3 trees can live side by side. Earlier versions asked you to set `P4SIM_DIR` in `~/.bashrc`; it is no longer needed.
+**[doc/getting-started.md](doc/getting-started.md)** continues from here: change the flow table and the P4 program of `p4-hello`, then write your own. [doc/examples.md](doc/examples.md) lists the examples and [test/Readme.md](test/Readme.md) the test suites. P4sim reads the P4 files (programs, flow tables, topologies) from the p4sim folder of the build, so no path needs to be set, and several ns-3 trees can live side by side. Earlier versions asked you to set `P4SIM_DIR` in `~/.bashrc`; it is no longer needed.
 
 ---
 
@@ -119,7 +122,7 @@ The P4 program and its flow tables define the forwarding; the P4 program sees ev
 | `TransferBufferSize` | Frames a port holds after the egress pipeline, besides the one it sends (the hardware port queue); 0 (default) = none. v1model and PSA, not with `EnableVoqFabric` |
 | `EnableVoqFabric` | v1model: use the VOQ + fabric traffic manager instead of the output queues ([doc/traffic-manager.md](doc/traffic-manager.md)) |
 | `EnableSwap` | Allow swapping the P4 program at run time (`load_new_config` and `swap_configs` of the runtime CLI, or `P4Controller`). The swap waits until the switch holds no packet (PNA: except those in its output queues) |
-| `BmLogLevel` | Level of the BMv2 pipeline log in `/tmp/bmv2-<thrift port>-pipeline.log`, `trace` to `off`. `off` (default) writes none; `trace` logs every step of every packet, which helps to debug a P4 program but slows the simulation down |
+| `BmLogLevel` | Level of the BMv2 pipeline log in `/tmp/bmv2-<thrift port>-pipeline.log.txt`, `trace` to `off`. `off` (default) writes none; `trace` logs every step of every packet, which helps to debug a P4 program but slows the simulation down |
 | `ThriftPort` | Thrift port of the runtime CLI. 0 (default) picks the first free port from `$P4SIM_THRIFT_PORT_BASE` (9090), so simulations can run in parallel |
 | `ChannelType`, `EnableTracing` | Deprecated, no effect; removed in the next major version. Trace packets with the trace sources of the devices (`MacTx`, `MacRx`, ...), `PacketSink` or `FlowMonitor` |
 
@@ -144,10 +147,11 @@ A switch has two kinds of port, which can be mixed. The port number is the order
 
 ## Examples
 
-[doc/examples.md](doc/examples.md) describes all 26 examples. A selection:
+[doc/examples.md](doc/examples.md) describes all 27 examples. A selection:
 
 | Example | Description |
 |---|---|
+| `p4-hello` | The first example, and a test bed for own P4 programs without C++ |
 | `p4-v1model-ipv4-forwarding` | Two hosts and a switch with IPv4 forwarding (v1model) |
 | `p4-v1model-ipv4-forwarding-bridge` | The same over point-to-point or CSMA bridge ports |
 | `p4-psa-ipv4-forwarding`, `p4-pna-ipv4-forwarding` | The same with PSA and PNA |
@@ -168,9 +172,12 @@ The [paper](https://dl.acm.org/doi/10.1145/3747204.3747210) evaluates P4sim with
 
 ## Documentation
 
+For a first look, the [P4sim website](https://mingyumaz.github.io/p4sim/) explains the switch with figures and animations. The files below are the reference.
+
 | File | Contents |
 |---|---|
 | [doc/installation.md](doc/installation.md) | Installation: quick, step by step, or in a virtual machine; checks |
+| [doc/getting-started.md](doc/getting-started.md) | The first steps, the learning path, and common errors |
 | [doc/docker.md](doc/docker.md) | Building and running P4sim in Docker |
 | [doc/examples.md](doc/examples.md) | All examples and the format of their P4 files |
 | [doc/switch.md](doc/switch.md) | Pipeline and queues of the switch, switched-Ethernet ports and host devices, timing on the wire |
@@ -190,6 +197,8 @@ The [paper](https://dl.acm.org/doi/10.1145/3747204.3747210) evaluates P4sim with
 - PNA has no Thrift service of its own: its `FlowTablePath` runs in BMv2's generic `bm_CLI`, which has the table commands but not the time commands of `pna_nic_CLI`.
 - PSA and PNA programs give no digest records, as BMv2's `psa_switch` and `pna_nic` give none.
 - PSA and PNA programs can use the externs `Counter`, `Meter`, `Hash`, `InternetChecksum` and `Random` (BMv2's, in [utils/psa_externs](utils/psa_externs)). p4c does not compile `DirectCounter` and `DirectMeter`, or a `Counter` in a PNA program, for BMv2 yet. Their meters measure simulation time; the meters of v1model programs measure the wall clock, as in BMv2.
+- PNA has no `recirculate()` and no `mirror_packet()`, as BMv2's `pna_nic` has neither: a PNA program that calls one is rejected when the switch loads it.
+- v1model direct meters (`direct_meter`) count wall-clock time, as BMv2 runs them; `meter.execute_meter()` counts simulation time ([doc/switch.md](doc/switch.md#time-and-random-numbers-in-the-p4-program)).
 - The pipeline core (`P4SwitchArch` 3) has no output queue: a congested port can lose frames. It has no packet replication engine either: multicast (`mcast_grp`), clones, resubmit and recirculation have no effect, and the frame goes to `egress_spec` only.
 - The Thrift server of a switch runs in its own thread: use the runtime CLIs before and after the simulation, and `P4Controller` during it. BMv2 cannot stop the server, so the Thrift port of a destroyed switch stays open; it answers every call with an error.
 

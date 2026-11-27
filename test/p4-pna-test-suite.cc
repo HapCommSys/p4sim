@@ -19,10 +19,14 @@
 #include "ns3/core-module.h"
 #include "ns3/eth-net-device.h"
 #include "ns3/network-module.h"
+#include "ns3/p4-switch-core.h"
 #include "ns3/p4-switch-net-device.h"
 #include "ns3/p4sim-ns3-compat.h"
 #include "ns3/switched-ethernet-channel.h"
 #include "ns3/test.h"
+
+#include <fstream>
+#include <string>
 
 using namespace ns3;
 
@@ -278,6 +282,76 @@ class PnaRefusedTeardownTestCase : public TestCase
     }
 };
 
+/**
+ * \ingroup p4sim-tests
+ * A PNA program that calls recirculate() or mirror_packet() is rejected with a
+ * message that names the call, its line and what to use instead. BMv2 would
+ * report the parameters of v1model's recirculate. InitializeSwitchFromP4Json()
+ * ends the simulation with the message, so the test calls CheckPrimitives().
+ */
+class PnaMissingPrimitivesTestCase : public TestCase
+{
+  public:
+    PnaMissingPrimitivesTestCase()
+        : TestCase("pna: a program that calls recirculate() or mirror_packet() is rejected")
+    {
+    }
+
+  private:
+    /// An initialized switch without ports
+    Ptr<P4SwitchNetDevice> CreateSwitch(uint32_t arch, const std::string& json)
+    {
+        Ptr<Node> node = CreateObject<Node>();
+        Ptr<P4SwitchNetDevice> sw = CreateObject<P4SwitchNetDevice>();
+        sw->SetAttribute("P4SwitchArch", UintegerValue(arch));
+        sw->SetAttribute("JsonPath", StringValue(CreateDataDirFilename(json)));
+        sw->SetAttribute("FlowTablePath", StringValue(""));
+        node->AddDevice(sw);
+        sw->Initialize();
+        return sw;
+    }
+
+    void DoRun() override
+    {
+        SetDataDir(NS_TEST_SOURCEDIR);
+        Ptr<P4SwitchNetDevice> pna =
+            CreateSwitch(P4NIC_ARCH_PNA, "p4src/simple_pna/simple_pna.json");
+        Ptr<P4SwitchNetDevice> v1model =
+            CreateSwitch(P4SWITCH_ARCH_V1MODEL, "p4src/simple_v1model/simple_v1model.json");
+        // The parts of a P4 JSON that CheckPrimitives() reads
+        std::string recirculate = CreateTempDirFilename("pna_recirculate.json");
+        std::ofstream(recirculate) << R"({"actions": [{"name": "a", "primitives": [)"
+                                   << R"({"op": "assign", "parameters": []},)"
+                                   << R"({"op": "recirculate", "parameters": [],)"
+                                   << R"( "source_info": {"filename": "nic.p4", "line": 7}}]}]})";
+        std::string mirror = CreateTempDirFilename("pna_mirror.json");
+        std::ofstream(mirror) << R"({"actions": [{"name": "a", "primitives": [)"
+                              << R"({"op": "mirror_packet", "parameters": []}]}]})";
+
+        std::string message = pna->GetCore()->CheckPrimitives(recirculate);
+        NS_TEST_EXPECT_MSG_NE(message.find(": nic.p4 line 7: recirculate() is not supported: "
+                                           "P4sim's PNA, like BMv2's pna_nic, cannot recirculate"),
+                              std::string::npos,
+                              "Unexpected message: " << message);
+        message = pna->GetCore()->CheckPrimitives(mirror);
+        NS_TEST_EXPECT_MSG_NE(message.find(": mirror_packet() is not supported: "),
+                              std::string::npos,
+                              "Unexpected message: " << message);
+        NS_TEST_EXPECT_MSG_EQ(pna->GetCore()->CheckPrimitives(
+                                  CreateDataDirFilename("p4src/simple_pna/simple_pna.json")),
+                              "",
+                              "simple_pna calls neither");
+        NS_TEST_EXPECT_MSG_EQ(v1model->GetCore()->CheckPrimitives(recirculate),
+                              "",
+                              "v1model has recirculate");
+    }
+
+    void DoTeardown() override
+    {
+        Simulator::Destroy();
+    }
+};
+
 static class P4PnaTestSuite : public TestSuite
 {
   public:
@@ -288,5 +362,6 @@ static class P4PnaTestSuite : public TestSuite
         AddTestCase(new PnaForwardTestCase("flowtable_pna_cli.txt"), P4SIM_TEST_QUICK);
         AddTestCase(new PnaQueueFullTestCase(), P4SIM_TEST_QUICK);
         AddTestCase(new PnaRefusedTeardownTestCase(), P4SIM_TEST_QUICK);
+        AddTestCase(new PnaMissingPrimitivesTestCase(), P4SIM_TEST_QUICK);
     }
 } g_p4PnaTestSuite;

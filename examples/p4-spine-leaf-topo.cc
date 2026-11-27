@@ -20,6 +20,8 @@
  * keep switchRate above the peak packet rate.
  */
 
+#include "example-check.h"
+
 #include "ns3/applications-module.h"
 #include "ns3/bridge-helper.h"
 #include "ns3/core-module.h"
@@ -691,5 +693,7 @@ main(int argc, char* argv[])
                                           << std::endl
                                           << "Run successfully!");
 
-    return 0;
+    int failed = p4sim_example::Check(switch2.totalRxBytes > 0 && switch3.totalRxBytes > 0,
+                                      "the flows to h3 use both spines");
+    return failed | p4sim_example::CheckDelivery(clientTxBytes, sinkRxBytes, "h3");
 }

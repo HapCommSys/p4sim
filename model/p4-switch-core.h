@@ -20,6 +20,8 @@
 #include <deque>
 #include <map>
 #include <memory>
+#include <random>
+#include <string>
 #include <thread>
 #include <unordered_map>
 #include <vector>
@@ -57,10 +59,40 @@ class P4SwitchCore : public bm::Switch
 
     /**
      * @brief Initialize the switch with the P4 program
+     *
+     * It also seeds RandomEngine() from ns-3's seed and run.
+     *
      * @param jsonPath the path to the JSON file
      * @return void
      */
     void InitializeSwitchFromP4Json(const std::string& jsonPath);
+
+    /**
+     * @brief Look for a primitive that the P4 program calls and this architecture lacks
+     *
+     * BMv2 finds a primitive by its name alone: a PNA program that calls
+     * recirculate() meets the recirculate of v1model, and BMv2 reports a wrong
+     * number of parameters. InitializeSwitchFromP4Json() ends the simulation
+     * with this message instead, before BMv2 reads the program.
+     *
+     * @param jsonPath the path to the JSON file
+     * @return a message that names the first such call, its source line and
+     *         what to use instead; empty if there is none
+     */
+    std::string CheckPrimitives(const std::string& jsonPath) const;
+
+    /**
+     * @brief The random number engine of the P4 programs
+     *
+     * random() of v1model draws from it. Each switch seeds it from ns-3's seed
+     * and run number (RngSeedManager, or --RngSeed and --RngRun) when it loads
+     * its program, so a simulation gives the same random numbers every time it
+     * runs with the same seed and run. All switches of a process share it; the
+     * P4 programs run in the simulation thread.
+     *
+     * @return the engine
+     */
+    static std::mt19937_64& RandomEngine();
 
     /**
      * @brief Set the BMv2 log level used by InitializeSwitchFromP4Json()
@@ -173,7 +205,9 @@ class P4SwitchCore : public bm::Switch
      *
      * Empty lines and lines that start with '#' are skipped. A command that the
      * CLI reports as an error is printed with its line number, and the rest of
-     * the file runs. A file that cannot be read ends the simulation.
+     * the file runs. A file that cannot be read ends the simulation. It can be
+     * called again later in the simulation: the first call starts the Thrift
+     * server of the switch, and the later calls use it.
      *
      * @param commandsFile the path to the CLI commands file, empty for none
      * @return 0 if every command ran without an error, 1 otherwise
@@ -408,6 +442,13 @@ class P4SwitchCore : public bm::Switch
                           std::shared_ptr<apache::thrift::TProcessor> processor);
 
     /**
+     * @brief The primitives that this architecture lacks, for CheckPrimitives()
+     * @return for each primitive (as the P4 JSON names it), what the message
+     *         suggests instead. The default is none.
+     */
+    virtual std::map<std::string, std::string> GetMissingPrimitives() const;
+
+    /**
      * @brief Ingress processing pipeline
      */
     virtual void HandleIngressPipeline() = 0;
@@ -546,6 +587,7 @@ class P4SwitchCore : public bm::Switch
 
     class MirroringSessions;            //!< Mirroring sessions for clone .etc
     int m_thriftPort{0};                //!< Thrift port of the switch (allocated at init)
+    bool m_thriftServerStarted{false};  //!< ExecuteCliCommands() started the Thrift server
     uint16_t m_requestedThriftPort{0};  //!< Requested Thrift port, 0 = automatic
     std::string m_bmLogLevel{"off"};    //!< BMv2 log level
     size_t m_nbQueuesPerPort;           //!< Number of queues per port (default 8)

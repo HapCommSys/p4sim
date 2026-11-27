@@ -1,0 +1,10 @@
+# A frame that truncate() makes shorter than an Ethernet header (see
+# bounds_v1model.p4): ns-3 cannot carry it, so P4sim drops it. Without the
+# check, the bridge port reads past the end of the frame. The frame after it
+# is forwarded.
+
+#        dst          src          type op index    value old  color
+packet 0 000000000001 000000000002 88b5 05 00000000 0000  0000 00   # 10 bytes: dropped
+packet 0 000000000001 000000000002 88b5 00 00000000 0000  0000 00   # forwarded
+
+expect 1 000000000001 000000000002 88b5 00 00000000 0000  0000 00

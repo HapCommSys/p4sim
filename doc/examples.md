@@ -8,7 +8,9 @@ Run an example from the ns-3 folder:
 ./ns3 run "p4-source-routing --PrintHelp"                                 # the options of an example
 ```
 
-`./test.py` runs every example below as a smoke test, with the arguments in
+Each example checks its result: it prints `[PASS]` or `[FAIL]`, and exits with 1 if a check
+fails. `--MinDelivery=0` turns off the check that the packets arrive, for experiments that
+lose packets on purpose. `./test.py` runs every example below, with the arguments in
 [`test/examples-to-run.py`](../test/examples-to-run.py).
 
 ## List
@@ -21,6 +23,7 @@ port, set up by `SwitchedEthernetHelper`; and **bridge** ports, ordinary ns-3 de
 
 | Example | What it shows | Architecture | Ports | P4 files (`examples/p4src/`) |
 |---|---|---|---|---|
+| `p4-hello` | The first example, and a test bed for own P4 programs: `--json`, `--flowTable`, `--hosts` ([getting-started.md](getting-started.md)) | v1model | switched Ethernet | `hello` |
 | `p4-v1model-ipv4-forwarding` | Two hosts and a switch with IPv4 forwarding; `--model=1` runs an ns-3 bridge instead, as a baseline | v1model | switched Ethernet | `simple_v1model` |
 | `p4-v1model-ipv4-forwarding-bridge` | The same over bridge ports: `--channelType=p2p` (default) or `csma` | v1model | P4 point-to-point or CSMA | `simple_v1model` |
 | `p4-psa-ipv4-forwarding` | Two hosts and a switch with IPv4 forwarding | PSA | CSMA | `simple_psa` |
@@ -33,7 +36,7 @@ port, set up by `SwitchedEthernetHelper`; and **bridge** ports, ordinary ns-3 de
 | `p4-firewall` | A stateful TCP firewall: connections opened from inside pass, those opened from outside are dropped (tutorial `firewall` [3]) | v1model | CSMA | `firewall` |
 | `p4-calc` | The switch answers calculator requests (tutorial `calc` [4]) | v1model | CSMA | `calc` |
 | `p4-l3-router` | Three routers in a line with L3 forwarding | v1model | CSMA | `l3_router` |
-| `p4-link-monitoring` | In-band probes that collect link utilisation (tutorial `link_monitor` [5]) | v1model | P4 point-to-point | `link_monitor` |
+| `p4-link-monitoring` | In-band probes that collect link utilisation (tutorial `link_monitor` [5]) | v1model | CSMA | `link_monitor` |
 | `p4-source-routing` | Source routing with a header stack; `--path` gives the egress ports (tutorial `source_routing` [6]) | v1model | CSMA | `source_routing` |
 | `p4-queue-test` | Three UDP flows with different priorities through one switch | v1model | P4 point-to-point | `qos` |
 | `p4-priority-queues` | Strict-priority queues: the P4 program maps a UDP port to priority 7, so a small flow passes a congested port without queueing delay; the egress counts time in the queue and queue depth per queue in registers. `--priority=0` puts both flows in one queue | v1model | switched Ethernet | `queueing` |
@@ -41,7 +44,7 @@ port, set up by `SwitchedEthernetHelper`; and **bridge** ports, ordinary ns-3 de
 | `p4-spine-leaf-topo` | A spine-leaf network with ECMP load balancing (tutorial `load_balance` [7]) | v1model | CSMA and P4 point-to-point | `load_balance` |
 | `p4-topo-fattree` | A k-ary fat tree with generated flow tables (`FattreeTopoHelper`, `BuildFlowtableHelper`); `--model=1` runs ns-3 bridges instead | v1model | CSMA and P4 point-to-point | `fat-tree` |
 | `topo-fattree` | The same fat tree from plain ns-3 nodes, without P4, as a baseline | – | CSMA | – |
-| `p4-ipv4-animation` | IPv4 forwarding with a NetAnim trace (`topology.xml`); needs the ns-3 module `netanim`, which the quick installation does not build | v1model | CSMA | `simple_v1model` |
+| `p4-ipv4-animation` | IPv4 forwarding with a NetAnim trace (`p4-ipv4-animation.xml`); needs the ns-3 module `netanim`, which the quick installation does not build | v1model | CSMA | `simple_v1model` |
 | `p4-voq-fabric-integration` | The VOQ + fabric traffic manager (`EnableVoqFabric`) end to end, and the default path | v1model | switched Ethernet | `simple_v1model` |
 | `p4-voq-fabric-throughput` | Goodput of the traffic manager path under overload | v1model | switched Ethernet | `simple_v1model` |
 | `p4-voq-fabric-priority` | Strict priority in the traffic manager: two flows into one port | v1model | switched Ethernet | `qos` |

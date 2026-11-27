@@ -173,6 +173,17 @@ P4PnaNic::receive_(port_t port_num, const char* buffer, int len)
     return 0;
 }
 
+std::map<std::string, std::string>
+P4PnaNic::GetMissingPrimitives() const
+{
+    return {{"recirculate",
+             "P4sim's PNA, like BMv2's pna_nic, cannot recirculate a packet; v1model and PSA "
+             "can"},
+            {"mirror_packet",
+             "P4sim's PNA, like BMv2's pna_nic, cannot mirror a packet; v1model and PSA can "
+             "clone it"}};
+}
+
 void
 P4PnaNic::start_and_return_()
 {

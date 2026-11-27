@@ -26,6 +26,8 @@
 #include "ns3/p4-switch-core.h"
 
 #include <deque>
+#include <map>
+#include <string>
 #include <unordered_map>
 
 #undef LOG_INFO
@@ -77,6 +79,10 @@ class P4PnaNic : public P4SwitchCore
                       int inPort,
                       uint16_t protocol,
                       const Address& destination) override;
+
+    /// recirculate() and mirror_packet(): pna.p4 declares them, but BMv2's
+    /// pna_nic and P4sim's PNA have neither
+    std::map<std::string, std::string> GetMissingPrimitives() const override;
 
     // ---- Event-driven scheduler ----
 

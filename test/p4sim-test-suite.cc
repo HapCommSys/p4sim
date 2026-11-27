@@ -4,9 +4,10 @@
 /*
  * Switch set-up: every architecture loads its P4 program and uses no BMv2 port
  * manager, Thrift ports never collide, BmLogLevel controls the BMv2 pipeline log
- * (off by default), the deprecated attributes are still accepted, and errors in
- * a flow table are reported. The switches have no ports, so no packet is sent, and
- * only those of the last test case have a flow table and so a Thrift server.
+ * (off by default), the deprecated attributes are still accepted, errors in a
+ * flow table are reported, and a switch runs commands again during the
+ * simulation. The switches have no ports, so no packet is sent, and only those of
+ * the last two test cases have a flow table and so a Thrift server.
  */
 
 #include "ns3/core-module.h"
@@ -376,6 +377,51 @@ class P4FlowTableErrorsTestCase : public P4TestCase
 
 /**
  * \ingroup p4sim-tests
+ * ExecuteCliCommands() runs again on a switch that ran its flow table at the
+ * start, also during the simulation: the Thrift server of the switch starts
+ * once. (A second server could not bind its port, and BMv2 ended the process.)
+ */
+class P4FlowTableAgainTestCase : public P4TestCase
+{
+  public:
+    P4FlowTableAgainTestCase()
+        : P4TestCase("Commands run again on a switch, also during the simulation")
+    {
+    }
+
+  private:
+    void DoRun() override
+    {
+        SetDataDir(NS_TEST_SOURCEDIR);
+        std::string dir = CreateDataDirFilename("p4src/simple_v1model/");
+        // flowtable_0.txt adds two entries to ipv4_nhop
+        Ptr<P4SwitchNetDevice> sw =
+            CreateSwitch(0, dir + "simple_v1model.json", "off", dir + "flowtable_0.txt");
+        std::string table3 = CreateTempDirFilename("flowtable_again_3.txt");
+        std::ofstream(table3) << "table_add ipv4_nhop ipv4_forward 0x0a010103 => "
+                                 "00:00:00:00:00:05 0x2\n";
+        std::string table4 = CreateTempDirFilename("flowtable_again_4.txt");
+        std::ofstream(table4) << "table_add ipv4_nhop ipv4_forward 0x0a010104 => "
+                                 "00:00:00:00:00:07 0x2\n";
+        int status3 = -1;
+        int status4 = -1;
+        Simulator::Schedule(MilliSeconds(1),
+                            [&]() { status3 = sw->GetCore()->ExecuteCliCommands(table3); });
+        Simulator::Schedule(MilliSeconds(2),
+                            [&]() { status4 = sw->GetCore()->ExecuteCliCommands(table4); });
+        Simulator::Stop(MilliSeconds(10));
+        Simulator::Run();
+
+        NS_TEST_EXPECT_MSG_EQ(status3, 0, "The second flow table must run");
+        NS_TEST_EXPECT_MSG_EQ(status4, 0, "The third flow table must run");
+        std::size_t entries = 0;
+        sw->GetCore()->mt_get_num_entries(0, "MyIngress.ipv4_nhop", &entries);
+        NS_TEST_EXPECT_MSG_EQ(entries, 4, "Each flow table must add its entries");
+    }
+};
+
+/**
+ * \ingroup p4sim-tests
  * ChannelType and EnableTracing have no effect and are deprecated: a script that
  * still sets them runs, and ns-3 warns about them.
  */
@@ -464,6 +510,7 @@ class P4simTestSuite : public TestSuite
         AddTestCase(new P4BmLogLevelDefaultTestCase, P4SIM_TEST_QUICK);
         AddTestCase(new P4DeprecatedAttributesTestCase, P4SIM_TEST_QUICK);
         AddTestCase(new P4FlowTableErrorsTestCase, P4SIM_TEST_QUICK);
+        AddTestCase(new P4FlowTableAgainTestCase, P4SIM_TEST_QUICK);
     }
 };
 

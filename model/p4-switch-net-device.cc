@@ -114,7 +114,7 @@ P4SwitchNetDevice::GetTypeId()
             .AddAttribute(
                 "BmLogLevel",
                 "Level of the BMv2 pipeline log written to "
-                "/tmp/bmv2-<thrift port>-pipeline.log: trace, debug, info, notice, "
+                "/tmp/bmv2-<thrift port>-pipeline.log.txt: trace, debug, info, notice, "
                 "warn, error, critical, alert, emerg or off. With off (the default), "
                 "no log file is written; trace logs every step of every packet, "
                 "which helps to debug a P4 program but slows the simulation down. "
@@ -581,6 +581,18 @@ P4SwitchNetDevice::SendNs3Packet(Ptr<Packet> packetOut,
         return false;
     }
 
+    // ns-3 cannot carry a frame shorter than an Ethernet header: the devices
+    // read the header and would read past the end of the frame. The P4
+    // program can emit one, e.g. with truncate().
+    if (packetOut->GetSize() < EthernetHeader().GetSerializedSize())
+    {
+        NS_LOG_WARN("SendNs3Packet: frame of " << packetOut->GetSize() << " bytes on port "
+                                               << outPort
+                                               << " is shorter than an Ethernet header, dropping");
+        m_macTxDropTrace(packetOut);
+        return false;
+    }
+
     m_macTxTrace(packetOut);
     m_snifferTrace(packetOut);
     m_promiscSnifferTrace(packetOut);
@@ -790,15 +802,11 @@ bool
 P4SwitchNetDevice::SendOnBridgePort(uint32_t port, Ptr<Packet> frame, Time* txTime)
 {
     // The port device adds its own header, so hand it the frame's addresses
-    // and EtherType without the Ethernet header.
+    // and EtherType without the Ethernet header. Every frame here has one:
+    // SendNs3Packet() drops shorter frames, and Send() adds the header.
     Ptr<Packet> payload = frame->Copy();
     EthernetHeader eth;
-    if (payload->RemoveHeader(eth) == 0)
-    {
-        NS_LOG_WARN("SendOnBridgePort: frame without an Ethernet header, dropping");
-        m_macTxDropTrace(frame);
-        return false;
-    }
+    payload->RemoveHeader(eth);
     if (!m_bridgePorts[port]->SendFrom(payload,
                                        eth.GetSource(),
                                        eth.GetDestination(),
