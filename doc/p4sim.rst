@@ -380,6 +380,9 @@ Run any built-in example with::
      - A tunnel with a custom header
    * - ``p4-firewall``
      - A stateful TCP firewall (p4lang tutorial ``firewall``)
+   * - ``p4-ecn``, ``p4-mri``, ``p4-multicast``
+     - The p4lang tutorials ``ecn``, ``mri`` and ``multicast``, with their solutions
+       unchanged; they also check your own solution (``doc/tutorials.md``)
    * - ``p4-spine-leaf-topo``
      - Spine-leaf network with ECMP load balancing
    * - ``p4-topo-fattree``

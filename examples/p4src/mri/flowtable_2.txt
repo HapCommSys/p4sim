@@ -1,0 +1,6 @@
+# Switch s3 of the mri exercise of p4lang/tutorials (de28e7a), from
+# s3-runtime.json. P4sim numbers ports from 0: tutorial port n is port n-1.
+table_set_default MyEgress.swtrace MyEgress.add_swtrace 3
+table_add MyIngress.ipv4_lpm MyIngress.ipv4_forward 10.0.3.3/32 => 08:00:00:00:03:03 0
+table_add MyIngress.ipv4_lpm MyIngress.ipv4_forward 10.0.1.0/24 => 08:00:00:00:01:00 1
+table_add MyIngress.ipv4_lpm MyIngress.ipv4_forward 10.0.2.0/24 => 08:00:00:00:02:00 2
