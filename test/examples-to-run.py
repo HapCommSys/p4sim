@@ -1,8 +1,9 @@
 #! /usr/bin/env python3
 # -*- Mode: python; py-indent-offset: 4; indent-tabs-mode: nil; coding: utf-8; -*-
 
-# test.py runs every example below and checks that it finishes with exit code 0.
-# The examples check their results and exit with 1 if a check fails.
+# test.py and run-tests.sh run every example below, with its arguments, and check
+# that it finishes with exit code 0. The examples check their results and exit
+# with 1 if a check fails.
 #
 # Each tuple is (example name with arguments, do_run, do_valgrind_run). test.py
 # reads this file as text: write every argument literally (no variables) and do
@@ -43,6 +44,7 @@ cpp_examples = [
     ("p4-topo-fattree", "True", "False"),
     ("p4-spine-leaf-topo --numFlows=10 --duration=2", "True", "False"),
     ("topo-fattree", "True", "False"),
+    ("p4-v1model-ipv4-forwarding-bridge", "True", "False"),
     ("p4-v1model-ipv4-forwarding-bridge --channelType=csma", "True", "False"),
     ("p4-voq-fabric-integration", "True", "False"),
     ("p4-voq-fabric-priority", "True", "False"),
