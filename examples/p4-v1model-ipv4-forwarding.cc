@@ -346,6 +346,15 @@ main(int argc, char* argv[])
 
             switchPorts.Add(swDev);
 
+            // The bridge ports get addresses of their own, 00:00:00:00:01:<port+1>.
+            // CsmaHelper hands out 00:00:00:00:00:01 and up, the addresses that the
+            // hosts get below, and the bridge takes the address of its first port:
+            // it would keep the frames for host 0 to itself
+            std::ostringstream portMacStr;
+            portMacStr << "00:00:00:00:01:" << std::hex << std::setfill('0') << std::setw(2)
+                       << (i + 1);
+            swDev->SetAddress(Mac48Address(portMacStr.str().c_str()));
+
             std::ostringstream macStr;
             macStr << "00:00:00:00:00:" << std::hex << std::setfill('0') << std::setw(2) << (i + 1);
             hostDev->SetAddress(Mac48Address(macStr.str().c_str()));
@@ -405,12 +414,13 @@ main(int argc, char* argv[])
                                                MakeBoundCallback(&RxCallback, (uint32_t)pktSize));
 
     // -----------------------------------------------------------------------
-    // MAC-level traces (only available on CSMA devices in model == 1)
+    // MAC-level traces on the host devices: device 1, after the loopback device
+    // that the Internet stack added
     // -----------------------------------------------------------------------
     if (model == 1)
     {
         Ptr<CsmaNetDevice> txDev =
-            DynamicCast<CsmaNetDevice>(terminals.Get(clientIndex)->GetDevice(0));
+            DynamicCast<CsmaNetDevice>(terminals.Get(clientIndex)->GetDevice(1));
         if (txDev)
         {
             txDev->TraceConnectWithoutContext(
@@ -425,7 +435,7 @@ main(int argc, char* argv[])
         }
 
         Ptr<CsmaNetDevice> rxDev =
-            DynamicCast<CsmaNetDevice>(terminals.Get(serverIndex)->GetDevice(0));
+            DynamicCast<CsmaNetDevice>(terminals.Get(serverIndex)->GetDevice(1));
         if (rxDev)
         {
             rxDev->TraceConnectWithoutContext(
