@@ -15,7 +15,7 @@
  *
  * Every ingress port of s0 has a two-rate three-color meter (RFC 2698) of frame
  * bytes. At 0.5 s the control plane sets all of them to a committed rate of
- * 5 Mbps and a peak rate of 10 Mbps (P4RuntimeApi::MeterSetRates). From 1 to 3 s,
+ * 5 Mbps and a peak rate of 10 Mbps (P4RuntimeApi::SetMeterArrayRates). From 1 to 3 s,
  * h0 sends 4 Mbps of UDP to h2, within the committed rate, and h1 sends 20 Mbps,
  * twice the peak rate. The switch drops the red frames, those over the peak rate,
  * so h1's flow arrives at the peak rate while h0's arrives whole. A counter counts
@@ -172,8 +172,19 @@ main(int argc, char* argv[])
                                       sinks[1]->GetTotalRx() / PAYLOAD};
     Simulator::Destroy();
 
-    // h1 may send its burst and then the peak rate, in frame bytes, for the time it sends
-    double expected = (PEAK.GetBitRate() / 8.0 * (STOP - START).GetSeconds() + BURST) / FRAME;
+    // The bucket of a rate is full when h1 starts (BURST bytes) and gains the rate
+    // between two packets of h1. A frame that passes takes FRAME bytes from it, and
+    // h1 sends faster than both rates, so of its n packets
+    // (BURST + rate * (n - 1) * interval) / FRAME pass the bucket: those within the
+    // peak rate are received, those within the committed rate are green
+    const double interval = rates[1].CalculateBytesTxTime(PAYLOAD).GetSeconds();
+    auto passing = [&](DataRate rate) {
+        return static_cast<uint64_t>((BURST + rate.GetBitRate() / 8.0 * (sent[1] - 1) * interval) /
+                                     FRAME);
+    };
+    const uint64_t expected = passing(PEAK);
+    const uint64_t expectedGreen = passing(COMMITTED);
+    auto near = [](uint64_t a, uint64_t b) { return a <= b + 1 && b <= a + 1; };
     auto mbps = [](DataRate rate) { return std::to_string(rate.GetBitRate() / 1000000) + " Mbps"; };
     std::cout << "Meters: committed rate " << mbps(COMMITTED) << ", peak rate " << mbps(PEAK)
               << " (of frame bytes)\n"
@@ -190,14 +201,17 @@ main(int argc, char* argv[])
                            counted[0][2] == 0,
                        "h0, within the committed rate: all " + std::to_string(sent[0]) +
                            " packets green and received");
-    std::ostringstream peak;
-    peak << "h1, over the peak rate: " << received[1] << " packets received, " << std::fixed
-         << std::setprecision(0) << expected << " expected at the peak rate";
-    failed |= Check(std::abs(received[1] - expected) < 0.02 * expected, peak.str());
+    failed |=
+        Check(near(received[1], expected),
+              "h1, over the peak rate: " + std::to_string(received[1]) + " packets received, " +
+                  std::to_string(expected) + " expected from the peak rate and the burst size");
     failed |= Check(counted[1][2] > 0 && counted[1][2] == sent[1] - received[1],
                     "h1: the switch dropped the " + std::to_string(counted[1][2]) +
                         " red packets, and no other");
-    failed |= Check(counted[1][0] > 0 && counted[1][1] > 0,
-                    "h1: green packets within the committed rate, yellow ones above it");
+    failed |=
+        Check(near(counted[1][0], expectedGreen) && counted[1][0] + counted[1][1] == received[1],
+              "h1: " + std::to_string(counted[1][0]) + " green packets, " +
+                  std::to_string(expectedGreen) + " expected from the committed rate; the other " +
+                  std::to_string(counted[1][1]) + " received ones yellow");
     return failed;
 }

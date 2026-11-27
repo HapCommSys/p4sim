@@ -384,7 +384,7 @@
       "id" : 0,
       "source_info" : {
         "filename" : "psa_ecmp.p4",
-        "line" : 115,
+        "line" : 118,
         "column" : 8,
         "source_fragment" : "IngressDeparserImpl"
       },
@@ -396,7 +396,7 @@
       "id" : 1,
       "source_info" : {
         "filename" : "psa_ecmp.p4",
-        "line" : 141,
+        "line" : 144,
         "column" : 8,
         "source_fragment" : "EgressDeparserImpl"
       },
@@ -407,15 +407,15 @@
   "meter_arrays" : [],
   "counter_arrays" : [
     {
-      "name" : "IngressImpl.flow_paths",
+      "name" : "IngressImpl.flow_ports",
       "id" : 0,
       "source_info" : {
         "filename" : "psa_ecmp.p4",
-        "line" : 81,
+        "line" : 82,
         "column" : 61,
-        "source_fragment" : "flow_paths"
+        "source_fragment" : "flow_ports"
       },
-      "size" : 128,
+      "size" : 256,
       "is_direct" : false
     }
   ],
@@ -463,7 +463,7 @@
           ],
           "source_info" : {
             "filename" : "psa_ecmp.p4",
-            "line" : 84,
+            "line" : 85,
             "column" : 8,
             "source_fragment" : "send_to_port(ostd, port)"
           }
@@ -482,7 +482,7 @@
           ],
           "source_info" : {
             "filename" : "psa_ecmp.p4",
-            "line" : 84,
+            "line" : 85,
             "column" : 8,
             "source_fragment" : "send_to_port(ostd, port)"
           }
@@ -501,7 +501,7 @@
           ],
           "source_info" : {
             "filename" : "psa_ecmp.p4",
-            "line" : 84,
+            "line" : 85,
             "column" : 8,
             "source_fragment" : "send_to_port(ostd, port)"
           }
@@ -532,7 +532,7 @@
           ],
           "source_info" : {
             "filename" : "psa_ecmp.p4",
-            "line" : 88,
+            "line" : 89,
             "column" : 40,
             "source_fragment" : "hdr.ipv4.srcAddr"
           }
@@ -551,7 +551,7 @@
           ],
           "source_info" : {
             "filename" : "psa_ecmp.p4",
-            "line" : 88,
+            "line" : 89,
             "column" : 58,
             "source_fragment" : "hdr.ipv4.dstAddr"
           }
@@ -570,7 +570,7 @@
           ],
           "source_info" : {
             "filename" : "psa_ecmp.p4",
-            "line" : 88,
+            "line" : 89,
             "column" : 76,
             "source_fragment" : "hdr.ipv4.protocol"
           }
@@ -589,7 +589,7 @@
           ],
           "source_info" : {
             "filename" : "psa_ecmp.p4",
-            "line" : 89,
+            "line" : 90,
             "column" : 40,
             "source_fragment" : "hdr.udp.srcPort"
           }
@@ -608,7 +608,7 @@
           ],
           "source_info" : {
             "filename" : "psa_ecmp.p4",
-            "line" : 89,
+            "line" : 90,
             "column" : 57,
             "source_fragment" : "hdr.udp.dstPort"
           }
@@ -652,7 +652,7 @@
           ],
           "source_info" : {
             "filename" : "psa_ecmp.p4",
-            "line" : 88,
+            "line" : 89,
             "column" : 20,
             "source_fragment" : "flow_hash.get_hash({hdr.ipv4.srcAddr, hdr.ipv4.dstAddr, hdr.ipv4.protocol, ..."
           }
@@ -681,7 +681,7 @@
           ],
           "source_info" : {
             "filename" : "psa_ecmp.p4",
-            "line" : 91,
+            "line" : 92,
             "column" : 8,
             "source_fragment" : "send_to_port(ostd, (PortId_t) (first_port + (PortIdUint_t) path))"
           }
@@ -700,7 +700,7 @@
           ],
           "source_info" : {
             "filename" : "psa_ecmp.p4",
-            "line" : 91,
+            "line" : 92,
             "column" : 8,
             "source_fragment" : "send_to_port(ostd, (PortId_t) (first_port + (PortIdUint_t) path))"
           }
@@ -762,11 +762,18 @@
           ],
           "source_info" : {
             "filename" : "psa_ecmp.p4",
-            "line" : 91,
+            "line" : 92,
             "column" : 8,
             "source_fragment" : "send_to_port(ostd, (PortId_t) (first_port + (PortIdUint_t) path))"
           }
-        },
+        }
+      ]
+    },
+    {
+      "name" : "psa_ecmp111",
+      "id" : 3,
+      "runtime_data" : [],
+      "primitives" : [
         {
           "op" : "assign",
           "parameters" : [
@@ -828,7 +835,7 @@
                               },
                               "right" : {
                                 "type" : "hexstr",
-                                "value" : "0x1"
+                                "value" : "0x2"
                               }
                             }
                           },
@@ -847,18 +854,38 @@
                             "value" : {
                               "op" : "&",
                               "left" : {
-                                "type" : "field",
-                                "value" : ["scalars", "h_0"]
+                                "type" : "expression",
+                                "value" : {
+                                  "op" : "&",
+                                  "left" : {
+                                    "type" : "expression",
+                                    "value" : {
+                                      "op" : "&",
+                                      "left" : {
+                                        "type" : "field",
+                                        "value" : ["psa_ingress_input_metadata", "ingress_port"]
+                                      },
+                                      "right" : {
+                                        "type" : "hexstr",
+                                        "value" : "0xffffffff"
+                                      }
+                                    }
+                                  },
+                                  "right" : {
+                                    "type" : "hexstr",
+                                    "value" : "0x000000ff"
+                                  }
+                                }
                               },
                               "right" : {
                                 "type" : "hexstr",
-                                "value" : "0x01"
+                                "value" : "0xff"
                               }
                             }
                           },
                           "right" : {
                             "type" : "hexstr",
-                            "value" : "0xff"
+                            "value" : "0x03"
                           }
                         }
                       }
@@ -874,9 +901,9 @@
           ],
           "source_info" : {
             "filename" : "psa_ecmp.p4",
-            "line" : 92,
-            "column" : 25,
-            "source_fragment" : "((bit<8>) hdr.udp.srcPort & 0x3f) * 2 + (bit<8>) path"
+            "line" : 111,
+            "column" : 29,
+            "source_fragment" : "((bit<8>) hdr.udp.srcPort & 0x3f) * 4 + ..."
           }
         },
         {
@@ -884,7 +911,7 @@
           "parameters" : [
             {
               "type" : "extern",
-              "value" : "IngressImpl.flow_paths"
+              "value" : "IngressImpl.flow_ports"
             },
             {
               "type" : "field",
@@ -893,9 +920,9 @@
           ],
           "source_info" : {
             "filename" : "psa_ecmp.p4",
-            "line" : 92,
-            "column" : 8,
-            "source_fragment" : "flow_paths.count(((bit<8>) hdr.udp.srcPort & 0x3f) * 2 + (bit<8>) path)"
+            "line" : 111,
+            "column" : 12,
+            "source_fragment" : "flow_ports.count(((bit<8>) hdr.udp.srcPort & 0x3f) * 4 + ..."
           }
         }
       ]
@@ -907,15 +934,44 @@
       "id" : 0,
       "source_info" : {
         "filename" : "psa_ecmp.p4",
-        "line" : 77,
+        "line" : 78,
         "column" : 8,
         "source_fragment" : "IngressImpl"
       },
       "init_table" : "node_2",
       "tables" : [
         {
-          "name" : "IngressImpl.ipv4_forward",
+          "name" : "tbl_psa_ecmp111",
           "id" : 0,
+          "source_info" : {
+            "filename" : "psa_ecmp.p4",
+            "line" : 111,
+            "column" : 12,
+            "source_fragment" : "flow_ports.count(((bit<8>) hdr.udp.srcPort & 0x3f) * 4 + ..."
+          },
+          "key" : [],
+          "match_type" : "exact",
+          "type" : "simple",
+          "max_size" : 1024,
+          "with_counters" : false,
+          "support_timeout" : false,
+          "direct_meters" : null,
+          "action_ids" : [3],
+          "actions" : ["psa_ecmp111"],
+          "base_default_next" : "IngressImpl.ipv4_forward",
+          "next_tables" : {
+            "psa_ecmp111" : "IngressImpl.ipv4_forward"
+          },
+          "default_entry" : {
+            "action_id" : 3,
+            "action_const" : true,
+            "action_data" : [],
+            "action_entry_const" : true
+          }
+        },
+        {
+          "name" : "IngressImpl.ipv4_forward",
+          "id" : 1,
           "source_info" : {
             "filename" : "psa_ecmp.p4",
             "line" : 95,
@@ -959,7 +1015,7 @@
           "id" : 0,
           "source_info" : {
             "filename" : "psa_ecmp.p4",
-            "line" : 109,
+            "line" : 110,
             "column" : 12,
             "source_fragment" : "hdr.udp.isValid()"
           },
@@ -975,7 +1031,7 @@
             }
           },
           "false_next" : null,
-          "true_next" : "IngressImpl.ipv4_forward"
+          "true_next" : "tbl_psa_ecmp111"
         }
       ]
     },
@@ -984,7 +1040,7 @@
       "id" : 1,
       "source_info" : {
         "filename" : "psa_ecmp.p4",
-        "line" : 135,
+        "line" : 138,
         "column" : 8,
         "source_fragment" : "EgressImpl"
       },
@@ -1003,7 +1059,7 @@
       "type" : "Hash",
       "source_info" : {
         "filename" : "psa_ecmp.p4",
-        "line" : 80,
+        "line" : 81,
         "column" : 45,
         "source_fragment" : "flow_hash"
       },
@@ -1016,20 +1072,20 @@
       ]
     },
     {
-      "name" : "IngressImpl.flow_paths",
+      "name" : "IngressImpl.flow_ports",
       "id" : 1,
       "type" : "Counter",
       "source_info" : {
         "filename" : "psa_ecmp.p4",
-        "line" : 81,
+        "line" : 82,
         "column" : 61,
-        "source_fragment" : "flow_paths"
+        "source_fragment" : "flow_ports"
       },
       "attribute_values" : [
         {
           "name" : "n_counters",
           "type" : "hexstr",
-          "value" : "0x00000080"
+          "value" : "0x00000100"
         },
         {
           "name" : "type",

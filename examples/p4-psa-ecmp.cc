@@ -9,17 +9,19 @@
 /**
  * ECMP with the Hash and Counter externs of PSA.
  *
- *                ┌ 1 ────────── 1 ┐
- *   h0 ── 0 s0 ──┤                ├── s1 0 ── h1
- *                └ 2 ────────── 2 ┘
+ *                ┌ 1 ── 10 us ── 1 ┐
+ *   h0 ── 0 s0 ──┤                 ├── s1 0 ── h1
+ *                └ 2 ── 2 ms ─── 2 ┘
  *
  * s0 spreads the UDP flows from h0 to h1 over its two links to s1: the CRC-16 of
  * the 5-tuple (Hash extern) picks the link, so all packets of a flow take the
- * same one and arrive in order. h0 sends 16 flows of 100 packets, from the
- * source ports 5000 to 5015. A counter of s0 counts the packets of each flow on
- * each link; at the end the program reads it (P4RuntimeApi::ReadCounter) and
- * checks that every flow kept to one link and that both links carry flows.
- * h1 checks that it got every packet, in order.
+ * same one. h0 sends 16 flows of 100 packets, from the source ports 5000 to
+ * 5015. A counter of s1 counts the packets of each flow by the port they came
+ * in on, that is, by the link they took; at the end the program reads it
+ * (P4RuntimeApi::ReadCounter) and checks that every flow kept to one link and
+ * that both links carry flows. The second link is 2 ms long and the packets of
+ * a flow are 1 ms apart, so a flow split over both links would arrive out of
+ * order: h1 checks that it got every packet, in order.
  */
 
 #include "example-check.h"
@@ -48,7 +50,8 @@ const uint32_t N_PACKETS = 100;        ///< per flow
 const uint16_t FIRST_PORT = 5000;      ///< UDP source port of the first flow
 const uint16_t SINK_PORT = 9;          ///< UDP port of h1
 const Time INTERVAL = MilliSeconds(1); ///< between two packets of a flow
-const std::string COUNTER = "IngressImpl.flow_paths";
+const std::string COUNTER = "IngressImpl.flow_ports";
+const Time LINK_DELAY[2] = {MicroSeconds(10), MilliSeconds(2)}; ///< of the links s0-s1
 
 /// Packets of a flow that h1 received, and how many came out of order
 struct Flow
@@ -121,7 +124,7 @@ main(int argc, char* argv[])
     {
         Ptr<SwitchedEthernetChannel> channel = CreateObject<SwitchedEthernetChannel>();
         channel->SetAttribute("DataRate", StringValue("100Mbps"));
-        channel->SetAttribute("Delay", StringValue("10us"));
+        channel->SetAttribute("Delay", TimeValue(LINK_DELAY[link]));
         sw[0]->Attach(channel);
         sw[1]->Attach(channel);
     }
@@ -166,25 +169,26 @@ main(int argc, char* argv[])
     Simulator::Stop(Seconds(2));
     Simulator::Run();
 
-    // The packets of each flow on each link of s0, read before the switches are destroyed
-    P4RuntimeApi api(*sw[0]->GetCore());
+    // The packets of each flow that came in on each link at s1 (its ports 1 and 2),
+    // read before the switches are destroyed
+    P4RuntimeApi api(*sw[1]->GetCore());
     std::vector<std::vector<uint16_t>> flowsOn(2); // source ports of the flows on each link
     bool oneLink = true;
     for (uint32_t f = 0; f < N_FLOWS; f++)
     {
         uint16_t port = FIRST_PORT + f;
-        uint64_t onPath[2] = {};
-        for (uint32_t path = 0; path < 2; path++)
+        uint64_t onLink[2] = {};
+        for (uint32_t link = 0; link < 2; link++)
         {
             bm::MatchTableAbstract::counter_value_t bytes = 0;
             bm::MatchTableAbstract::counter_value_t packets = 0;
-            NS_ABORT_MSG_IF(api.ReadCounter(COUNTER, (port & 0x3f) * 2 + path, &bytes, &packets) !=
-                                0,
-                            "Cannot read the counter");
-            onPath[path] = packets;
+            NS_ABORT_MSG_IF(
+                api.ReadCounter(COUNTER, (port & 0x3f) * 4 + 1 + link, &bytes, &packets) != 0,
+                "Cannot read the counter");
+            onLink[link] = packets;
         }
-        bool first = onPath[0] == N_PACKETS && onPath[1] == 0;
-        bool second = onPath[0] == 0 && onPath[1] == N_PACKETS;
+        bool first = onLink[0] == N_PACKETS && onLink[1] == 0;
+        bool second = onLink[0] == 0 && onLink[1] == N_PACKETS;
         oneLink = oneLink && (first || second);
         flowsOn[second ? 1 : 0].push_back(port);
     }
@@ -199,8 +203,9 @@ main(int argc, char* argv[])
     }
     for (uint32_t link = 0; link < 2; link++)
     {
-        std::cout << "link " << link + 1 << " (port " << link + 1
-                  << " of s0): " << flowsOn[link].size() << " flows, from the source ports";
+        std::cout << "link " << link + 1 << " (port " << link + 1 << " of s0 and s1, "
+                  << LINK_DELAY[link].GetMicroSeconds() << " us): " << flowsOn[link].size()
+                  << " flows, from the source ports";
         for (uint16_t port : flowsOn[link])
         {
             std::cout << " " << port;
@@ -209,7 +214,7 @@ main(int argc, char* argv[])
     }
 
     using p4sim_example::Check;
-    int failed = Check(oneLink, "each flow kept to one link (the counter of s0)");
+    int failed = Check(oneLink, "each flow kept to one link (the counter of s1)");
     failed |= Check(flowsOn[0].size() >= N_FLOWS / 4 && flowsOn[1].size() >= N_FLOWS / 4,
                     "both links carry at least a quarter of the flows");
     failed |= Check(received == N_FLOWS * N_PACKETS,

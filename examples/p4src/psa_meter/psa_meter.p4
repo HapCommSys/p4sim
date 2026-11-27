@@ -6,7 +6,7 @@
 // over the peak rate is red and dropped; one over the committed rate but within
 // the peak rate is yellow and passes, as a green one does. A counter counts the
 // frames of each port and color. The control plane sets the rates
-// (P4RuntimeApi::MeterSetRates) and reads the counter (ReadCounter).
+// (P4RuntimeApi::SetMeterArrayRates) and reads the counter (ReadCounter).
 
 #include <core.p4>
 #include <bmv2/psa.p4>
@@ -62,7 +62,8 @@ parser IngressParserImpl(packet_in pkt, out headers_t hdr, inout metadata_t meta
 control IngressImpl(inout headers_t hdr, inout metadata_t meta,
                     in psa_ingress_input_metadata_t istd,
                     inout psa_ingress_output_metadata_t ostd) {
-    // One meter per ingress port
+    // One meter per ingress port. The meter and the counter are sized for ports 0
+    // to 7: a higher port fails the index check of the meter, so its frames are red
     Meter<bit<8>>(8, PSA_MeterType_t.BYTES) port_meter;
     // Frames per ingress port and color: index 3 * port + 0 (green), 1 (yellow), 2 (red)
     Counter<bit<32>, bit<8>>(24, PSA_CounterType_t.PACKETS_AND_BYTES) colors;
