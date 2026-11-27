@@ -20,6 +20,7 @@
 
 #include "ns3/p4-switch-core.h"
 #include "ns3/register-access-v1model.h"
+#include "ns3/simulator.h"
 
 #include <bm/bm_sim/actions.h>
 #include <bm/bm_sim/calculations.h>
@@ -29,8 +30,8 @@
 #include <bm/bm_sim/meters.h>
 #include <bm/bm_sim/packet.h>
 #include <bm/bm_sim/phv.h>
+#include <chrono>
 #include <random>
-#include <thread>
 
 // The BMv2 logger includes <syslog.h>, whose LOG_INFO and LOG_DEBUG macros would
 // break ns-3's NS_LOG_INFO and NS_LOG_DEBUG (as in p4-switch-core.cc)
@@ -63,11 +64,7 @@ class modify_field_rng_uniform : public ActionPrimitive<Data&, const Data&, cons
 {
     void operator()(Data& f, const Data& b, const Data& e)
     {
-        // TODO(antonin): a little hacky, fix later if there is a need using GMP
-        // random fns
-        using engine = std::default_random_engine;
-        using hash = std::hash<std::thread::id>;
-        static thread_local engine generator(hash()(std::this_thread::get_id()));
+        // The engine follows ns-3's seed and run (see P4SwitchCore::RandomEngine())
         using distrib64 = std::uniform_int_distribution<uint64_t>;
         auto lo = b.get_uint64();
         auto hi = e.get_uint64();
@@ -78,7 +75,7 @@ class modify_field_rng_uniform : public ActionPrimitive<Data&, const Data&, cons
             return;
         }
         distrib64 distribution(lo, hi);
-        f.set(distribution(generator));
+        f.set(distribution(ns3::P4SwitchCore::RandomEngine()));
     }
 };
 
@@ -393,7 +390,16 @@ class execute_meter : public ActionPrimitive<MeterArray&, const Data&, Field&>
                             i);
             return;
         }
-        dst.set(meter_array.execute_meter(get_packet(), i));
+        // BMv2's MeterArray::execute_meter() reads the wall clock, which has
+        // nothing to do with the simulation: the meter counts simulation time,
+        // from time 0, instead
+        BMLOG_DEBUG_PKT(get_packet(), "Executing meter {}[{}]", meter_array.get_name(), i);
+        bm::Meter& meter = meter_array.get_meter(i);
+        meter.reset_time_origin(bm::Meter::clock::time_point());
+        auto now =
+            bm::Meter::clock::time_point(std::chrono::duration_cast<bm::Meter::clock::duration>(
+                std::chrono::nanoseconds(ns3::Simulator::Now().GetNanoSeconds())));
+        dst.set(meter.execute(get_packet(), 0, now));
     }
 };
 

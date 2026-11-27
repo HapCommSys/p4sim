@@ -11,7 +11,10 @@
  *   mirroring_add <session> <port>   the clones of this mirroring session leave on <port>
  *   mirroring_add_mc <session> <group>   they go to multicast group <group>
  *   register <name> <index> <value>   after the run, register <name>[<index>] holds <value>
- * Spaces in <hex> are ignored. All frames are sent at the same time, in file order.
+ *   meter_set_rates <name> <index> <rate>:<burst>...   as in simple_switch_CLI: the rates
+ *       of meter <name>[<index>] in units per microsecond, the lowest first
+ *   at <time>   the following frames are sent at <time> microseconds (default 1000)
+ * Spaces in <hex> are ignored. Frames of the same time are sent in file order.
  * A test passes if every port sends exactly the frames expected on it, in that
  * order. The switch has three ports, 0 to 2.
  *
@@ -49,6 +52,16 @@ struct StfFrame
 {
     uint32_t port;
     std::string hex; ///< lower case, no spaces
+    int line;
+    uint64_t time; ///< "packet": when it is sent, in microseconds
+};
+
+/// A "meter_set_rates" command of an .stf file
+struct StfMeterRates
+{
+    std::string name;
+    size_t index;
+    std::vector<bm::Meter::rate_config_t> rates;
     int line;
 };
 
@@ -147,6 +160,7 @@ class StfTestCase : public TestCase
     std::vector<StfFrame> m_packets;
     std::vector<StfFrame> m_expects;
     std::vector<StfRegister> m_registers;                           ///< in file order
+    std::vector<StfMeterRates> m_meterRates;                        ///< in file order
     std::vector<std::pair<uint32_t, uint32_t>> m_mirroringSessions; ///< (session, port)
     std::vector<std::pair<uint32_t, uint32_t>> m_mcMirroringSessions; ///< (session, group)
     std::vector<Ptr<SimpleNetDevice>> m_hosts;        ///< one per switch port
@@ -162,6 +176,7 @@ StfTestCase::ReadStf(const std::string& path)
         return "cannot open " + path;
     }
     std::string line;
+    uint64_t time = 1000; // microseconds
     for (int n = 1; std::getline(in, line); n++)
     {
         std::istringstream words(line.substr(0, line.find('#')));
@@ -207,6 +222,35 @@ StfTestCase::ReadStf(const std::string& path)
             m_registers.push_back(reg);
             continue;
         }
+        if (cmd == "meter_set_rates")
+        {
+            StfMeterRates meter{"", 0, {}, n};
+            bool valid = static_cast<bool>(words >> meter.name >> meter.index);
+            while (valid && words >> word)
+            {
+                double rate = 0;
+                size_t burst = 0;
+                char colon = 0;
+                std::istringstream config(word);
+                valid = (config >> rate >> colon >> burst) && colon == ':' && config.eof();
+                meter.rates.push_back(bm::Meter::rate_config_t::make(rate, burst));
+            }
+            if (!valid || meter.rates.empty())
+            {
+                return m_stf + " line " + std::to_string(n) +
+                       ": expected 'meter_set_rates <name> <index> <rate>:<burst>...'";
+            }
+            m_meterRates.push_back(meter);
+            continue;
+        }
+        if (cmd == "at")
+        {
+            if (!(words >> time) || (words >> word))
+            {
+                return m_stf + " line " + std::to_string(n) + ": expected 'at <microseconds>'";
+            }
+            continue;
+        }
         if (cmd == "mc_mgrp_create" || cmd == "mc_node_create" || cmd == "mc_node_associate" ||
             cmd == "mc_set_lag_membership")
         {
@@ -231,7 +275,7 @@ StfTestCase::ReadStf(const std::string& path)
             return m_stf + " line " + std::to_string(n) +
                    ": expected 'packet|expect <port 0-2> <Ethernet frame in hex>'";
         }
-        (cmd == "packet" ? m_packets : m_expects).push_back({port, hex, n});
+        (cmd == "packet" ? m_packets : m_expects).push_back({port, hex, n, time});
     }
     return "";
 }
@@ -441,11 +485,19 @@ StfTestCase::DoRun()
     }
     error = ApplyMcCommands(sw);
     NS_TEST_ASSERT_MSG_EQ(error, "", "Cannot configure multicast");
+    for (const StfMeterRates& meter : m_meterRates)
+    {
+        NS_TEST_ASSERT_MSG_EQ(
+            sw->GetCore()->meter_set_rates(0, meter.name, meter.index, meter.rates),
+            bm::Meter::MeterErrorCode::SUCCESS,
+            m_stf << " line " << meter.line << ": cannot set the rates of " << meter.name << "["
+                  << meter.index << "]");
+    }
 
-    // All frames at once, in file order: frames to the same port queue up
+    // Frames of the same time in file order: frames to the same port queue up
     for (const StfFrame& frame : m_packets)
     {
-        Simulator::Schedule(MilliSeconds(1), &StfTestCase::Send, this, frame);
+        Simulator::Schedule(MicroSeconds(frame.time), &StfTestCase::Send, this, frame);
     }
     Simulator::Stop(Seconds(1));
     Simulator::Run();
@@ -589,6 +641,106 @@ SwitchedPortTestCase::DoRun()
     }
 }
 
+/**
+ * random() follows ns-3's seed and run: a run gives the same numbers every time,
+ * another run gives others. Each run sends two frames through a switch whose
+ * program writes a 32-bit random() into their source MAC (op 4 of
+ * p4src/primitives).
+ */
+class RandomSeedTestCase : public TestCase
+{
+  public:
+    RandomSeedTestCase()
+        : TestCase("v1model: random() follows ns-3's seed and run")
+    {
+    }
+
+  private:
+    void DoRun() override
+    {
+        uint64_t oldRun = RngSeedManager::GetRun();
+        std::vector<std::string> first = Run(1);
+        std::vector<std::string> other = Run(2);
+        std::vector<std::string> again = Run(1);
+        RngSeedManager::SetRun(oldRun);
+
+        NS_TEST_ASSERT_MSG_EQ(first.size(), 2, "The switch must forward both frames");
+        NS_TEST_EXPECT_MSG_NE(first[0], first[1], "The two frames must get different numbers");
+        NS_TEST_EXPECT_MSG_EQ((again == first), true, "Run 1 must give the same numbers again");
+        NS_TEST_EXPECT_MSG_EQ((other == first), false, "Run 2 must give other numbers");
+    }
+
+    void DoTeardown() override
+    {
+        Simulator::Destroy();
+    }
+
+    /// The source MACs of the frames that leave the switch, with ns-3's run \p run
+    std::vector<std::string> Run(uint64_t run)
+    {
+        RngSeedManager::SetRun(run);
+        m_sources.clear();
+        SetDataDir(NS_TEST_SOURCEDIR);
+        Ptr<Node> switchNode = CreateObject<Node>();
+        Ptr<Node> hostNode = CreateObject<Node>();
+        Ptr<P4SwitchNetDevice> sw = CreateObject<P4SwitchNetDevice>();
+        sw->SetAttribute("P4SwitchArch", UintegerValue(P4SWITCH_ARCH_V1MODEL));
+        sw->SetAttribute(
+            "JsonPath",
+            StringValue(CreateDataDirFilename("p4src/primitives/primitives_v1model.json")));
+        sw->SetAttribute("FlowTablePath", StringValue(""));
+        switchNode->AddDevice(sw);
+        std::vector<Ptr<SimpleNetDevice>> hosts;
+        for (uint32_t i = 0; i < 2; i++)
+        {
+            Ptr<SimpleChannel> channel = CreateObject<SimpleChannel>();
+            Ptr<SimpleNetDevice> port = CreateObject<SimpleNetDevice>();
+            Ptr<SimpleNetDevice> host = CreateObject<SimpleNetDevice>();
+            port->SetAddress(Mac48Address::Allocate());
+            port->SetAttribute("DataRate", DataRateValue(DataRate("1Gbps")));
+            host->SetAddress(Mac48Address::Allocate());
+            port->SetChannel(channel);
+            host->SetChannel(channel);
+            switchNode->AddDevice(port);
+            hostNode->AddDevice(host);
+            sw->AddBridgePort(port);
+            hosts.push_back(host);
+        }
+        hosts[1]->SetPromiscReceiveCallback(MakeCallback(&RandomSeedTestCase::Receive, this));
+        sw->Initialize();
+        for (int i = 0; i < 2; i++)
+        {
+            uint8_t payload[] = {0, 0, 0, 4};
+            Simulator::Schedule(MilliSeconds(1 + i),
+                                &SimpleNetDevice::SendFrom,
+                                hosts[0],
+                                Create<Packet>(payload, sizeof(payload)),
+                                Mac48Address("00:00:00:00:00:00"),
+                                Mac48Address("00:00:00:00:00:01"),
+                                0x9004);
+        }
+        Simulator::Stop(Seconds(1));
+        Simulator::Run();
+        Simulator::Destroy();
+        return m_sources;
+    }
+
+    bool Receive(Ptr<NetDevice> host,
+                 Ptr<const Packet> packet,
+                 uint16_t protocol,
+                 const Address& from,
+                 const Address& to,
+                 NetDevice::PacketType type)
+    {
+        std::ostringstream source;
+        source << Mac48Address::ConvertFrom(from);
+        m_sources.push_back(source.str());
+        return true;
+    }
+
+    std::vector<std::string> m_sources; ///< the source MACs of the received frames
+};
+
 /// Every architecture runs the same program, p4src/forward, with the same .stf
 /// files (the pipeline core runs forward_v1model); p4src/drop checks mark_to_drop()
 /// in the ingress and in the egress on v1model and the pipeline core; p4src/priority checks the
@@ -645,6 +797,9 @@ static class P4PacketTestSuite : public TestSuite
         AddTestCase(
             new StfTestCase("primitives", "v1model", P4SWITCH_ARCH_V1MODEL, "primitives.stf"),
             P4SIM_TEST_QUICK);
+        AddTestCase(new StfTestCase("primitives", "v1model", P4SWITCH_ARCH_V1MODEL, "meter.stf"),
+                    P4SIM_TEST_QUICK);
+        AddTestCase(new RandomSeedTestCase(), P4SIM_TEST_QUICK);
         AddTestCase(new StfTestCase("lag", "v1model", P4SWITCH_ARCH_V1MODEL, "lag.stf"),
                     P4SIM_TEST_QUICK);
         AddTestCase(new StfTestCase("bounds", "v1model", P4SWITCH_ARCH_V1MODEL, "bounds.stf"),

@@ -7,7 +7,9 @@
         ["tmp", 48, false],
         ["tmp_0", 48, false],
         ["metadata_t.h", 16, false],
-        ["metadata_t.r", 8, false]
+        ["metadata_t.r", 8, false],
+        ["metadata_t.r32", 32, false],
+        ["metadata_t.color", 8, false]
       ]
     },
     {
@@ -122,7 +124,7 @@
       "id" : 0,
       "source_info" : {
         "filename" : "primitives_v1model.p4",
-        "line" : 74,
+        "line" : 89,
         "column" : 8,
         "source_fragment" : "MyDeparser"
       },
@@ -130,7 +132,22 @@
       "primitives" : []
     }
   ],
-  "meter_arrays" : [],
+  "meter_arrays" : [
+    {
+      "name" : "MyIngress.mtr",
+      "id" : 0,
+      "source_info" : {
+        "filename" : "primitives_v1model.p4",
+        "line" : 58,
+        "column" : 32,
+        "source_fragment" : "mtr"
+      },
+      "is_direct" : false,
+      "size" : 1,
+      "rate_count" : 2,
+      "type" : "packets"
+    }
+  ],
   "counter_arrays" : [],
   "register_arrays" : [],
   "calculations" : [
@@ -152,7 +169,7 @@
       "name" : "learn_t",
       "source_info" : {
         "filename" : "primitives_v1model.p4",
-        "line" : 54,
+        "line" : 63,
         "column" : 31,
         "source_fragment" : "{ hdr.ethernet.srcAddr }"
       },
@@ -166,7 +183,7 @@
   ],
   "actions" : [
     {
-      "name" : "primitives_v1model54",
+      "name" : "primitives_v1model63",
       "id" : 0,
       "runtime_data" : [],
       "primitives" : [
@@ -184,7 +201,7 @@
           ],
           "source_info" : {
             "filename" : "primitives_v1model.p4",
-            "line" : 54,
+            "line" : 63,
             "column" : 33,
             "source_fragment" : "hdr.ethernet.srcAddr"
           }
@@ -203,7 +220,7 @@
           ],
           "source_info" : {
             "filename" : "primitives_v1model.p4",
-            "line" : 54,
+            "line" : 63,
             "column" : 12,
             "source_fragment" : "digest<learn_t>(1, { hdr.ethernet.srcAddr })"
           }
@@ -211,7 +228,7 @@
       ]
     },
     {
-      "name" : "primitives_v1model56",
+      "name" : "primitives_v1model65",
       "id" : 1,
       "runtime_data" : [],
       "primitives" : [
@@ -229,7 +246,7 @@
           ],
           "source_info" : {
             "filename" : "primitives_v1model.p4",
-            "line" : 56,
+            "line" : 65,
             "column" : 54,
             "source_fragment" : "hdr.ethernet.srcAddr"
           }
@@ -256,7 +273,7 @@
           ],
           "source_info" : {
             "filename" : "primitives_v1model.p4",
-            "line" : 56,
+            "line" : 65,
             "column" : 12,
             "source_fragment" : "hash(meta.h, HashAlgorithm.crc16, 16w7, { hdr.ethernet.srcAddr }, 32w0)"
           }
@@ -318,7 +335,7 @@
           ],
           "source_info" : {
             "filename" : "primitives_v1model.p4",
-            "line" : 57,
+            "line" : 66,
             "column" : 12,
             "source_fragment" : "hdr.ethernet.srcAddr[15:0] = meta.h"
           }
@@ -326,7 +343,7 @@
       ]
     },
     {
-      "name" : "primitives_v1model59",
+      "name" : "primitives_v1model68",
       "id" : 2,
       "runtime_data" : [],
       "primitives" : [
@@ -348,7 +365,7 @@
           ],
           "source_info" : {
             "filename" : "primitives_v1model.p4",
-            "line" : 59,
+            "line" : 68,
             "column" : 12,
             "source_fragment" : "random(meta.r, 8w10, 8w5)"
           }
@@ -410,7 +427,7 @@
           ],
           "source_info" : {
             "filename" : "primitives_v1model.p4",
-            "line" : 60,
+            "line" : 69,
             "column" : 12,
             "source_fragment" : "hdr.ethernet.srcAddr[7:0] = meta.r"
           }
@@ -418,8 +435,192 @@
       ]
     },
     {
-      "name" : "primitives_v1model52",
+      "name" : "primitives_v1model71",
       "id" : 3,
+      "runtime_data" : [],
+      "primitives" : [
+        {
+          "op" : "modify_field_rng_uniform",
+          "parameters" : [
+            {
+              "type" : "field",
+              "value" : ["scalars", "metadata_t.r32"]
+            },
+            {
+              "type" : "hexstr",
+              "value" : "0x00000000"
+            },
+            {
+              "type" : "hexstr",
+              "value" : "0xffffffff"
+            }
+          ],
+          "source_info" : {
+            "filename" : "primitives_v1model.p4",
+            "line" : 71,
+            "column" : 12,
+            "source_fragment" : "random(meta.r32, 32w0, 32w0xffffffff)"
+          }
+        },
+        {
+          "op" : "assign",
+          "parameters" : [
+            {
+              "type" : "field",
+              "value" : ["ethernet", "srcAddr"]
+            },
+            {
+              "type" : "expression",
+              "value" : {
+                "type" : "expression",
+                "value" : {
+                  "op" : "|",
+                  "left" : {
+                    "type" : "expression",
+                    "value" : {
+                      "op" : "&",
+                      "left" : {
+                        "type" : "field",
+                        "value" : ["ethernet", "srcAddr"]
+                      },
+                      "right" : {
+                        "type" : "hexstr",
+                        "value" : "0xffff00000000"
+                      }
+                    }
+                  },
+                  "right" : {
+                    "type" : "expression",
+                    "value" : {
+                      "op" : "&",
+                      "left" : {
+                        "type" : "expression",
+                        "value" : {
+                          "op" : "&",
+                          "left" : {
+                            "type" : "field",
+                            "value" : ["scalars", "metadata_t.r32"]
+                          },
+                          "right" : {
+                            "type" : "hexstr",
+                            "value" : "0xffffffffffff"
+                          }
+                        }
+                      },
+                      "right" : {
+                        "type" : "hexstr",
+                        "value" : "0x0000ffffffff"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "source_info" : {
+            "filename" : "primitives_v1model.p4",
+            "line" : 72,
+            "column" : 12,
+            "source_fragment" : "hdr.ethernet.srcAddr[31:0] = meta.r32"
+          }
+        }
+      ]
+    },
+    {
+      "name" : "primitives_v1model74",
+      "id" : 4,
+      "runtime_data" : [],
+      "primitives" : [
+        {
+          "op" : "execute_meter",
+          "parameters" : [
+            {
+              "type" : "meter_array",
+              "value" : "MyIngress.mtr"
+            },
+            {
+              "type" : "hexstr",
+              "value" : "0x00000000"
+            },
+            {
+              "type" : "field",
+              "value" : ["scalars", "metadata_t.color"]
+            }
+          ],
+          "source_info" : {
+            "filename" : "primitives_v1model.p4",
+            "line" : 74,
+            "column" : 12,
+            "source_fragment" : "mtr.execute_meter(32w0, meta.color)"
+          }
+        },
+        {
+          "op" : "assign",
+          "parameters" : [
+            {
+              "type" : "field",
+              "value" : ["ethernet", "srcAddr"]
+            },
+            {
+              "type" : "expression",
+              "value" : {
+                "type" : "expression",
+                "value" : {
+                  "op" : "|",
+                  "left" : {
+                    "type" : "expression",
+                    "value" : {
+                      "op" : "&",
+                      "left" : {
+                        "type" : "field",
+                        "value" : ["ethernet", "srcAddr"]
+                      },
+                      "right" : {
+                        "type" : "hexstr",
+                        "value" : "0xffffffffff00"
+                      }
+                    }
+                  },
+                  "right" : {
+                    "type" : "expression",
+                    "value" : {
+                      "op" : "&",
+                      "left" : {
+                        "type" : "expression",
+                        "value" : {
+                          "op" : "&",
+                          "left" : {
+                            "type" : "field",
+                            "value" : ["scalars", "metadata_t.color"]
+                          },
+                          "right" : {
+                            "type" : "hexstr",
+                            "value" : "0xffffffffffff"
+                          }
+                        }
+                      },
+                      "right" : {
+                        "type" : "hexstr",
+                        "value" : "0x0000000000ff"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "source_info" : {
+            "filename" : "primitives_v1model.p4",
+            "line" : 75,
+            "column" : 12,
+            "source_fragment" : "hdr.ethernet.srcAddr[7:0] = meta.color"
+          }
+        }
+      ]
+    },
+    {
+      "name" : "primitives_v1model61",
+      "id" : 5,
       "runtime_data" : [],
       "primitives" : [
         {
@@ -436,7 +637,7 @@
           ],
           "source_info" : {
             "filename" : "primitives_v1model.p4",
-            "line" : 52,
+            "line" : 61,
             "column" : 8,
             "source_fragment" : "smeta.egress_spec = 1"
           }
@@ -450,18 +651,18 @@
       "id" : 0,
       "source_info" : {
         "filename" : "primitives_v1model.p4",
-        "line" : 49,
+        "line" : 56,
         "column" : 8,
         "source_fragment" : "MyIngress"
       },
-      "init_table" : "tbl_primitives_v1model52",
+      "init_table" : "tbl_primitives_v1model61",
       "tables" : [
         {
-          "name" : "tbl_primitives_v1model52",
+          "name" : "tbl_primitives_v1model61",
           "id" : 0,
           "source_info" : {
             "filename" : "primitives_v1model.p4",
-            "line" : 52,
+            "line" : 61,
             "column" : 26,
             "source_fragment" : "="
           },
@@ -472,25 +673,25 @@
           "with_counters" : false,
           "support_timeout" : false,
           "direct_meters" : null,
-          "action_ids" : [3],
-          "actions" : ["primitives_v1model52"],
+          "action_ids" : [5],
+          "actions" : ["primitives_v1model61"],
           "base_default_next" : "node_3",
           "next_tables" : {
-            "primitives_v1model52" : "node_3"
+            "primitives_v1model61" : "node_3"
           },
           "default_entry" : {
-            "action_id" : 3,
+            "action_id" : 5,
             "action_const" : true,
             "action_data" : [],
             "action_entry_const" : true
           }
         },
         {
-          "name" : "tbl_primitives_v1model54",
+          "name" : "tbl_primitives_v1model63",
           "id" : 1,
           "source_info" : {
             "filename" : "primitives_v1model.p4",
-            "line" : 54,
+            "line" : 63,
             "column" : 12,
             "source_fragment" : "digest<learn_t>(1, { hdr.ethernet.srcAddr })"
           },
@@ -502,10 +703,10 @@
           "support_timeout" : false,
           "direct_meters" : null,
           "action_ids" : [0],
-          "actions" : ["primitives_v1model54"],
+          "actions" : ["primitives_v1model63"],
           "base_default_next" : null,
           "next_tables" : {
-            "primitives_v1model54" : null
+            "primitives_v1model63" : null
           },
           "default_entry" : {
             "action_id" : 0,
@@ -515,11 +716,11 @@
           }
         },
         {
-          "name" : "tbl_primitives_v1model56",
+          "name" : "tbl_primitives_v1model65",
           "id" : 2,
           "source_info" : {
             "filename" : "primitives_v1model.p4",
-            "line" : 56,
+            "line" : 65,
             "column" : 12,
             "source_fragment" : "hash(meta.h, HashAlgorithm.crc16, 16w7, { hdr.ethernet.srcAddr }, 32w0); ..."
           },
@@ -531,10 +732,10 @@
           "support_timeout" : false,
           "direct_meters" : null,
           "action_ids" : [1],
-          "actions" : ["primitives_v1model56"],
+          "actions" : ["primitives_v1model65"],
           "base_default_next" : null,
           "next_tables" : {
-            "primitives_v1model56" : null
+            "primitives_v1model65" : null
           },
           "default_entry" : {
             "action_id" : 1,
@@ -544,11 +745,11 @@
           }
         },
         {
-          "name" : "tbl_primitives_v1model59",
+          "name" : "tbl_primitives_v1model68",
           "id" : 3,
           "source_info" : {
             "filename" : "primitives_v1model.p4",
-            "line" : 59,
+            "line" : 68,
             "column" : 12,
             "source_fragment" : "random(meta.r, 8w10, 8w5); ..."
           },
@@ -560,13 +761,71 @@
           "support_timeout" : false,
           "direct_meters" : null,
           "action_ids" : [2],
-          "actions" : ["primitives_v1model59"],
+          "actions" : ["primitives_v1model68"],
           "base_default_next" : null,
           "next_tables" : {
-            "primitives_v1model59" : null
+            "primitives_v1model68" : null
           },
           "default_entry" : {
             "action_id" : 2,
+            "action_const" : true,
+            "action_data" : [],
+            "action_entry_const" : true
+          }
+        },
+        {
+          "name" : "tbl_primitives_v1model71",
+          "id" : 4,
+          "source_info" : {
+            "filename" : "primitives_v1model.p4",
+            "line" : 71,
+            "column" : 12,
+            "source_fragment" : "random(meta.r32, 32w0, 32w0xffffffff); ..."
+          },
+          "key" : [],
+          "match_type" : "exact",
+          "type" : "simple",
+          "max_size" : 1024,
+          "with_counters" : false,
+          "support_timeout" : false,
+          "direct_meters" : null,
+          "action_ids" : [3],
+          "actions" : ["primitives_v1model71"],
+          "base_default_next" : null,
+          "next_tables" : {
+            "primitives_v1model71" : null
+          },
+          "default_entry" : {
+            "action_id" : 3,
+            "action_const" : true,
+            "action_data" : [],
+            "action_entry_const" : true
+          }
+        },
+        {
+          "name" : "tbl_primitives_v1model74",
+          "id" : 5,
+          "source_info" : {
+            "filename" : "primitives_v1model.p4",
+            "line" : 74,
+            "column" : 12,
+            "source_fragment" : "mtr.execute_meter(32w0, meta.color); ..."
+          },
+          "key" : [],
+          "match_type" : "exact",
+          "type" : "simple",
+          "max_size" : 1024,
+          "with_counters" : false,
+          "support_timeout" : false,
+          "direct_meters" : null,
+          "action_ids" : [4],
+          "actions" : ["primitives_v1model74"],
+          "base_default_next" : null,
+          "next_tables" : {
+            "primitives_v1model74" : null
+          },
+          "default_entry" : {
+            "action_id" : 4,
             "action_const" : true,
             "action_data" : [],
             "action_entry_const" : true
@@ -580,7 +839,7 @@
           "id" : 0,
           "source_info" : {
             "filename" : "primitives_v1model.p4",
-            "line" : 53,
+            "line" : 62,
             "column" : 12,
             "source_fragment" : "hdr.ethernet.etherType[3:0] == 1"
           },
@@ -608,7 +867,7 @@
               }
             }
           },
-          "true_next" : "tbl_primitives_v1model54",
+          "true_next" : "tbl_primitives_v1model63",
           "false_next" : "node_5"
         },
         {
@@ -616,7 +875,7 @@
           "id" : 1,
           "source_info" : {
             "filename" : "primitives_v1model.p4",
-            "line" : 55,
+            "line" : 64,
             "column" : 19,
             "source_fragment" : "hdr.ethernet.etherType[3:0] == 2"
           },
@@ -644,7 +903,7 @@
               }
             }
           },
-          "true_next" : "tbl_primitives_v1model56",
+          "true_next" : "tbl_primitives_v1model65",
           "false_next" : "node_7"
         },
         {
@@ -652,7 +911,7 @@
           "id" : 2,
           "source_info" : {
             "filename" : "primitives_v1model.p4",
-            "line" : 58,
+            "line" : 67,
             "column" : 19,
             "source_fragment" : "hdr.ethernet.etherType[3:0] == 3"
           },
@@ -680,8 +939,80 @@
               }
             }
           },
+          "true_next" : "tbl_primitives_v1model68",
+          "false_next" : "node_9"
+        },
+        {
+          "name" : "node_9",
+          "id" : 3,
+          "source_info" : {
+            "filename" : "primitives_v1model.p4",
+            "line" : 70,
+            "column" : 19,
+            "source_fragment" : "hdr.ethernet.etherType[3:0] == 4"
+          },
+          "expression" : {
+            "type" : "expression",
+            "value" : {
+              "op" : "==",
+              "left" : {
+                "type" : "expression",
+                "value" : {
+                  "op" : "&",
+                  "left" : {
+                    "type" : "field",
+                    "value" : ["ethernet", "etherType"]
+                  },
+                  "right" : {
+                    "type" : "hexstr",
+                    "value" : "0x0f"
+                  }
+                }
+              },
+              "right" : {
+                "type" : "hexstr",
+                "value" : "0x04"
+              }
+            }
+          },
+          "true_next" : "tbl_primitives_v1model71",
+          "false_next" : "node_11"
+        },
+        {
+          "name" : "node_11",
+          "id" : 4,
+          "source_info" : {
+            "filename" : "primitives_v1model.p4",
+            "line" : 73,
+            "column" : 19,
+            "source_fragment" : "hdr.ethernet.etherType[3:0] == 5"
+          },
+          "expression" : {
+            "type" : "expression",
+            "value" : {
+              "op" : "==",
+              "left" : {
+                "type" : "expression",
+                "value" : {
+                  "op" : "&",
+                  "left" : {
+                    "type" : "field",
+                    "value" : ["ethernet", "etherType"]
+                  },
+                  "right" : {
+                    "type" : "hexstr",
+                    "value" : "0x0f"
+                  }
+                }
+              },
+              "right" : {
+                "type" : "hexstr",
+                "value" : "0x05"
+              }
+            }
+          },
           "false_next" : null,
-          "true_next" : "tbl_primitives_v1model59"
+          "true_next" : "tbl_primitives_v1model74"
         }
       ]
     },
@@ -690,7 +1021,7 @@
       "id" : 1,
       "source_info" : {
         "filename" : "primitives_v1model.p4",
-        "line" : 65,
+        "line" : 80,
         "column" : 8,
         "source_fragment" : "MyEgress"
       },

@@ -26,6 +26,7 @@
 #include "ns3/p4-switch-core.h"
 #include "ns3/p4-switch-net-device.h"
 #include "ns3/p4sim-ns3-compat.h"
+#include "ns3/rng-seed-manager.h"
 #include "ns3/simulator.h"
 
 #include <algorithm>
@@ -788,6 +789,19 @@ P4SwitchCore::InitializeSwitchFromP4Json(const std::string& jsonPath)
     opt_parser.thrift_port = m_thriftPort;
     opt_parser.console_logging = false;
 
+    std::string unsupported = CheckPrimitives(jsonPath);
+    if (!unsupported.empty())
+    {
+        NS_FATAL_ERROR(unsupported);
+    }
+
+    // The random numbers of the P4 programs follow ns-3's seed and run
+    uint64_t run = RngSeedManager::GetRun();
+    std::seed_seq seed{RngSeedManager::GetSeed(),
+                       static_cast<uint32_t>(run),
+                       static_cast<uint32_t>(run >> 32)};
+    RandomEngine().seed(seed);
+
     // Initialize the switch, with a device manager without ports (NoPortsDevMgr)
     status = init_from_options_parser(opt_parser, nullptr, std::make_unique<NoPortsDevMgr>());
     if (status != 0)
@@ -801,6 +815,59 @@ P4SwitchCore::InitializeSwitchFromP4Json(const std::string& jsonPath)
     }
 
     NS_LOG_INFO("P4 json applied successfully.");
+}
+
+std::string
+P4SwitchCore::CheckPrimitives(const std::string& jsonPath) const
+{
+    std::map<std::string, std::string> missing = GetMissingPrimitives();
+    if (missing.empty())
+    {
+        return "";
+    }
+    Json::Value root;
+    Json::CharReaderBuilder reader;
+    std::string errors;
+    std::ifstream config(jsonPath);
+    if (!config || !Json::parseFromStream(reader, config, &root, &errors))
+    {
+        return ""; // BMv2 reports a file that it cannot read
+    }
+    for (const Json::Value& action : root["actions"])
+    {
+        for (const Json::Value& primitive : action["primitives"])
+        {
+            auto it = missing.find(primitive["op"].asString());
+            if (it == missing.end())
+            {
+                continue;
+            }
+            std::ostringstream message;
+            message << "Switch ID " << m_p4SwitchId << ": ";
+            const Json::Value& source = primitive["source_info"];
+            if (source.isObject())
+            {
+                message << source["filename"].asString() << " line " << source["line"].asInt()
+                        << ": ";
+            }
+            message << it->first << "() is not supported: " << it->second;
+            return message.str();
+        }
+    }
+    return "";
+}
+
+std::map<std::string, std::string>
+P4SwitchCore::GetMissingPrimitives() const
+{
+    return {};
+}
+
+std::mt19937_64&
+P4SwitchCore::RandomEngine()
+{
+    static std::mt19937_64 engine;
+    return engine;
 }
 
 void

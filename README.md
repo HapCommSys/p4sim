@@ -196,6 +196,8 @@ For a first look, the [P4sim website](https://mingyumaz.github.io/p4sim/) explai
 - ns-3.39 to ns-3.49; tested with ns-3.39 and ns-3.49.
 - PNA has no Thrift service of its own: its `FlowTablePath` runs in BMv2's generic `bm_CLI`, which has the table commands but not the time commands of `pna_nic_CLI`.
 - PSA and PNA programs give no digest records, as BMv2's `psa_switch` and `pna_nic` give none.
+- PNA has no `recirculate()` and no `mirror_packet()`, as BMv2's `pna_nic` has neither: a PNA program that calls one is rejected when the switch loads it.
+- v1model direct meters (`direct_meter`) count wall-clock time, as BMv2 runs them; `meter.execute_meter()` counts simulation time ([doc/switch.md](doc/switch.md#time-and-random-numbers-in-the-p4-program)).
 - The pipeline core (`P4SwitchArch` 3) has no output queue: a congested port can lose frames. It has no packet replication engine either: multicast (`mcast_grp`), clones, resubmit and recirculation have no effect, and the frame goes to `egress_spec` only.
 - The Thrift server of a switch runs in its own thread: use the runtime CLIs before and after the simulation, and `P4Controller` during it. BMv2 cannot stop the server, so the Thrift port of a destroyed switch stays open; it answers every call with an error.
 

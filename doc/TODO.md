@@ -60,6 +60,8 @@ line (bridge ports only, the old timing model) and gets no more changes.
     time commands of `pna_nic_CLI`); its `FlowTablePath` runs in `bm_CLI`.
   - PSA and PNA give no digest records: BMv2's `psa_switch` and `pna_nic` do
     not pass digests on either.
+  - PNA has no `recirculate()` and no `mirror_packet()`, as `pna_nic` has
+    neither; a PNA program that calls one is rejected when it loads.
   - A program swap on PNA does not wait for the frames in its output queues,
     although `EnableSwap` promises that the switch swaps once it holds no
     packet: PNA turns a frame into an ns-3 packet before it queues it, so the
@@ -84,6 +86,10 @@ line (bridge ports only, the old timing model) and gets no more changes.
     stage allocation, so p4sim cannot see the stages.
   - The default is 0. No published figure covers the whole pipeline; the
     attribute's help text gives a measured one for scale.
+- **Direct meters count wall-clock time.** BMv2's match tables execute a
+  `direct_meter` in its core with the wall clock, out of reach of P4sim, so its
+  colors depend on how fast the simulation runs. `meter.execute_meter()` counts
+  simulation time. A fix needs a way to give BMv2's meters another clock.
 - **Runtime CLI during the simulation.** The Thrift server of a switch runs in
   its own thread, so a CLI that runs during the simulation changes the switch
   without synchronisation with it. The CLIs are for before and after the

@@ -75,6 +75,33 @@ and skips the rest of the file. P4sim prints the commands that fail, with the fi
 and the line; a flow-table file that cannot be opened ends the simulation. Empty
 lines and lines that start with `#` are skipped.
 
+## Time and random numbers in the P4 program
+
+The timestamps that the P4 program reads count simulation time in nanoseconds
+since the switch was created; BMv2 counts microseconds. (`get_time_elapsed` of
+`simple_switch_CLI` and `psa_switch_CLI` reports microseconds, as in BMv2.) A
+field wraps around
+when the time no longer fits:
+
+| Field | Bits | Wraps after |
+|---|---|---|
+| v1model `ingress_global_timestamp`, `egress_global_timestamp` | 48 | 78 hours |
+| v1model `enq_timestamp` | 32 | 4.29 s |
+| v1model `deq_timedelta`, the time in the output queue | 32 | 4.29 s |
+| PSA `ingress_timestamp`, `egress_timestamp`, PNA `timestamp` | 64 | 585 years |
+
+After 4.29 s of simulation, `enq_timestamp` has wrapped: take the time in the
+queue from `deq_timedelta`, not from `egress_global_timestamp - enq_timestamp`.
+
+A simulation gives the same results every time it runs with the same ns-3 seed
+and run number (`RngSeedManager`, `--RngSeed`, `--RngRun`):
+
+- `random()` of v1model draws from an engine that each switch seeds from the
+  seed and the run when it loads its program; another run gives other numbers.
+- `meter.execute_meter()` of v1model counts simulation time from time 0. Direct
+  meters (`direct_meter`) do not: BMv2 runs them with the wall clock, so their
+  colors depend on how fast the simulation runs.
+
 ## Timing on the wire
 
 A frame takes (its bytes × 8 / `DataRate`) on the wire, then `Delay` to reach
