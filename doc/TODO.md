@@ -76,11 +76,11 @@ line (bridge ports only, the old timing model) and gets no more changes.
     The flow-table file of a PNA switch (`bm_CLI`) does not know the meter
     externs; `P4RuntimeApi` and `P4Controller` do.
 - **The pipeline core** (`P4SwitchArch` 3) ignores `mcast_grp`, clones,
-  resubmit and recirculation, without a warning: a v1model program that floods
-  (L2 learning, for example) sends nothing. Proposal: give it the packet
-  replication engine of v1model (the `McSimplePreLAG` component, so that the
-  `mc_*` commands of `simple_switch_CLI` work) and an egress pass per copy;
-  meanwhile, log a warning when a packet asks for one of them.
+  resubmit and recirculation: a v1model program that floods (L2 learning, for
+  example) sends nothing. It warns on stderr, once per switch for each of them.
+  Proposal: give it the packet replication engine of v1model (the
+  `McSimplePreLAG` component, so that the `mc_*` commands of `simple_switch_CLI`
+  work) and an egress pass per copy.
 - **`PipelineDelay` follow-ups (#59).**
   - No separate egress delay (decided November 2026): one delay before the TM is
     enough. With the same total and a port that takes its packets early enough
@@ -112,13 +112,6 @@ line (bridge ports only, the old timing model) and gets no more changes.
 
 ## Bugs and cleanups
 
-- **`examples/p4src/source_routing/source_routing.p4`**: `drop()` has its
-  `mark_to_drop()` commented out, so a frame without source routes is not dropped
-  but goes to port 0. The tutorial's solution drops it; the program also keeps the
-  `TODO` comments of the exercise's starter code. Found in November 2026 while
-  comparing the programs with the tutorials ([tutorials.md](tutorials.md)).
-- **The branches `ns-3.39` and `ns-3.49`** are based on P4sim 1.x (main at #35).
-  `main` now builds with ns-3.39 to ns-3.49, so `ns-3.49` is no longer needed.
 - **BMv2.**
   - Upstream fix for BMv2's bundled spdlog (`registry.h`), which GCC rejects from
     C++20 on; until then, P4sim builds with a fixed copy of these headers
@@ -136,10 +129,7 @@ line (bridge ports only, the old timing model) and gets no more changes.
     manager's thread even when the manager was never started, which crashes
     with glibc 2.43 (Ubuntu 26.04). P4sim is not affected: its switches have a
     device manager without ports instead of BMI.
-- **`P4Controller`'s meter functions.** `SetMeterRates()`, `GetMeterRates()`
-  and `ResetMeterRates()` each have an overload for a table entry
-  (`bm::entry_handle_t`) and one for a meter array (`size_t`): an `int` argument
-  does not compile, and the type of the variable picks the overload. Proposal:
-  name the meter-array ones `MeterSetRates()`, ... as `P4RuntimeApi` does.
-  No test checks what `GetMeterRates()` returns: in the review of #90, a
-  changed getter passed all suites.
+- **Deprecated, to remove in the next major version:** the attributes
+  `ChannelType` and `EnableTracing`, and the meter-array overloads of
+  `P4Controller::SetMeterRates()`, `GetMeterRates()` and `ResetMeterRates()`
+  (replaced by `MeterSetRates()`, `MeterGetRates()` and `MeterResetRates()`).

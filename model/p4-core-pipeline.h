@@ -24,6 +24,9 @@
 #include "ns3/p4-queue.h"
 #include "ns3/p4-switch-core.h"
 
+#include <set>
+#include <string>
+
 namespace ns3
 {
 
@@ -109,7 +112,15 @@ class P4CorePipeline : public P4SwitchCore
     bool HandleEgressPipeline(size_t workerId) override;
 
   private:
-    uint64_t m_packetId; //!< Packet ID
+    /**
+     * @brief Warn on stderr, once per switch and kind of request, that the core
+     * ignores a request of the P4 program
+     * @param request the request, e.g. "clones"
+     */
+    void WarnIgnored(const std::string& request);
+
+    uint64_t m_packetId;                 //!< Packet ID
+    std::set<std::string> m_warnedAbout; //!< the requests WarnIgnored() has reported
 };
 
 } // namespace ns3

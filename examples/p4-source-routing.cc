@@ -261,6 +261,15 @@ class SourceRoutingApp : public Application
     PacketSocketAddress m_socketAddr;
 };
 
+/// Frames sent by the ports of the switches
+static uint32_t g_switchTx = 0;
+
+static void
+CountSwitchTx(Ptr<const Packet>)
+{
+    g_switchTx++;
+}
+
 unsigned long start = getTickCount();
 double global_start_time = 1.0;
 double sink_start_time = global_start_time + 1.0;
@@ -416,6 +425,12 @@ main(int argc, char* argv[])
     for (unsigned int i = 0; i < switchNum; i++)
     {
         p4SwitchHelper.Install(switchNode.Get(i), switchNodes[i].switchDevices);
+        for (uint32_t j = 0; j < switchNodes[i].switchDevices.GetN(); j++)
+        {
+            switchNodes[i].switchDevices.Get(j)->TraceConnectWithoutContext(
+                "MacTx",
+                MakeCallback(&CountSwitchTx));
+        }
     }
 
     // === Configuration for Link: h0 -----> h1 ===
@@ -464,6 +479,12 @@ main(int argc, char* argv[])
     app->SetStartTime(Seconds(client_start_time));
     app->SetStopTime(Seconds(client_stop_time));
 
+    // One IPv4 frame without source routes, which the first switch must drop
+    Ptr<NetDevice> clientDevice = terminals.Get(clientI)->GetDevice(0);
+    Simulator::Schedule(Seconds(client_start_time + 1), [clientDevice, pktSize]() {
+        clientDevice->Send(Create<Packet>(pktSize), clientDevice->GetBroadcast(), 0x0800);
+    });
+
     if (enableTracePcap)
     {
         csma.EnablePcapAll("p4-source-routing", true);
@@ -483,7 +504,14 @@ main(int argc, char* argv[])
                                           << std::endl
                                           << "Run successfully!");
 
-    return p4sim_example::Check(received == 2 * pktSize,
-                                "h2 received " + std::to_string(received) + " of " +
-                                    std::to_string(2 * pktSize) + " bytes");
+    int failed = p4sim_example::Check(received == 2 * pktSize,
+                                      "h2 received " + std::to_string(received) + " of " +
+                                          std::to_string(2 * pktSize) + " bytes");
+    // Each of the two packets leaves one switch per hop; the frame without source
+    // routes leaves none
+    failed |= p4sim_example::Check(g_switchTx == 2 * path.size(),
+                                   "the switches sent " + std::to_string(g_switchTx) + " frames, " +
+                                       std::to_string(2 * path.size()) +
+                                       " expected: the frame without source routes was dropped");
+    return failed;
 }

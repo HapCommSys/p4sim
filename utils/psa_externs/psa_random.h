@@ -14,6 +14,8 @@
 
 #include <bm/bm_sim/extern.h>
 
+#include <random>
+
 namespace bm {
 
 namespace psa {
@@ -34,6 +36,8 @@ class PSA_Random : public bm::ExternType {
   Data max;
   uint64_t min_val;
   uint64_t max_val;
+  // P4sim: the random number engine of the switch, set by init()
+  std::mt19937_64 *engine{nullptr};
 };
 
 }  // namespace bm::psa

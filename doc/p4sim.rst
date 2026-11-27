@@ -153,7 +153,8 @@ Scope and Limitations
 * The pipeline core (``P4SwitchArch`` 3) has no output queue: a congested port
   can lose frames.  It has no packet replication engine either: multicast
   (``mcast_grp``), clones, resubmit and recirculation have no effect, and the
-  frame goes to ``egress_spec`` only.
+  frame goes to ``egress_spec`` only.  The switch warns on stderr, once for
+  each of them, when the P4 program asks for one.
 * The Thrift server of a switch runs in its own thread.  Use the runtime CLIs
   before and after the simulation, and ``P4Controller`` during it.  BMv2 cannot
   stop the server, so the Thrift port of a destroyed switch stays open; it
@@ -418,7 +419,7 @@ Troubleshooting
 Validation
 **********
 
-The module has 21 test suites with 161 test cases, from unit tests of
+The module has 21 test suites with 167 test cases, from unit tests of
 single classes to packet tests that send frames through a switch and check the
 frames that leave it (``p4-packet``, with test files in the format of p4c's
 STF).  Among them:

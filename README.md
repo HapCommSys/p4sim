@@ -202,7 +202,7 @@ For a first look, the [P4sim website](https://mingyumaz.github.io/p4sim/) explai
 - PSA and PNA programs can use the externs `Counter`, `Meter`, `Hash`, `InternetChecksum` and `Random` (BMv2's, in [utils/psa_externs](utils/psa_externs)). p4c does not compile `DirectCounter` and `DirectMeter`, or a `Counter` in a PNA program, for BMv2 yet. Their meters measure simulation time, as `meter.execute_meter()` of v1model does.
 - PNA has no `recirculate()` and no `mirror_packet()`, as BMv2's `pna_nic` has neither: a PNA program that calls one is rejected when the switch loads it.
 - v1model direct meters (`direct_meter`) count wall-clock time, as BMv2 runs them; `meter.execute_meter()` counts simulation time ([doc/switch.md](doc/switch.md#time-and-random-numbers-in-the-p4-program)).
-- The pipeline core (`P4SwitchArch` 3) has no output queue: a congested port can lose frames. It has no packet replication engine either: multicast (`mcast_grp`), clones, resubmit and recirculation have no effect, and the frame goes to `egress_spec` only.
+- The pipeline core (`P4SwitchArch` 3) has no output queue: a congested port can lose frames. It has no packet replication engine either: multicast (`mcast_grp`), clones, resubmit and recirculation have no effect, and the frame goes to `egress_spec` only. The switch warns on stderr, once for each of them, when the P4 program asks for one.
 - The Thrift server of a switch runs in its own thread: use the runtime CLIs before and after the simulation, and `P4Controller` during it. BMv2 cannot stop the server, so the Thrift port of a destroyed switch stays open; it answers every call with an error.
 
 [doc/TODO.md](doc/TODO.md) has the details and the other open items.

@@ -60,7 +60,7 @@ class P4SwitchCore : public bm::Switch
     /**
      * @brief Initialize the switch with the P4 program
      *
-     * It also seeds RandomEngine() from ns-3's seed and run.
+     * It also seeds GetRandomEngine() from ns-3's seed and run.
      *
      * @param jsonPath the path to the JSON file
      * @return void
@@ -82,17 +82,31 @@ class P4SwitchCore : public bm::Switch
     std::string CheckPrimitives(const std::string& jsonPath) const;
 
     /**
-     * @brief The random number engine of the P4 programs
+     * @brief The random number engine of the P4 program of this switch
      *
-     * random() of v1model draws from it. Each switch seeds it from ns-3's seed
-     * and run number (RngSeedManager, or --RngSeed and --RngRun) when it loads
-     * its program, so a simulation gives the same random numbers every time it
-     * runs with the same seed and run. All switches of a process share it; the
-     * P4 programs run in the simulation thread.
+     * random() of v1model and the Random extern of PSA and PNA draw from it.
+     * InitializeSwitchFromP4Json() seeds it from ns-3's seed and run number
+     * (RngSeedManager, or --RngSeed and --RngRun) and from the node id and device
+     * index of the switch. So a simulation gives the same random numbers every
+     * time it runs with the same seed and run, each switch draws its own, and a
+     * switch created during the simulation does not change those of the others.
+     * A program swap keeps the engine.
      *
      * @return the engine
      */
-    static std::mt19937_64& RandomEngine();
+    std::mt19937_64& GetRandomEngine();
+
+    /**
+     * @brief The random number engine of the switch that is loading a P4 program
+     *
+     * BMv2 creates the primitives and externs of a program while a switch loads
+     * it (InitializeSwitchFromP4Json(), load_new_config()), in the thread that
+     * loads it. random() and the Random extern take the engine of their switch
+     * from here then.
+     *
+     * @return the engine of that switch; outside a load, a process-wide engine
+     */
+    static std::mt19937_64& LoadingRandomEngine();
 
     /**
      * @brief Set the BMv2 log level used by InitializeSwitchFromP4Json()
@@ -586,6 +600,7 @@ class P4SwitchCore : public bm::Switch
                          const std::string& output) const;
 
     class MirroringSessions;            //!< Mirroring sessions for clone .etc
+    std::mt19937_64 m_randomEngine;     //!< Random numbers of the P4 program
     int m_thriftPort{0};                //!< Thrift port of the switch (allocated at init)
     bool m_thriftServerStarted{false};  //!< ExecuteCliCommands() started the Thrift server
     uint16_t m_requestedThriftPort{0};  //!< Requested Thrift port, 0 = automatic

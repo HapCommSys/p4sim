@@ -379,7 +379,9 @@ class P4ControllerArchFlowEntryTestCase : public P4TestCase
 /**
  * \ingroup p4sim-tests
  * Meter arrays: the rates of one meter are set, read and reset, and the other
- * meters of the array keep no rates.
+ * meters of the array keep no rates. P4Controller and P4RuntimeApi read the same
+ * rates; a failed read gives none. The index is an int, which the old overloads
+ * (SetMeterRates() with a size_t) did not accept.
  */
 class P4ControllerMeterTestCase : public P4TestCase
 {
@@ -390,6 +392,16 @@ class P4ControllerMeterTestCase : public P4TestCase
     }
 
   private:
+    /// Whether \p read holds the two rates of \p expected
+    static bool SameRates(const std::vector<bm::Meter::rate_config_t>& read,
+                          const std::vector<bm::Meter::rate_config_t>& expected)
+    {
+        return read.size() == 2 && read[0].info_rate == expected[0].info_rate &&
+               read[0].burst_size == expected[0].burst_size &&
+               read[1].info_rate == expected[1].info_rate &&
+               read[1].burst_size == expected[1].burst_size;
+    }
+
     void DoRun() override
     {
         SetDataDir(NS_TEST_SOURCEDIR);
@@ -404,23 +416,34 @@ class P4ControllerMeterTestCase : public P4TestCase
         const std::vector<bm::Meter::rate_config_t> rates = {
             bm::Meter::rate_config_t::make(0.001, 10),
             bm::Meter::rate_config_t::make(0.002, 20)};
-        controller.SetMeterRates(0, meter, size_t{2}, rates);
+        controller.MeterSetRates(0, meter, 2, rates);
         std::vector<bm::Meter::rate_config_t> read;
         NS_TEST_ASSERT_MSG_EQ(api.MeterGetRates(meter, 2, &read), 0, "Cannot read meter 2");
-        NS_TEST_ASSERT_MSG_EQ(read.size(), 2u, "Meter 2 has no rates");
-        if (read.size() == 2) // the test goes on after a failed check
-        {
-            NS_TEST_EXPECT_MSG_EQ((read[0].info_rate == 0.001 && read[0].burst_size == 10 &&
-                                   read[1].info_rate == 0.002 && read[1].burst_size == 20),
-                                  true,
-                                  "Meter 2 has other rates");
-        }
+        NS_TEST_EXPECT_MSG_EQ(SameRates(read, rates), true, "Meter 2 has other rates");
+        controller.MeterGetRates(0, meter, 2, &read);
+        NS_TEST_EXPECT_MSG_EQ(SameRates(read, rates),
+                              true,
+                              "P4Controller reads other rates of meter 2");
         NS_TEST_ASSERT_MSG_EQ(api.MeterGetRates(meter, 1, &read), 0, "Cannot read meter 1");
         NS_TEST_EXPECT_MSG_EQ(read.size(), 0u, "Meter 1 got rates too");
 
-        controller.ResetMeterRates(0, meter, size_t{2});
+        // Failed reads: no such meter, an index past the end, no such switch
+        read = rates;
+        controller.MeterGetRates(0, "MyIngress.none", 2, &read);
+        NS_TEST_EXPECT_MSG_EQ(read.size(), 0u, "Rates of a meter that does not exist");
+        read = rates;
+        controller.MeterGetRates(0, meter, 4, &read);
+        NS_TEST_EXPECT_MSG_EQ(read.size(), 0u, "Rates of a meter past the end");
+        read = rates;
+        controller.MeterGetRates(1, meter, 2, &read);
+        NS_TEST_EXPECT_MSG_EQ(read.size(), 0u, "Rates of a switch that does not exist");
+
+        controller.MeterResetRates(0, meter, 2);
         NS_TEST_ASSERT_MSG_EQ(api.MeterGetRates(meter, 2, &read), 0, "Cannot read meter 2");
         NS_TEST_EXPECT_MSG_EQ(read.size(), 0u, "Meter 2 not reset");
+        read = rates;
+        controller.MeterGetRates(0, meter, 2, &read);
+        NS_TEST_EXPECT_MSG_EQ(read.size(), 0u, "P4Controller reads rates of a reset meter");
     }
 };
 

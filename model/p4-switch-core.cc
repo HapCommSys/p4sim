@@ -26,6 +26,7 @@
 #undef LOG_DEBUG
 
 #include "ns3/log.h"
+#include "ns3/node.h"
 #include "ns3/p4-switch-core.h"
 #include "ns3/p4-switch-net-device.h"
 #include "ns3/p4sim-ns3-compat.h"
@@ -369,6 +370,36 @@ namespace ns3
 
 static constexpr uint16_t MAX_MIRROR_SESSION_ID = (1u << 15) - 1;
 
+namespace
+{
+
+/// The switch that loads a P4 program in this thread (see LoadingRandomEngine())
+thread_local P4SwitchCore* g_loadingSwitch = nullptr;
+
+/// Marks \p sw as the switch that loads a program in this thread, while it exists
+class LoadingSwitchScope
+{
+  public:
+    explicit LoadingSwitchScope(P4SwitchCore* sw)
+        : m_previous(g_loadingSwitch)
+    {
+        g_loadingSwitch = sw;
+    }
+
+    ~LoadingSwitchScope()
+    {
+        g_loadingSwitch = m_previous;
+    }
+
+    LoadingSwitchScope(const LoadingSwitchScope&) = delete;
+    LoadingSwitchScope& operator=(const LoadingSwitchScope&) = delete;
+
+  private:
+    P4SwitchCore* m_previous; ///< the switch marked before
+};
+
+} // namespace
+
 class P4SwitchCore::MirroringSessions
 {
   public:
@@ -464,6 +495,9 @@ P4SwitchCore::~P4SwitchCore()
 bm::RuntimeInterface::ErrorCode
 P4SwitchCore::load_new_config(const std::string& newConfig)
 {
+    // BMv2 creates the primitives and externs of the program now (see
+    // LoadingRandomEngine())
+    LoadingSwitchScope loading(this);
     bm::RuntimeInterface::ErrorCode rc = bm::SwitchWContexts::load_new_config(newConfig);
     if (rc == bm::RuntimeInterface::SUCCESS)
     {
@@ -932,14 +966,27 @@ P4SwitchCore::InitializeSwitchFromP4Json(const std::string& jsonPath)
         NS_FATAL_ERROR(unsupported);
     }
 
-    // The random numbers of the P4 programs follow ns-3's seed and run
+    // The random numbers of the P4 program follow ns-3's seed and run; the node id
+    // and the device index give each switch numbers of its own
     uint64_t run = RngSeedManager::GetRun();
+    uint32_t nodeId = 0;
+    uint32_t deviceIndex = 0;
+    if (Ptr<Node> node = m_switchNetDevice->GetNode())
+    {
+        nodeId = node->GetId();
+        deviceIndex = m_switchNetDevice->GetIfIndex();
+    }
     std::seed_seq seed{RngSeedManager::GetSeed(),
                        static_cast<uint32_t>(run),
-                       static_cast<uint32_t>(run >> 32)};
-    RandomEngine().seed(seed);
+                       static_cast<uint32_t>(run >> 32),
+                       nodeId,
+                       deviceIndex};
+    m_randomEngine.seed(seed);
 
-    // Initialize the switch, with a device manager without ports (NoPortsDevMgr)
+    // Initialize the switch, with a device manager without ports (NoPortsDevMgr).
+    // BMv2 creates the primitives and externs of the program now (see
+    // LoadingRandomEngine()).
+    LoadingSwitchScope loading(this);
     status = init_from_options_parser(opt_parser, nullptr, std::make_unique<NoPortsDevMgr>());
     if (status != 0)
     {
@@ -1001,8 +1048,18 @@ P4SwitchCore::GetMissingPrimitives() const
 }
 
 std::mt19937_64&
-P4SwitchCore::RandomEngine()
+P4SwitchCore::GetRandomEngine()
 {
+    return m_randomEngine;
+}
+
+std::mt19937_64&
+P4SwitchCore::LoadingRandomEngine()
+{
+    if (g_loadingSwitch)
+    {
+        return g_loadingSwitch->m_randomEngine;
+    }
     static std::mt19937_64 engine;
     return engine;
 }

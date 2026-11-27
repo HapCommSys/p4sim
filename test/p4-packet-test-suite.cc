@@ -677,31 +677,54 @@ SwitchedPortTestCase::DoRun()
 
 /**
  * random() follows ns-3's seed and run: a run gives the same numbers every time,
- * another run gives others. Each run sends two frames through a switch whose
- * program writes a 32-bit random() into their source MAC (op 4 of
- * p4src/primitives).
+ * another run gives others. Each switch draws from its own engine: a second
+ * switch, even one created during the simulation, neither changes the numbers
+ * of the first nor repeats them. Each switch gets two frames, and its program
+ * writes a 32-bit random() into their source MAC (op 4 of p4src/primitives).
  */
 class RandomSeedTestCase : public TestCase
 {
   public:
     RandomSeedTestCase()
-        : TestCase("v1model: random() follows ns-3's seed and run")
+        : TestCase("v1model: random() follows ns-3's seed and run, one engine per switch")
     {
     }
 
   private:
+    /// The source MACs of the frames that leave port 1 of each switch
+    struct Numbers
+    {
+        std::vector<std::string> first;  ///< of the switch that is there from the start
+        std::vector<std::string> second; ///< of the switch created during the simulation
+    };
+
     void DoRun() override
     {
         uint64_t oldRun = RngSeedManager::GetRun();
-        std::vector<std::string> first = Run(1);
-        std::vector<std::string> other = Run(2);
-        std::vector<std::string> again = Run(1);
+        Numbers first = Run(1, false);
+        Numbers other = Run(2, false);
+        Numbers again = Run(1, false);
+        Numbers withSecond = Run(1, true);
         RngSeedManager::SetRun(oldRun);
 
-        NS_TEST_ASSERT_MSG_EQ(first.size(), 2, "The switch must forward both frames");
-        NS_TEST_EXPECT_MSG_NE(first[0], first[1], "The two frames must get different numbers");
-        NS_TEST_EXPECT_MSG_EQ((again == first), true, "Run 1 must give the same numbers again");
-        NS_TEST_EXPECT_MSG_EQ((other == first), false, "Run 2 must give other numbers");
+        NS_TEST_ASSERT_MSG_EQ(first.first.size(), 2, "The switch must forward both frames");
+        NS_TEST_EXPECT_MSG_NE(first.first[0],
+                              first.first[1],
+                              "The two frames must get different numbers");
+        NS_TEST_EXPECT_MSG_EQ((again.first == first.first),
+                              true,
+                              "Run 1 must give the same numbers again");
+        NS_TEST_EXPECT_MSG_EQ((other.first == first.first), false, "Run 2 must give other numbers");
+        NS_TEST_EXPECT_MSG_EQ((withSecond.first == first.first),
+                              true,
+                              "A switch created during the simulation must not change the "
+                              "numbers of another switch");
+        NS_TEST_ASSERT_MSG_EQ(withSecond.second.size(),
+                              2,
+                              "The second switch must forward both frames");
+        NS_TEST_EXPECT_MSG_EQ((withSecond.second == withSecond.first),
+                              false,
+                              "Each switch must draw its own numbers");
     }
 
     void DoTeardown() override
@@ -709,15 +732,31 @@ class RandomSeedTestCase : public TestCase
         Simulator::Destroy();
     }
 
-    /// The source MACs of the frames that leave the switch, with ns-3's run \p run
-    std::vector<std::string> Run(uint64_t run)
+    /// Record the source MAC of a frame in \p sources
+    static bool Record(std::vector<std::string>* sources,
+                       Ptr<NetDevice> host,
+                       Ptr<const Packet> packet,
+                       uint16_t protocol,
+                       const Address& from,
+                       const Address& to,
+                       NetDevice::PacketType type)
     {
-        RngSeedManager::SetRun(run);
-        m_sources.clear();
-        SetDataDir(NS_TEST_SOURCEDIR);
+        std::ostringstream source;
+        source << Mac48Address::ConvertFrom(from);
+        sources->push_back(source.str());
+        return true;
+    }
+
+    /**
+     * A switch on a new node, with a host on each of its two ports (on another new
+     * node). The frames that leave port 1 are recorded in \p sources.
+     * @return the host on port 0
+     */
+    Ptr<SimpleNetDevice> AddSwitch(std::vector<std::string>* sources, Ptr<P4SwitchNetDevice>& sw)
+    {
         Ptr<Node> switchNode = CreateObject<Node>();
         Ptr<Node> hostNode = CreateObject<Node>();
-        Ptr<P4SwitchNetDevice> sw = CreateObject<P4SwitchNetDevice>();
+        sw = CreateObject<P4SwitchNetDevice>();
         sw->SetAttribute("P4SwitchArch", UintegerValue(P4SWITCH_ARCH_V1MODEL));
         sw->SetAttribute(
             "JsonPath",
@@ -740,39 +779,162 @@ class RandomSeedTestCase : public TestCase
             sw->AddBridgePort(port);
             hosts.push_back(host);
         }
-        hosts[1]->SetPromiscReceiveCallback(MakeCallback(&RandomSeedTestCase::Receive, this));
-        sw->Initialize();
+        hosts[1]->SetPromiscReceiveCallback(MakeBoundCallback(&Record, sources));
+        return hosts[0];
+    }
+
+    /// Send two frames from \p host, \p delay from now and 1 ms later
+    static void SendTwo(Ptr<SimpleNetDevice> host, Time delay)
+    {
         for (int i = 0; i < 2; i++)
         {
             uint8_t payload[] = {0, 0, 0, 4};
+            Simulator::Schedule(delay + MilliSeconds(i),
+                                &SimpleNetDevice::SendFrom,
+                                host,
+                                Create<Packet>(payload, sizeof(payload)),
+                                Mac48Address("00:00:00:00:00:00"),
+                                Mac48Address("00:00:00:00:00:01"),
+                                0x9004);
+        }
+    }
+
+    /**
+     * Run a simulation with ns-3's run \p run. The first switch gets its frames at
+     * 1 and 2 ms. With \p secondSwitch, a second switch and its nodes are created at
+     * 1.5 ms, between these frames, and get frames at 3 and 4 ms.
+     */
+    Numbers Run(uint64_t run, bool secondSwitch)
+    {
+        RngSeedManager::SetRun(run);
+        SetDataDir(NS_TEST_SOURCEDIR);
+        Numbers numbers;
+        Ptr<P4SwitchNetDevice> sw;
+        SendTwo(AddSwitch(&numbers.first, sw), MilliSeconds(1));
+        sw->Initialize();
+        if (secondSwitch)
+        {
+            Simulator::Schedule(MicroSeconds(1500), [this, &numbers]() {
+                Ptr<P4SwitchNetDevice> sw2;
+                SendTwo(AddSwitch(&numbers.second, sw2), MicroSeconds(1500));
+                sw2->Initialize();
+            });
+        }
+        Simulator::Stop(Seconds(1));
+        Simulator::Run();
+        Simulator::Destroy();
+        return numbers;
+    }
+};
+
+/**
+ * The pipeline core has no packet replication engine and no second pass. A
+ * program that asks it for multicast, a clone, resubmit or recirculation gets
+ * one warning on stderr per switch. Each run sends two frames of the same
+ * EtherType into a switch that runs one of the v1model test programs.
+ */
+class PipelineWarningTestCase : public TestCase
+{
+  public:
+    /**
+     * @param json the program, relative to the test folder
+     * @param etherType the EtherType of the two frames
+     * @param request the request that the warning names
+     * @param expected how often the warning must appear: 1, or 0 if the frames ask
+     * for nothing
+     */
+    PipelineWarningTestCase(const std::string& json,
+                            uint16_t etherType,
+                            const std::string& request,
+                            uint32_t expected)
+        : TestCase(Name(json, etherType, request, expected)),
+          m_json(json),
+          m_etherType(etherType),
+          m_request(request),
+          m_expected(expected)
+    {
+    }
+
+  private:
+    static std::string Name(const std::string& json,
+                            uint16_t etherType,
+                            const std::string& request,
+                            uint32_t expected)
+    {
+        std::string program = json.substr(json.rfind('/') + 1);
+        program = program.substr(0, program.rfind('.'));
+        std::ostringstream name;
+        name << "pipeline: " << (expected ? "one warning" : "no warning") << " about " << request
+             << ", EtherType " << std::hex << etherType << " into " << program;
+        return name.str();
+    }
+
+    void DoRun() override
+    {
+        SetDataDir(NS_TEST_SOURCEDIR);
+        Ptr<Node> switchNode = CreateObject<Node>();
+        Ptr<Node> hostNode = CreateObject<Node>();
+        Ptr<P4SwitchNetDevice> sw = CreateObject<P4SwitchNetDevice>();
+        sw->SetAttribute("P4SwitchArch", UintegerValue(P4SWITCH_ARCH_PIPELINE));
+        sw->SetAttribute("JsonPath", StringValue(CreateDataDirFilename(m_json)));
+        sw->SetAttribute("FlowTablePath", StringValue(""));
+        switchNode->AddDevice(sw);
+        std::vector<Ptr<SimpleNetDevice>> hosts;
+        for (uint32_t i = 0; i < N_PORTS; i++)
+        {
+            Ptr<SimpleChannel> channel = CreateObject<SimpleChannel>();
+            Ptr<SimpleNetDevice> port = CreateObject<SimpleNetDevice>();
+            Ptr<SimpleNetDevice> host = CreateObject<SimpleNetDevice>();
+            port->SetAddress(Mac48Address::Allocate());
+            port->SetAttribute("DataRate", DataRateValue(DataRate("1Gbps")));
+            host->SetAddress(Mac48Address::Allocate());
+            port->SetChannel(channel);
+            host->SetChannel(channel);
+            switchNode->AddDevice(port);
+            hostNode->AddDevice(host);
+            sw->AddBridgePort(port);
+            hosts.push_back(host);
+        }
+        sw->Initialize();
+        for (uint8_t i = 0; i < 2; i++)
+        {
+            uint8_t payload[] = {0, 0, 0, static_cast<uint8_t>(i + 1)};
             Simulator::Schedule(MilliSeconds(1 + i),
                                 &SimpleNetDevice::SendFrom,
                                 hosts[0],
                                 Create<Packet>(payload, sizeof(payload)),
                                 Mac48Address("00:00:00:00:00:00"),
                                 Mac48Address("00:00:00:00:00:01"),
-                                0x9004);
+                                m_etherType);
         }
+
+        std::ostringstream captured;
+        std::streambuf* stderrBuffer = std::cerr.rdbuf(captured.rdbuf());
         Simulator::Stop(Seconds(1));
         Simulator::Run();
+        std::cerr.rdbuf(stderrBuffer);
         Simulator::Destroy();
-        return m_sources;
+
+        const std::string text = captured.str();
+        const std::string warning = "which ignores " + m_request + ";";
+        uint32_t found = 0;
+        for (size_t at = text.find(warning); at != std::string::npos;
+             at = text.find(warning, at + 1))
+        {
+            found++;
+        }
+        NS_TEST_EXPECT_MSG_EQ(found, m_expected, "Warnings on stderr: \"" << text << "\"");
     }
 
-    bool Receive(Ptr<NetDevice> host,
-                 Ptr<const Packet> packet,
-                 uint16_t protocol,
-                 const Address& from,
-                 const Address& to,
-                 NetDevice::PacketType type)
+    void DoTeardown() override
     {
-        std::ostringstream source;
-        source << Mac48Address::ConvertFrom(from);
-        m_sources.push_back(source.str());
-        return true;
+        Simulator::Destroy();
     }
 
-    std::vector<std::string> m_sources; ///< the source MACs of the received frames
+    std::string m_json;    ///< the program
+    uint16_t m_etherType;  ///< the EtherType of the frames
+    std::string m_request; ///< the request that the warning names
+    uint32_t m_expected;   ///< how often the warning must appear
 };
 
 /// Every architecture runs the same program, p4src/forward, with the same .stf
@@ -782,7 +944,8 @@ class RandomSeedTestCase : public TestCase
 /// p4src/clone its clones (also to a multicast group), p4src/primitives digest(), hash() with max 0
 /// and random() with lo > hi, p4src/lag the LAG member that its multicast picks, and
 /// p4src/bounds register, counter and meter indices out of bounds and a frame that
-/// truncate() makes shorter than an Ethernet header
+/// truncate() makes shorter than an Ethernet header; the pipeline core warns once
+/// about the multicast, clones, resubmit and recirculation that it ignores
 static class P4PacketTestSuite : public TestSuite
 {
   public:
@@ -844,5 +1007,20 @@ static class P4PacketTestSuite : public TestSuite
                     P4SIM_TEST_QUICK);
         AddTestCase(new StfTestCase("bounds", "v1model", P4SWITCH_ARCH_V1MODEL, "truncate.stf"),
                     P4SIM_TEST_QUICK);
+        // The pipeline core warns about the requests it ignores (EtherTypes as in
+        // the .stf files of these programs)
+        const std::vector<std::tuple<std::string, uint16_t, std::string, uint32_t>> warnings = {
+            {"p4src/clone/clone_v1model.json", 0x9000, "clones", 0},
+            {"p4src/clone/clone_v1model.json", 0x9001, "clones", 1}, // at the ingress
+            {"p4src/clone/clone_v1model.json", 0x9002, "clones", 1}, // at the egress
+            {"p4src/lag/lag_v1model.json", 0x9000, "multicast (mcast_grp)", 1},
+            {"p4src/resubmit/resubmit_v1model.json", 0x9002, "resubmit", 1},
+            {"p4src/recirculate/recirculate_v1model.json", 0x9002, "recirculation", 1},
+        };
+        for (const auto& [json, etherType, request, expected] : warnings)
+        {
+            AddTestCase(new PipelineWarningTestCase(json, etherType, request, expected),
+                        P4SIM_TEST_QUICK);
+        }
     }
 } g_p4PacketTestSuite;
