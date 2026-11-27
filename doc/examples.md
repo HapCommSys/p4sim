@@ -13,6 +13,9 @@ fails. `--MinDelivery=0` turns off the check that the packets arrive, for experi
 lose packets on purpose. `./test.py` runs every example below, with the arguments in
 [`test/examples-to-run.py`](../test/examples-to-run.py).
 
+Ten examples follow exercises of [p4lang/tutorials](https://github.com/p4lang/tutorials);
+[tutorials.md](tutorials.md) maps every exercise to its example.
+
 ## List
 
 The architecture is the value of the `P4SwitchArch` attribute. A switch has two kinds of

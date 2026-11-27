@@ -147,7 +147,7 @@ A switch has two kinds of port, which can be mixed. The port number is the order
 
 ## Examples
 
-[doc/examples.md](doc/examples.md) describes all 30 examples. A selection:
+[doc/examples.md](doc/examples.md) describes all 30 examples, and [doc/tutorials.md](doc/tutorials.md) maps the exercises of [p4lang/tutorials](https://github.com/p4lang/tutorials) to them. A selection:
 
 | Example | Description |
 |---|---|
@@ -181,6 +181,7 @@ For a first look, the [P4sim website](https://mingyumaz.github.io/p4sim/) explai
 | [doc/getting-started.md](doc/getting-started.md) | The first steps, the learning path, and common errors |
 | [doc/docker.md](doc/docker.md) | Building and running P4sim in Docker |
 | [doc/examples.md](doc/examples.md) | All examples and the format of their P4 files |
+| [doc/tutorials.md](doc/tutorials.md) | The exercises of p4lang/tutorials, their examples, and the way from Mininet to ns-3 |
 | [doc/switch.md](doc/switch.md) | Pipeline and queues of the switch, switched-Ethernet ports and host devices, timing on the wire |
 | [doc/traffic-manager.md](doc/traffic-manager.md) | The VOQ + fabric traffic manager |
 | [doc/event-driven-tm-scheduler.md](doc/event-driven-tm-scheduler.md) | How the egress sends the next frame when a port is free |

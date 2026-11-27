@@ -140,8 +140,9 @@ addresses, the traffic, the result. The rules that most first programs miss:
 | | `p4-spine-leaf-topo`, `p4-topo-fattree` | ECMP, generated topologies and tables |
 | | `p4-voq-fabric-*` | the traffic manager |
 
-[examples.md](examples.md) lists all examples, and [test/Readme.md](../test/Readme.md)
-shows how to test a P4 program with packets (`.stf` files).
+[examples.md](examples.md) lists all examples, [tutorials.md](tutorials.md) the exercises
+of p4lang/tutorials that they follow, and [test/Readme.md](../test/Readme.md) shows how to
+test a P4 program with packets (`.stf` files).
 
 ## If it does not work
 
