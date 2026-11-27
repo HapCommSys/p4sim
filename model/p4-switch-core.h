@@ -173,7 +173,9 @@ class P4SwitchCore : public bm::Switch
      *
      * Empty lines and lines that start with '#' are skipped. A command that the
      * CLI reports as an error is printed with its line number, and the rest of
-     * the file runs. A file that cannot be read ends the simulation.
+     * the file runs. A file that cannot be read ends the simulation. It can be
+     * called again later in the simulation: the first call starts the Thrift
+     * server of the switch, and the later calls use it.
      *
      * @param commandsFile the path to the CLI commands file, empty for none
      * @return 0 if every command ran without an error, 1 otherwise
@@ -495,6 +497,7 @@ class P4SwitchCore : public bm::Switch
 
     class MirroringSessions;            //!< Mirroring sessions for clone .etc
     int m_thriftPort{0};                //!< Thrift port of the switch (allocated at init)
+    bool m_thriftServerStarted{false};  //!< ExecuteCliCommands() started the Thrift server
     uint16_t m_requestedThriftPort{0};  //!< Requested Thrift port, 0 = automatic
     std::string m_bmLogLevel{"off"};    //!< BMv2 log level
     size_t m_nbQueuesPerPort;           //!< Number of queues per port (default 8)
