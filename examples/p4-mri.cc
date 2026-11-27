@@ -18,8 +18,9 @@
  * adds a record: the switch ID and the depth of its queue when the packet left it
  * (deq_qdepth). From 2 to 3 s, h11 sends 1 Mbps of UDP to h22 over the same
  * 512 kbps link from s1 to s2, so the queue of that port grows. h2 reads the
- * records, and the program checks that every packet went s1 -> s2 and that the
- * queue of s1 shows the congestion, and only while it lasts.
+ * records, and the program checks that every packet went s1 -> s2, that its IPv4
+ * header and option lengths count the records, and that the queue of s1 shows the
+ * congestion, and only while it lasts.
  */
 
 #include "example-check.h"
@@ -51,11 +52,13 @@ struct Hop
     uint32_t qdepth;
 };
 
-/// A packet of h1 at h2: when, and the records of its hops, the last hop first
+/// A packet of h1 at h2: when, the records of its hops (the last hop first), and
+/// whether its IPv4 header length, total length and option length fit them
 struct Arrival
 {
     Time time;
     std::vector<Hop> hops;
+    bool lengthsFit;
 };
 
 std::vector<Arrival> g_arrivals;
@@ -83,7 +86,7 @@ Send(Ptr<NetDevice> device, Ipv4Address source, Ipv4Address destination)
     b[4] = id >> 8;
     b[5] = id++ & 0xff;
     b[8] = 64; // TTL
-    b[9] = UdpL4Protocol::PROT_NUMBER;
+    b[9] = 17; // protocol: UDP
     source.Serialize(&b[12]);
     destination.Serialize(&b[16]);
     b[20] = MRI_OPTION;
@@ -109,7 +112,7 @@ Send(Ptr<NetDevice> device, Ipv4Address source, Ipv4Address destination)
     std::copy(MESSAGE.begin(), MESSAGE.end(), b.begin() + 32);
     device->Send(Create<Packet>(b.data(), b.size()),
                  Mac48Address("08:00:00:00:01:00"),
-                 Ipv4L3Protocol::PROT_NUMBER);
+                 ETHERTYPE_IPV4);
 }
 
 /// An IPv4 packet reached the device of h2: read the records of an MRI option
@@ -127,8 +130,14 @@ Receive(Ptr<NetDevice>,
     {
         return; // no MRI option
     }
-    Arrival arrival{Simulator::Now(), {}};
     uint32_t count = b[22] << 8 | b[23];
+    // Every record adds 8 bytes to the option, the IPv4 header and the packet
+    uint32_t headerWords = b[0] & 0x0f;
+    uint32_t totalLength = b[2] << 8 | b[3];
+    Arrival arrival{Simulator::Now(),
+                    {},
+                    headerWords == 6 + 2 * count && b[21] == 4 + 8 * count &&
+                        totalLength == 24 + 8 * count + 8 + MESSAGE.size()};
     for (uint32_t i = 0; i < count && 24 + 8 * (i + 1) <= b.size(); i++)
     {
         arrival.hops.push_back({Read32(&b[24 + 8 * i]), Read32(&b[28 + 8 * i])});
@@ -165,7 +174,7 @@ main(int argc, char* argv[])
                             t.addresses[H2]);
     }
     t.hosts.Get(H2)->RegisterProtocolHandler(MakeCallback(&Receive),
-                                             Ipv4L3Protocol::PROT_NUMBER,
+                                             ETHERTYPE_IPV4,
                                              t.devices.Get(H2));
     if (pcap)
     {
@@ -181,6 +190,7 @@ main(int argc, char* argv[])
               << "  arrival (s)   switch: queue depth\n"
               << std::fixed << std::setprecision(2);
     bool path = true;     // every packet went s1 -> s2
+    bool lengths = true;  // and its lengths fit its records
     uint32_t idleS1 = 0;  // packets before the congestion that found s1's queue empty
     uint32_t maxS1 = 0;   // the deepest queue of s1 that a packet saw
     uint32_t afterS1 = 0; // the last 5 packets that found s1's queue empty
@@ -190,6 +200,7 @@ main(int argc, char* argv[])
         const Arrival& a = g_arrivals[i];
         bool twoHops = a.hops.size() == 2 && a.hops[0].swid == 2 && a.hops[1].swid == 1;
         path = path && twoHops;
+        lengths = lengths && a.lengthsFit;
         if (i % 5 == 0)
         {
             std::cout << "  " << std::setw(11) << a.time.GetSeconds() << "  ";
@@ -213,6 +224,9 @@ main(int argc, char* argv[])
                        std::to_string(g_arrivals.size()) + " of " + std::to_string(N_PACKETS) +
                            " packets from h1 arrived");
     failed |= Check(path, "every packet recorded the path s1 -> s2");
+    failed |= Check(lengths,
+                    "the IPv4 header length, total length and option length of every "
+                    "packet count its records");
     failed |= Check(idleS1 == 10,
                     std::to_string(idleS1) + " of the 10 packets before the "
                                              "congestion found the queue of s1 empty");

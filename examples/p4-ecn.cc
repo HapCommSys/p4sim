@@ -21,6 +21,8 @@
  * h2 prints the ECN value of the packets from h1, and the program checks that the
  * marks follow the congestion: none before it, some while the queue is long, none
  * once it has drained, and none on the packets of h11, which are not ECN-capable.
+ * It also checks the IPv4 checksum, which the switches must update with the ECN
+ * field.
  */
 
 #include "example-check.h"
@@ -46,11 +48,13 @@ const std::string MESSAGE = "P4 is cool";     ///< payload of h1's packets
 const uint8_t ECN_CAPABLE = 1;                ///< ECN of h1's packets (ECT(1))
 const uint8_t ECN_CONGESTION_EXPERIENCED = 3; ///< ECN that the switches set
 
-/// A packet that h2 or h22 received: when, and its ECN field
+/// A packet that h2 or h22 received: when, its ECN field, and whether its IPv4
+/// header checksum is right
 struct Arrival
 {
     Time time;
     uint8_t ecn;
+    bool checksumOk;
 };
 
 std::vector<Arrival> g_fromH1;  ///< h1's packets at h2
@@ -63,8 +67,8 @@ Send(Ptr<Socket> socket)
     socket->Send(Create<Packet>(reinterpret_cast<const uint8_t*>(MESSAGE.data()), MESSAGE.size()));
 }
 
-/// An IPv4 packet reached the device of h2 or h22: note the ECN field of the
-/// packets from \p source
+/// An IPv4 packet reached the device of h2 or h22: note the ECN field and the
+/// checksum of the packets from \p source
 void
 Receive(std::vector<Arrival>* arrivals,
         Ipv4Address source,
@@ -76,9 +80,11 @@ Receive(std::vector<Arrival>* arrivals,
         NetDevice::PacketType)
 {
     Ipv4Header ip;
+    ip.EnableChecksum(); // ns-3 checks no checksums by default; the switches set it
     if (packet->PeekHeader(ip) && ip.GetSource() == source)
     {
-        arrivals->push_back({Simulator::Now(), static_cast<uint8_t>(ip.GetTos() & 0x3)});
+        arrivals->push_back(
+            {Simulator::Now(), static_cast<uint8_t>(ip.GetTos() & 0x3), ip.IsChecksumOk()});
     }
 }
 
@@ -113,11 +119,11 @@ main(int argc, char* argv[])
     // The ECN field of every packet that arrives, read on the devices of h2 and h22
     t.hosts.Get(H2)->RegisterProtocolHandler(
         MakeBoundCallback(&Receive, &g_fromH1, t.addresses[H1]),
-        Ipv4L3Protocol::PROT_NUMBER,
+        ETHERTYPE_IPV4,
         t.devices.Get(H2));
     t.hosts.Get(H22)->RegisterProtocolHandler(
         MakeBoundCallback(&Receive, &g_fromH11, t.addresses[H11]),
-        Ipv4L3Protocol::PROT_NUMBER,
+        ETHERTYPE_IPV4,
         t.devices.Get(H22));
     if (pcap)
     {
@@ -159,6 +165,14 @@ main(int argc, char* argv[])
     uint32_t marked = count(g_fromH1, ECN_CONGESTION_EXPERIENCED, Seconds(0), Seconds(10));
     uint32_t after = count(g_fromH1, ECN_CAPABLE, Seconds(4.5), Seconds(10));
     uint32_t h11Marked = count(g_fromH11, ECN_CONGESTION_EXPERIENCED, Seconds(0), Seconds(10));
+    uint32_t badChecksums = 0;
+    for (const auto* arrivals : {&g_fromH1, &g_fromH11})
+    {
+        for (const Arrival& a : *arrivals)
+        {
+            badChecksums += !a.checksumOk;
+        }
+    }
 
     int failed = Check(g_fromH1.size() == N_PACKETS,
                        std::to_string(g_fromH1.size()) + " of " + std::to_string(N_PACKETS) +
@@ -175,5 +189,9 @@ main(int argc, char* argv[])
     failed |= Check(!g_fromH11.empty() && h11Marked == 0,
                     std::to_string(h11Marked) + " of the " + std::to_string(g_fromH11.size()) +
                         " packets of h11, which are not ECN-capable, were marked");
+    failed |= Check(badChecksums == 0,
+                    std::to_string(badChecksums) + " of the " +
+                        std::to_string(g_fromH1.size() + g_fromH11.size()) +
+                        " packets at h2 and h22 have a wrong IPv4 checksum");
     return failed;
 }

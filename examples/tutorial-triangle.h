@@ -49,6 +49,9 @@
 namespace p4sim_example
 {
 
+/// The EtherType of IPv4 (Ipv4L3Protocol::PROT_NUMBER, deprecated in ns-3.49)
+const uint16_t ETHERTYPE_IPV4 = 0x0800;
+
 /// The hosts of the triangle, in the order h1, h11, h2, h22, h3
 enum TriangleHost
 {

@@ -10,7 +10,8 @@
  * Multicast, the "multicast" exercise of p4lang/tutorials:
  * https://github.com/p4lang/tutorials/tree/master/exercises/multicast
  * The P4 program is the reference solution of the exercise, unchanged, and the
- * flow table is its runtime file (examples/p4src/multicast).
+ * flow table is the runtime file of the solution (examples/p4src/multicast), whose
+ * multicast group already has port 4, step 6 of the exercise.
  *
  *   h1 ── port 0 ┐
  *   h2 ── port 1 ┤
@@ -23,7 +24,7 @@
  * such as an ARP request to the broadcast address, goes to multicast group 1, all
  * ports; the egress drops the copy for the port that the frame came from.
  *
- * Unlike the other examples, the hosts know no MAC addresses in advance: they
+ * Unlike in p4-ecn and p4-mri, the hosts know no MAC addresses in advance: they
  * learn them with ARP, whose requests reach the other hosts through the multicast
  * group. Each host sends three UDP echo requests to every other host, and h1 sends
  * one broadcast frame of its own EtherType. The program checks that all hosts
