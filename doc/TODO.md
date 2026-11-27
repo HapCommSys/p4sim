@@ -68,6 +68,13 @@ line (bridge ports only, the old timing model) and gets no more changes.
     frame no longer holds a PHV, which is what `HoldsPackets()` counts besides
     the transfer buffers. These frames have passed the whole pipeline, so they
     are not processed again either way.
+  - Externs (`utils/psa_externs`): `Counter`, `Meter`, `Hash`,
+    `InternetChecksum` and `Random` work in PSA and PNA programs. p4c does not
+    compile the rest for BMv2: p4c 1.2.5.17 leaves a PSA `DirectCounter` out of
+    the JSON and stops on a `DirectMeter`; p4c 1.2.5.17 and 1.2.5.19 stop with a
+    compiler bug on a PNA `Counter` (`PNA_CounterType_t`). Report these to p4c.
+    The flow-table file of a PNA switch (`bm_CLI`) does not know the meter
+    externs; `P4RuntimeApi` and `P4Controller` do.
 - **The pipeline core** (`P4SwitchArch` 3) ignores `mcast_grp`, clones,
   resubmit and recirculation, without a warning: a v1model program that floods
   (L2 learning, for example) sends nothing. Proposal: give it the packet
@@ -88,8 +95,9 @@ line (bridge ports only, the old timing model) and gets no more changes.
     attribute's help text gives a measured one for scale.
 - **Direct meters count wall-clock time.** BMv2's match tables execute a
   `direct_meter` in its core with the wall clock, out of reach of P4sim, so its
-  colors depend on how fast the simulation runs. `meter.execute_meter()` counts
-  simulation time. A fix needs a way to give BMv2's meters another clock.
+  colors depend on how fast the simulation runs. `meter.execute_meter()` and
+  the `Meter` extern of PSA and PNA count simulation time. A fix needs a way to
+  give BMv2's meters another clock.
 - **Runtime CLI during the simulation.** The Thrift server of a switch runs in
   its own thread, so a CLI that runs during the simulation changes the switch
   without synchronisation with it. The CLIs are for before and after the

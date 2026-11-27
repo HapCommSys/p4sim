@@ -305,6 +305,57 @@ class P4SwitchCore : public bm::Switch
      */
     bm::RuntimeInterface::ErrorCode swap_configs() override;
 
+    // === Counters and meters of the runtime API (runtime CLI, P4RuntimeApi) ===
+    // A PSA or PNA program declares Counter and Meter as externs, which keep
+    // their own arrays (utils/psa_externs). As in BMv2's psa_switch, these calls
+    // reach the extern of that name; any other name goes to BMv2's counter and
+    // meter arrays, as before (v1model, direct counters and meters).
+
+    /// @brief Read a counter (runtime API)
+    bm::Counter::CounterErrorCode read_counters(
+        bm::cxt_id_t cxt_id,
+        const std::string& counter_name,
+        size_t index,
+        bm::MatchTableAbstract::counter_value_t* bytes,
+        bm::MatchTableAbstract::counter_value_t* packets) override;
+
+    /// @brief Reset all counters of a counter array (runtime API)
+    bm::Counter::CounterErrorCode reset_counters(bm::cxt_id_t cxt_id,
+                                                 const std::string& counter_name) override;
+
+    /// @brief Write a counter (runtime API)
+    bm::Counter::CounterErrorCode write_counters(
+        bm::cxt_id_t cxt_id,
+        const std::string& counter_name,
+        size_t index,
+        bm::MatchTableAbstract::counter_value_t bytes,
+        bm::MatchTableAbstract::counter_value_t packets) override;
+
+    /// @brief Set the rates of all meters of a meter array (runtime API)
+    bm::Meter::MeterErrorCode meter_array_set_rates(
+        bm::cxt_id_t cxt_id,
+        const std::string& meter_name,
+        const std::vector<bm::Meter::rate_config_t>& configs) override;
+
+    /// @brief Set the rates of one meter (runtime API)
+    bm::Meter::MeterErrorCode meter_set_rates(
+        bm::cxt_id_t cxt_id,
+        const std::string& meter_name,
+        size_t idx,
+        const std::vector<bm::Meter::rate_config_t>& configs) override;
+
+    /// @brief Read the rates of one meter (runtime API)
+    bm::Meter::MeterErrorCode meter_get_rates(
+        bm::cxt_id_t cxt_id,
+        const std::string& meter_name,
+        size_t idx,
+        std::vector<bm::Meter::rate_config_t>* configs) override;
+
+    /// @brief Unset the rates of one meter (runtime API)
+    bm::Meter::MeterErrorCode meter_reset_rates(bm::cxt_id_t cxt_id,
+                                                const std::string& meter_name,
+                                                size_t idx) override;
+
     /**
      * @brief Whether a swap waits for the switch to empty (see swap_configs())
      * @return true while it waits

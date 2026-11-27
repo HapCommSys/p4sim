@@ -22,6 +22,7 @@
 #include "ns3/p4-switch-net-device.h"
 #include "ns3/switched-ethernet-channel.h"
 #include "ns3/primitives-pna.h"
+#include "ns3/psa-externs.h"
 #include "ns3/register-access-v1model.h"
 #include "ns3/simulator.h"
 
@@ -61,6 +62,7 @@ P4PnaNic::P4PnaNic(P4SwitchNetDevice* net_device, bool enable_swap, size_t queue
     force_arith_header("pna_main_output_metadata");
 
     import_pna_primitives(); // register send_to_port, drop_packet
+    ImportPsaExterns();      // Counter, Hash, InternetChecksum, Meter, Random
 }
 
 P4PnaNic::~P4PnaNic()

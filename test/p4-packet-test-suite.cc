@@ -11,6 +11,8 @@
  *   mirroring_add <session> <port>   the clones of this mirroring session leave on <port>
  *   mirroring_add_mc <session> <group>   they go to multicast group <group>
  *   register <name> <index> <value>   after the run, register <name>[<index>] holds <value>
+ *   counter <name> <index> <packets>   after the run, counter <name>[<index>] has
+ *                                      counted <packets> packets (runtime API)
  *   meter_set_rates <name> <index> <rate>:<burst>...   as in simple_switch_CLI: the rates
  *       of meter <name>[<index>] in units per microsecond, the lowest first
  *   at <time>   the following frames are sent at <time> microseconds (default 1000)
@@ -74,7 +76,8 @@ struct StfMcCommand
     int line;
 };
 
-/// A "register" command of an .stf file: after the run, a register holds a value
+/// A "register" command of an .stf file: after the run, a register holds a value;
+/// also a "counter" command, with the number of packets as the value
 struct StfRegister
 {
     std::string name;
@@ -160,6 +163,7 @@ class StfTestCase : public TestCase
     std::vector<StfFrame> m_packets;
     std::vector<StfFrame> m_expects;
     std::vector<StfRegister> m_registers;                           ///< in file order
+    std::vector<StfRegister> m_counters;                            ///< in file order
     std::vector<StfMeterRates> m_meterRates;                        ///< in file order
     std::vector<std::pair<uint32_t, uint32_t>> m_mirroringSessions; ///< (session, port)
     std::vector<std::pair<uint32_t, uint32_t>> m_mcMirroringSessions; ///< (session, group)
@@ -220,6 +224,17 @@ StfTestCase::ReadStf(const std::string& path)
                        ": expected 'register <name> <index> <value>'";
             }
             m_registers.push_back(reg);
+            continue;
+        }
+        if (cmd == "counter")
+        {
+            StfRegister counter{"", 0, 0, n};
+            if (!(words >> counter.name >> counter.index >> counter.value) || (words >> word))
+            {
+                return m_stf + " line " + std::to_string(n) +
+                       ": expected 'counter <name> <index> <packets>'";
+            }
+            m_counters.push_back(counter);
             continue;
         }
         if (cmd == "meter_set_rates")
@@ -548,6 +563,25 @@ StfTestCase::DoRun()
                                         << reg.index << "]");
         }
     }
+
+    for (const StfRegister& counter : m_counters)
+    {
+        bm::MatchTableAbstract::counter_value_t bytes = 0;
+        bm::MatchTableAbstract::counter_value_t packets = 0;
+        bool read = sw->GetCore()->read_counters(0, counter.name, counter.index, &bytes, &packets) ==
+                    bm::Counter::CounterErrorCode::SUCCESS;
+        NS_TEST_EXPECT_MSG_EQ(read,
+                              true,
+                              m_stf << " line " << counter.line << ": cannot read " << counter.name
+                                    << "[" << counter.index << "]");
+        if (read)
+        {
+            NS_TEST_EXPECT_MSG_EQ(packets,
+                                  counter.value,
+                                  m_stf << " line " << counter.line << ": " << counter.name << "["
+                                        << counter.index << "]");
+        }
+    }
 }
 
 /**
@@ -794,6 +828,10 @@ static class P4PacketTestSuite : public TestSuite
                     P4SIM_TEST_QUICK);
         AddTestCase(new StfTestCase("clone", "psa", P4SWITCH_ARCH_PSA, "clone_psa_mc.stf"),
                     P4SIM_TEST_QUICK);
+        // The externs Counter, Meter, Hash, InternetChecksum and Random
+        AddTestCase(new StfTestCase("externs", "psa", P4SWITCH_ARCH_PSA, "psa.stf"),
+                    P4SIM_TEST_QUICK);
+        AddTestCase(new StfTestCase("externs", "pna", P4NIC_ARCH_PNA, "pna.stf"), P4SIM_TEST_QUICK);
         AddTestCase(
             new StfTestCase("primitives", "v1model", P4SWITCH_ARCH_V1MODEL, "primitives.stf"),
             P4SIM_TEST_QUICK);

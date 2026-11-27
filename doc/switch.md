@@ -96,11 +96,13 @@ queue from `deq_timedelta`, not from `egress_global_timestamp - enq_timestamp`.
 A simulation gives the same results every time it runs with the same ns-3 seed
 and run number (`RngSeedManager`, `--RngSeed`, `--RngRun`):
 
-- `random()` of v1model draws from an engine that each switch seeds from the
-  seed and the run when it loads its program; another run gives other numbers.
-- `meter.execute_meter()` of v1model counts simulation time from time 0. Direct
-  meters (`direct_meter`) do not: BMv2 runs them with the wall clock, so their
-  colors depend on how fast the simulation runs.
+- `random()` of v1model and the `Random` extern of PSA and PNA draw from one
+  engine that all switches share; each switch reseeds it from the seed and the
+  run when it loads its program. Another run gives other numbers.
+- `meter.execute_meter()` of v1model and the `Meter` extern of PSA and PNA
+  count simulation time from time 0. Direct meters (`direct_meter`) do not:
+  BMv2 runs them with the wall clock, so their colors depend on how fast the
+  simulation runs.
 
 ## Timing on the wire
 

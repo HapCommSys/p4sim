@@ -144,6 +144,12 @@ Scope and Limitations
   ``pna_nic_CLI``.
 * PSA and PNA programs give no digest records, as BMv2's ``psa_switch`` and
   ``pna_nic`` give none.
+* PSA and PNA programs can use the externs ``Counter``, ``Meter``, ``Hash``,
+  ``InternetChecksum`` and ``Random`` (BMv2's, in ``utils/psa_externs``).  p4c
+  does not compile ``DirectCounter`` and ``DirectMeter``, or a ``Counter`` in a
+  PNA program, for BMv2 yet.  Their meters measure simulation time, as the
+  meters of v1model programs do; only v1model direct meters (``direct_meter``)
+  measure the wall clock, as in BMv2.
 * The pipeline core (``P4SwitchArch`` 3) has no output queue: a congested port
   can lose frames.  It has no packet replication engine either: multicast
   (``mcast_grp``), clones, resubmit and recirculation have no effect, and the
@@ -407,7 +413,7 @@ Troubleshooting
 Validation
 **********
 
-The module has 20 test suites with 153 test cases, from unit tests of
+The module has 21 test suites with 161 test cases, from unit tests of
 single classes to packet tests that send frames through a switch and check the
 frames that leave it (``p4-packet``, with test files in the format of p4c's
 STF).  Among them:

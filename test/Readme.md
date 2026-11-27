@@ -15,7 +15,7 @@ No environment variable is needed, and suites can run in parallel.
 
 ## Suites
 
-20 suites, 153 test cases. The first seven do not need BMv2.
+21 suites, 161 test cases. The first seven do not need BMv2.
 
 | Suite | Checks |
 |---|---|
@@ -27,7 +27,8 @@ No environment variable is needed, and suites can run in parallel.
 | `p4-queue` | egress queue: capacity, rate, FIFO, per-port rate, priorities |
 | `p4-traffic-manager` | the VOQ + fabric traffic manager |
 | `p4sim` | v1model, PSA and PNA load their program; Thrift ports; `BmLogLevel` and its default, `off`; errors in a flow table are printed with file and line; a switch runs commands again during the simulation; the deprecated `ChannelType` and `EnableTracing` are still accepted |
-| `p4-packet` | frames sent into a switch and the frames that leave it, on v1model, PNA, PSA and the pipeline core; a frame from a host on a switched-Ethernet port enters on that port; `random()` follows ns-3's seed and run |
+| `p4-packet` | frames sent into a switch and the frames that leave it, on v1model, PNA, PSA and the pipeline core; a frame from a host on a switched-Ethernet port enters on that port; the PSA and PNA externs `Counter`, `Meter`, `Hash` and `InternetChecksum`, and `Random`, which p4c compiles into v1model's `random()`; `random()` follows ns-3's seed and run |
+| `p4-externs` | a meter extern of a PSA or PNA program counts simulation time (rates set by `psa_switch_CLI` or `P4RuntimeApi`); `P4RuntimeApi` reads, writes and resets a PSA counter extern and sets, reads and unsets meter rates, by index and for the whole array |
 | `p4-controller` | `P4Controller`, read back from the switch: flow entries on v1model, PSA, PNA and the pipeline core, action profiles and a meter array on v1model, mirroring sessions on v1model and PSA; `P4RuntimeApi` with a null output argument fails; the mirroring, queue and time commands of `simple_switch_CLI` and `psa_switch_CLI`; the Thrift port of a destroyed switch answers with an error |
 | `p4-digest` | every `digest()` gives one record to the `Digest` trace, with the fields of its learn list, when the ingress processes the frame (v1model, pipeline core); after a program swap the records follow the new program; L2 learning with `P4Controller`'s digest callback: learned hosts are no longer flooded; a destroyed controller gets no digests, and each switch is registered once |
 | `p4-config-swap` | `EnableSwap`: an idle switch swaps its program at once, a busy one when its last packet has left; frames that arrive meanwhile wait and use the new program (v1model through `P4Controller` and `simple_switch_CLI`, PSA; also with frames in the transfer buffer); without `EnableSwap` the program stays |
@@ -41,7 +42,7 @@ No environment variable is needed, and suites can run in parallel.
 | `switched-ethernet-traffic-control` | flow control on host devices: a queue disc schedules the backlog of a host, `FqCoDelQueueDisc` is the default, `DisableFlowControl()` installs none; byte queue limits (`SetQueueLimits()`) keep the backlog in the queue disc even when the device queue has room |
 
 `p4-controller` also needs `simple_switch_CLI` and `psa_switch_CLI`, `p4-config-swap`
-`simple_switch_CLI`, `p4-pna` `bm_CLI`.
+`simple_switch_CLI`, `p4-pna` `bm_CLI`, `p4-externs` `psa_switch_CLI`.
 
 [`examples-to-run.py`](examples-to-run.py) lists the examples that `test.py` runs
 and that must exit with 0. The examples check their results: they print `[PASS]` or
@@ -67,10 +68,12 @@ priority queues of v1model, [`p4src/resubmit`](p4src/resubmit) and
 [`p4src/recirculate`](p4src/recirculate) its resubmit and recirculation,
 [`p4src/clone`](p4src/clone) its clones and those of PSA (also to a multicast group), [`p4src/primitives`](p4src/primitives)
 `digest()`, `hash()` with max 0, `random()` with lo > hi and a meter on simulation
-time, [`p4src/lag`](p4src/lag)
-the LAG member that its multicast picks, and [`p4src/bounds`](p4src/bounds) register,
-counter and meter indices out of bounds and a frame that `truncate()` makes shorter
-than an Ethernet header. The format is a subset of p4c's STF:
+time, [`p4src/lag`](p4src/lag) the LAG member that its multicast picks,
+[`p4src/bounds`](p4src/bounds) register, counter and meter indices out of bounds
+and a frame that `truncate()` makes shorter than an Ethernet header, and
+[`p4src/externs`](p4src/externs) the externs of PSA and PNA programs
+(`externs_pna.p4` has no `Counter`: p4c cannot compile it for BMv2's PNA yet).
+The format is a subset of p4c's STF:
 
 ```
 # comment
@@ -85,6 +88,7 @@ at 1100                                       # the following frames are sent at
 packet 0 0000000000fe 000000000010 0800 ...   # send this frame into port 0
 expect 1 000000000011 0000000000fe 0800 ...   # this frame leaves port 1
 register MyEgress.egress_frames 0 2           # after the run, this register holds 2
+counter IngressImpl.frames 0 1                # after the run, this counter has counted 1 packet
 ```
 
 Frames are Ethernet frames in hex; spaces are ignored and `*` in `expect` matches
