@@ -18,6 +18,9 @@ P4sim links. Without them, a PSA program that uses one of them does not load
 P4 names when the P4sim library is loaded; `psa-externs.h` makes the PSA and
 PNA cores reference them, so that a static build keeps them too.
 
+The examples `p4-psa-meter` (`Meter`, `Counter`) and `p4-psa-ecmp` (`Hash`,
+`Counter`) use them, and set or read them with `P4RuntimeApi`.
+
 **PNA** uses the same ones: BMv2's `pna_nic` has copies of these files that
 differ only in their names and copyright lines, and registers them under the
 same P4 names. So one set serves both; two sets in one program would collide.

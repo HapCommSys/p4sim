@@ -1,0 +1,2 @@
+# s1: h1 (10.0.0.2) is on port 0
+table_add IngressImpl.ipv4_forward IngressImpl.forward 10.0.0.2 => 0

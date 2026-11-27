@@ -159,6 +159,20 @@ build_lib_example(
   LIBRARIES_TO_LINK ${P4SIM_CSMA_LIBS}
 )
 
+# 3 hosts, 1 switch — a policer with the Meter and Counter externs (PSA)
+build_lib_example(
+  NAME p4-psa-meter
+  SOURCE_FILES p4-psa-meter.cc
+  LIBRARIES_TO_LINK ${P4SIM_BASE_LIBS}
+)
+
+# 2 hosts, 2 switches — ECMP with the Hash and Counter externs (PSA)
+build_lib_example(
+  NAME p4-psa-ecmp
+  SOURCE_FILES p4-psa-ecmp.cc
+  LIBRARIES_TO_LINK ${P4SIM_BASE_LIBS}
+)
+
 # ========================= PNA Architecture ===========================
 
 # 2 hosts, 1 internhosts (node with PNA arch) — IPv4 forwarding (PNA)

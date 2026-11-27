@@ -147,7 +147,7 @@ A switch has two kinds of port, which can be mixed. The port number is the order
 
 ## Examples
 
-[doc/examples.md](doc/examples.md) describes all 27 examples. A selection:
+[doc/examples.md](doc/examples.md) describes all 29 examples. A selection:
 
 | Example | Description |
 |---|---|
@@ -155,6 +155,7 @@ A switch has two kinds of port, which can be mixed. The port number is the order
 | `p4-v1model-ipv4-forwarding` | Two hosts and a switch with IPv4 forwarding (v1model) |
 | `p4-v1model-ipv4-forwarding-bridge` | The same over point-to-point or CSMA bridge ports |
 | `p4-psa-ipv4-forwarding`, `p4-pna-ipv4-forwarding` | The same with PSA and PNA |
+| `p4-psa-meter`, `p4-psa-ecmp` | PSA externs: a policer with `Meter` and `Counter`, ECMP with `Hash` |
 | `p4-basic-example` | Four hosts and four switches (p4lang tutorial `basic`) |
 | `p4-basic-controller` | Flow entries changed by `P4Controller` during the simulation |
 | `p4-l2-learning` | L2 learning: `P4Controller` fills the tables from the digests of the switch |

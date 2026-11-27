@@ -370,6 +370,8 @@ Run any built-in example with::
      - The same over point-to-point or CSMA bridge ports
    * - ``p4-psa-ipv4-forwarding``, ``p4-pna-ipv4-forwarding``
      - The same with PSA and PNA
+   * - ``p4-psa-meter``, ``p4-psa-ecmp``
+     - PSA externs: a policer with ``Meter`` and ``Counter``, ECMP with ``Hash``
    * - ``p4-basic-example``
      - Four hosts and four switches (p4lang tutorial ``basic``)
    * - ``p4-basic-controller``
