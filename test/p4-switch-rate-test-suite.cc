@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-2.0-only
+// SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 TU Dresden. Author: Mingyu Ma <mingyu.ma@tu-dresden.de>
 
 /*
@@ -24,6 +24,7 @@
 #include "ns3/network-module.h"
 #include "ns3/p4-core-v1model.h"
 #include "ns3/p4-switch-net-device.h"
+#include "ns3/p4sim-ns3-compat.h"
 #include "ns3/switched-ethernet-channel.h"
 #include "ns3/test.h"
 
@@ -235,7 +236,7 @@ static class P4SwitchRateTestSuite : public TestSuite
 {
   public:
     P4SwitchRateTestSuite()
-        : TestSuite("p4-switch-rate", UNIT)
+        : TestSuite("p4-switch-rate", TestSuite::Type::UNIT)
     {
         const Time gap = Seconds(1.0 / static_cast<double>(RATE)); // 10 us
         const std::vector<SwitchRateTestCase::Config> configs = {
@@ -254,8 +255,8 @@ static class P4SwitchRateTestSuite : public TestSuite
         };
         for (const auto& config : configs)
         {
-            AddTestCase(new SwitchRateTestCase(config), TestCase::QUICK);
+            AddTestCase(new SwitchRateTestCase(config), P4SIM_TEST_QUICK);
         }
-        AddTestCase(new InputBufferTestCase, TestCase::QUICK);
+        AddTestCase(new InputBufferTestCase, P4SIM_TEST_QUICK);
     }
 } g_p4SwitchRateTestSuite;

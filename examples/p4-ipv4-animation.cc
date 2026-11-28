@@ -1,166 +1,92 @@
 /*
  * Copyright (c) 2025 TU Dresden
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation;
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+ * SPDX-License-Identifier: Apache-2.0
  *
  * Authors: Mingyu Ma <mingyu.ma@tu-dresden.de>
  */
 
+/**
+ * IPv4 forwarding between two hosts with a trace for NetAnim (p4-ipv4-animation.xml):
+ * host 0 sends five UDP echo requests to host 1, over a P4 switch with CSMA links.
+ */
+
+#include "example-check.h"
+
 #include "ns3/applications-module.h"
-#include "ns3/bridge-helper.h"
 #include "ns3/core-module.h"
 #include "ns3/csma-helper.h"
 #include "ns3/format-utils.h"
 #include "ns3/internet-module.h"
-#include "ns3/mobility-module.h"
 #include "ns3/netanim-module.h"
 #include "ns3/network-module.h"
 #include "ns3/p4-helper.h"
-#include "ns3/p4-topology-reader-helper.h"
-
-#include <filesystem>
-#include <iomanip>
 
 using namespace ns3;
 
-NS_LOG_COMPONENT_DEFINE("P4Ipv4Animation");
+namespace
+{
+
+uint32_t g_replies = 0; ///< echo replies received
+
+void
+EchoReply(Ptr<const Packet>)
+{
+    g_replies++;
+}
+
+} // namespace
 
 int
 main(int argc, char* argv[])
 {
-    LogComponentEnable("P4Ipv4Animation", LOG_LEVEL_INFO);
-
+    std::string animFile = "p4-ipv4-animation.xml";
     CommandLine cmd(__FILE__);
+    cmd.AddValue("animFile", "The trace file for NetAnim", animFile);
     cmd.Parse(argc, argv);
 
-    std::string ns3_link_rate = "1000Mbps";
-
-    // P4 files: examples/p4src in the p4sim folder of this build
-    // NOTE: original path was test/test_simple which no longer exists.
-    // Update the subdirectory below to match your actual P4 program location.
-    std::string p4SrcDir = GetP4ExamplePath() + "/simple_v1model";
-    std::string p4JsonPath = p4SrcDir + "/simple_v1model.json";
-    std::string flowTablePath = p4SrcDir + "/flowtable_bridge.txt";
-    std::string topoInput = p4SrcDir + "/topo.txt";
-    std::string topoFormat("CsmaTopo");
-
-    // ============================ topo -> network ============================
-
-    P4TopologyReaderHelper p4TopoHelper;
-    p4TopoHelper.SetFileName(topoInput);
-    p4TopoHelper.SetFileType(topoFormat);
-    NS_LOG_INFO("*** Reading topology from file: " << topoInput << " with format: " << topoFormat);
-
-    Ptr<P4TopologyReader> topoReader = p4TopoHelper.GetTopologyReader();
-
-    if (topoReader->LinksSize() == 0)
-    {
-        NS_LOG_ERROR("Problems reading the topology file. Failing.");
-        return -1;
-    }
-
-    // get switch and host node
-    NodeContainer terminals = topoReader->GetHostNodeContainer();
-    NodeContainer switchNode = topoReader->GetSwitchNodeContainer();
-
-    const unsigned int hostNum = terminals.GetN();
-    const unsigned int switchNum = switchNode.GetN();
-    NS_LOG_INFO("*** Host number: " << hostNum << ", Switch number: " << switchNum);
-
-    // set default network link parameter
+    // Two hosts, linked to ports 0 and 1 of the switch
+    NodeContainer hosts(2);
+    Ptr<Node> switchNode = CreateObject<Node>();
     CsmaHelper csma;
-    csma.SetChannelAttribute("DataRate", StringValue(ns3_link_rate)); //@todo
-    csma.SetChannelAttribute("Delay", TimeValue(MilliSeconds(0.01)));
-
-    // Create and install network devices
-    NetDeviceContainer terminalDevices = csma.Install(terminals);
-    NetDeviceContainer switchDevices = csma.Install(switchNode);
-    uint32_t nTerminals = terminals.GetN();
-    uint32_t nSwitches = switchNode.GetN();
-
-    std::cout << "Number of Terminals: " << nTerminals << std::endl;
-    std::cout << "Number of Switches: " << nSwitches << std::endl;
-
-    // Install the Internet stack
+    csma.SetChannelAttribute("DataRate", StringValue("1Gbps"));
+    csma.SetChannelAttribute("Delay", StringValue("10us"));
+    NetDeviceContainer hostDevs;
+    NetDeviceContainer ports;
+    for (uint32_t i = 0; i < hosts.GetN(); i++)
+    {
+        // Host first: the hosts get the MAC addresses 00:..:01 and 00:..:03 of the flow table
+        NetDeviceContainer link = csma.Install(NodeContainer(hosts.Get(i), switchNode));
+        hostDevs.Add(link.Get(0));
+        ports.Add(link.Get(1));
+    }
     InternetStackHelper internet;
-    internet.Install(terminals);
-    internet.Install(switchNode);
+    internet.Install(hosts);
+    Ipv4AddressHelper ipv4("10.1.1.0", "255.255.255.0");
+    Ipv4InterfaceContainer addresses = ipv4.Assign(hostDevs);
 
-    // Assign IP addresses
-    Ipv4AddressHelper ipv4;
-    ipv4.SetBase("10.1.1.0", "255.255.255.0");
-    std::vector<Ipv4InterfaceContainer> terminalInterfaces(hostNum);
-    std::vector<std::string> hostIpv4(hostNum);
+    std::string p4Dir = GetP4ExamplePath() + "/simple_v1model";
+    P4Helper p4;
+    p4.SetDeviceAttribute("JsonPath", StringValue(p4Dir + "/simple_v1model.json"));
+    p4.SetDeviceAttribute("FlowTablePath", StringValue(p4Dir + "/flowtable_bridge.txt"));
+    p4.Install(switchNode, ports);
 
-    for (unsigned int i = 0; i < hostNum; i++)
-    {
-        terminalInterfaces[i] = ipv4.Assign(terminalDevices.Get(i));
-        hostIpv4[i] = Uint32IpToHex(terminalInterfaces[i].GetAddress(0).Get());
-    }
+    UdpEchoServerHelper server(9);
+    server.Install(hosts.Get(1));
+    UdpEchoClientHelper client(addresses.GetAddress(1), 9);
+    client.SetAttribute("MaxPackets", UintegerValue(5));
+    ApplicationContainer app = client.Install(hosts.Get(0));
+    app.Start(Seconds(1));
+    app.Get(0)->TraceConnectWithoutContext("Rx", MakeCallback(&EchoReply));
 
-    // Bridge or P4 switch configuration
-    P4Helper p4Bridge;
-    p4Bridge.SetDeviceAttribute("JsonPath", StringValue(p4JsonPath));
-    p4Bridge.SetDeviceAttribute("FlowTablePath", StringValue(flowTablePath));
+    AnimationInterface anim(animFile);
+    anim.SetConstantPosition(hosts.Get(0), 10, 10);
+    anim.SetConstantPosition(switchNode, 30, 20);
+    anim.SetConstantPosition(hosts.Get(1), 50, 10);
+    anim.UpdateNodeDescription(switchNode, "P4 switch");
 
-    NS_LOG_INFO("*** P4 switch configuration: " << p4JsonPath << ", " << flowTablePath);
-
-    for (unsigned int i = 0; i < switchNum; i++)
-    {
-        p4Bridge.Install(switchNode.Get(i), switchDevices.Get(i));
-    }
-
-    NS_LOG_INFO("*** P4 switch already configured with: " << p4JsonPath << ", " << flowTablePath);
-
-    MobilityHelper mobility;
-    mobility.SetMobilityModel("ns3::ConstantPositionMobilityModel");
-
-    // Set constant position for terminals
-    for (uint32_t i = 0; i < terminals.GetN(); ++i)
-    {
-        Ptr<Node> node = terminals.Get(i);
-        mobility.Install(node);
-        Ptr<ConstantPositionMobilityModel> pos = node->GetObject<ConstantPositionMobilityModel>();
-        pos->SetPosition(Vector(10 * i, 10, 0)); // Adjust positions as needed
-    }
-
-    // Set constant position for switches
-    for (uint32_t j = 0; j < switchNode.GetN(); ++j)
-    {
-        Ptr<Node> node = switchNode.Get(j);
-        mobility.Install(node);
-        Ptr<ConstantPositionMobilityModel> pos = node->GetObject<ConstantPositionMobilityModel>();
-        pos->SetPosition(Vector(20 * j, 20, 0)); // Adjust positions as needed
-    }
-    // NetAnim Animation Setup
-    AnimationInterface anim("topology.xml");
-
-    // Set node positions for visualization
-    for (uint32_t i = 0; i < nTerminals; ++i)
-    {
-        anim.SetConstantPosition(terminals.Get(i), 10 * i, 10);
-    }
-    for (uint32_t j = 0; j < nSwitches; ++j)
-    {
-        anim.SetConstantPosition(switchNode.Get(j), 20 * j, 20);
-    }
-
-    // Run simulation
-    NS_LOG_INFO("Running simulation...");
-    Simulator::Stop(Seconds(30));
+    Simulator::Stop(Seconds(10));
     Simulator::Run();
     Simulator::Destroy();
-
-    return 0;
+    return p4sim_example::Check(g_replies == 5, std::to_string(g_replies) + " of 5 echo replies");
 }

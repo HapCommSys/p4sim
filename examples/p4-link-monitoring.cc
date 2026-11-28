@@ -1,275 +1,205 @@
 /*
  * Copyright (c) 2025 TU Dresden
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation;
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+ * SPDX-License-Identifier: Apache-2.0
  *
  * Authors: Mingyu Ma <mingyu.ma@tu-dresden.de>
- *
  */
 
+/**
+ * In-band link monitoring, the "link_monitor" exercise of p4lang/tutorials:
+ * https://github.com/p4lang/tutorials/tree/master/exercises/link_monitor
+ *
+ *   host 0 ── 0 switch 1 1 ────── 1 switch 2 0 ── host 1
+ *                  2                  2
+ *                   \                /
+ *                    1 switch 3 2 ──
+ *                         0 ── host 2
+ *
+ * Every 100 ms host 0 sends a probe on the path switch 1 -> 2 -> 3 -> 1 -> host 0:
+ * the probe carries the egress port of every hop. Each switch adds a record with its
+ * ID, the egress port, the bytes that this port sent since the last probe, and the
+ * times of the two probes. From the probes that come back host 0 computes the rate
+ * of each link on the path. Meanwhile it sends UDP packets to host 1, over the first
+ * link only: the program checks that the probes measure this rate there, and nearly
+ * nothing on the other links.
+ */
+
+#include "example-check.h"
+
 #include "ns3/applications-module.h"
-#include "ns3/bridge-helper.h"
 #include "ns3/core-module.h"
 #include "ns3/csma-helper.h"
-#include "ns3/custom-p2p-net-device.h"
 #include "ns3/format-utils.h"
 #include "ns3/internet-module.h"
-#include "ns3/ipv4-address-helper.h"
 #include "ns3/network-module.h"
-#include "ns3/on-off-helper.h"
 #include "ns3/p4-helper.h"
-#include "ns3/p4-p2p-channel.h"
-#include "ns3/p4-p2p-helper.h"
 #include "ns3/p4-net-builder.h"
 #include "ns3/p4-topology-reader-helper.h"
-#include "ns3/packet-sink-helper.h"
-#include "ns3/packet.h"
-#include "ns3/simulator.h"
 
-#include <filesystem>
 #include <iomanip>
+
 using namespace ns3;
 
-NS_LOG_COMPONENT_DEFINE("P4LinkMonitoring");
-
-// Convert IP address to hexadecimal format
-std::string
-ConvertIpToHex(Ipv4Address ipAddr)
+namespace
 {
-    std::ostringstream hexStream;
-    uint32_t ip = ipAddr.Get(); // Get the IP address as a 32-bit integer
-    hexStream << "0x" << std::hex << std::setfill('0') << std::setw(2)
-              << ((ip >> 24) & 0xFF)                 // First byte
-              << std::setw(2) << ((ip >> 16) & 0xFF) // Second byte
-              << std::setw(2) << ((ip >> 8) & 0xFF)  // Third byte
-              << std::setw(2) << (ip & 0xFF);        // Fourth byte
-    return hexStream.str();
+
+const uint16_t PROBE_TYPE = 0x812;              ///< EtherType of the probes
+const std::vector<uint8_t> PATH = {1, 2, 1, 0}; ///< egress port of each hop
+const Time PROBE_INTERVAL = MilliSeconds(100);  ///< between two probes
+const uint32_t N_PROBES = 10;                   ///< probes sent
+const uint32_t RECORD_SIZE = 18;                ///< bytes of a record (probe_data_t)
+
+uint32_t g_probes = 0;                                  ///< probes that came back
+std::map<std::pair<uint32_t, uint32_t>, double> g_mbps; ///< sum per (switch, port)
+
+/// Host \p device sends a probe: hop count 0, then the egress port of each hop
+void
+SendProbe(Ptr<NetDevice> device)
+{
+    std::vector<uint8_t> bytes = {0};
+    bytes.insert(bytes.end(), PATH.begin(), PATH.end());
+    device->Send(Create<Packet>(bytes.data(), bytes.size()), device->GetAddress(), PROBE_TYPE);
 }
 
-// Convert MAC address to hexadecimal format
-std::string
-ConvertMacToHex(Address macAddr)
+/// The big-endian number in \p n bytes
+uint64_t
+Number(const uint8_t* bytes, uint32_t n)
 {
-    std::ostringstream hexStream;
-    Mac48Address mac = Mac48Address::ConvertFrom(macAddr); // Convert Address to Mac48Address
-    uint8_t buffer[6];
-    mac.CopyTo(buffer); // Copy MAC address bytes into buffer
-
-    hexStream << "0x";
-    for (int i = 0; i < 6; ++i)
+    uint64_t value = 0;
+    for (uint32_t i = 0; i < n; i++)
     {
-        hexStream << std::hex << std::setfill('0') << std::setw(2) << static_cast<int>(buffer[i]);
+        value = value << 8 | bytes[i];
     }
-    return hexStream.str();
+    return value;
 }
 
+/// A probe came back: read the record of each hop (the last hop comes first)
+void
+ReceiveProbe(Ptr<NetDevice>,
+             Ptr<const Packet> packet,
+             uint16_t,
+             const Address&,
+             const Address&,
+             NetDevice::PacketType)
+{
+    std::vector<uint8_t> bytes(packet->GetSize());
+    packet->CopyData(bytes.data(), bytes.size());
+    if (bytes.size() < 1 + PATH.size() * RECORD_SIZE || bytes[0] != PATH.size())
+    {
+        return;
+    }
+    g_probes++;
+    for (uint32_t hop = 0; hop < PATH.size(); hop++)
+    {
+        const uint8_t* record = &bytes[1 + hop * RECORD_SIZE];
+        uint32_t switchId = record[0] & 0x7f;
+        uint32_t port = record[1];
+        uint64_t byteCount = Number(record + 2, 4);
+        Time last = NanoSeconds(Number(record + 6, 6)); // P4sim's timestamps are in ns
+        Time now = NanoSeconds(Number(record + 12, 6));
+        if (last.IsStrictlyPositive()) // not the first probe
+        {
+            g_mbps[{switchId, port}] += byteCount * 8 / (now - last).GetSeconds() / 1e6;
+        }
+    }
+}
+
+} // namespace
 
 int
 main(int argc, char* argv[])
 {
-    LogComponentEnable("P4LinkMonitoring", LOG_LEVEL_INFO);
-
-    // ============================ parameters ============================
-    uint16_t pktSize = 512;              // in Bytes. 1458 to prevent fragments, default 512
-    std::string appDataRate = "4096bps"; // Default application data rate
-    std::string ns3_link_rate = "1000Mbps";
-    bool enableTracePcap = false;
-
-    // P4 files: examples/p4src in the p4sim folder of this build
-    std::string p4SrcDir = GetP4ExamplePath() + "/link_monitor";
-    std::string p4JsonPath = p4SrcDir + "/link_monitor.json";
-    std::string flowTableDirPath = p4SrcDir + "/";
-    std::string topoInput = p4SrcDir + "/topo.txt";
-    std::string topoFormat("CsmaTopo");
-
-    // ============================  command line ============================
-    CommandLine cmd;
-    cmd.AddValue("pktSize", "Packet size in bytes (default 1000)", pktSize);
-    cmd.AddValue("pcap", "Trace packet pacp [true] or not[false]", enableTracePcap);
+    uint16_t pktSize = 1000;
+    std::string appDataRate = "10Mbps";
+    bool pcap = false;
+    CommandLine cmd(__FILE__);
+    cmd.AddValue("pktSize", "UDP payload in bytes", pktSize);
+    cmd.AddValue("appDataRate", "Data rate from host 0 to host 1", appDataRate);
+    cmd.AddValue("pcap", "Write pcap files", pcap);
     cmd.Parse(argc, argv);
 
-    // ============================ topo -> network ============================
-
-    P4TopologyReaderHelper p4TopoHelper;
-    p4TopoHelper.SetFileName(topoInput);
-    p4TopoHelper.SetFileType(topoFormat);
-    NS_LOG_INFO("*** Reading topology from file: " << topoInput << " with format: " << topoFormat);
-
-    // Get the topology reader, and read the file, load in the m_linksList.
-    Ptr<P4TopologyReader> topoReader = p4TopoHelper.GetTopologyReader();
-
-    if (topoReader->LinksSize() == 0)
-    {
-        NS_LOG_ERROR("Problems reading the topology file. Failing.");
-        return -1;
-    }
-
-    // get switch and host node
-    NodeContainer terminals = topoReader->GetHostNodeContainer();
-    NodeContainer switchNode = topoReader->GetSwitchNodeContainer();
-
-    const unsigned int hostNum = terminals.GetN();
-    const unsigned int switchNum = switchNode.GetN();
-    NS_LOG_INFO("*** Host number: " << hostNum << ", Switch number: " << switchNum);
-
-    // set default network link parameter
-    P4PointToPointHelper p4p2phelper;
-    p4p2phelper.SetChannelAttribute("Delay", TimeValue(MilliSeconds(0.01)));
-
-    std::vector<SwitchNodeC_t> switchNodes(switchNum);
-    std::vector<HostNodeC_t> hostNodes(hostNum);
-    BuildNetworkFromTopology(topoReader, p4p2phelper, switchNodes, hostNodes);
-    // ======================== Print the Channel Type and NetDevice Type ========================
+    // Hosts, switches and links
+    std::string p4Dir = GetP4ExamplePath() + "/link_monitor";
+    P4TopologyReaderHelper topoHelper;
+    topoHelper.SetFileName(p4Dir + "/topo.txt");
+    topoHelper.SetFileType("CsmaTopo");
+    Ptr<P4TopologyReader> topo = topoHelper.GetTopologyReader();
+    NS_ABORT_MSG_IF(topo->LinksSize() == 0, "Cannot read " << p4Dir << "/topo.txt");
+    NodeContainer hosts = topo->GetHostNodeContainer();
+    NodeContainer switches = topo->GetSwitchNodeContainer();
+    CsmaHelper csma;
+    csma.SetChannelAttribute("DataRate", StringValue("1Gbps"));
+    csma.SetChannelAttribute("Delay", StringValue("10us"));
+    std::vector<SwitchNodeC_t> switchNodes(switches.GetN());
+    std::vector<HostNodeC_t> hostNodes(hosts.GetN());
+    BuildNetworkFromTopology(topo, csma, switchNodes, hostNodes);
 
     InternetStackHelper internet;
-    internet.Install(terminals);
-    internet.Install(switchNode);
-
-    Ipv4AddressHelper ipv4;
-    ipv4.SetBase("10.1.1.0", "255.255.255.0");
-    std::vector<Ipv4InterfaceContainer> terminalInterfaces(hostNum);
-    std::vector<std::string> hostIpv4(hostNum);
-
-    for (unsigned int i = 0; i < hostNum; i++)
+    internet.Install(hosts);
+    Ipv4AddressHelper ipv4("10.1.1.0", "255.255.255.0");
+    for (uint32_t i = 0; i < hosts.GetN(); i++)
     {
-        terminalInterfaces[i] = ipv4.Assign(terminals.Get(i)->GetDevice(0));
-        hostIpv4[i] = Uint32IpToHex(terminalInterfaces[i].GetAddress(0).Get());
+        ipv4.Assign(hosts.Get(i)->GetDevice(0));
     }
 
-    //===============================  Print IP and MAC addresses===============================
-    NS_LOG_INFO("Node IP and MAC addresses:");
-    for (uint32_t i = 0; i < terminals.GetN(); ++i)
+    P4Helper p4;
+    p4.SetDeviceAttribute("JsonPath", StringValue(p4Dir + "/link_monitor.json"));
+    for (uint32_t i = 0; i < switches.GetN(); i++)
     {
-        Ptr<Node> node = terminals.Get(i);
-        Ptr<Ipv4> ipv4 = node->GetObject<Ipv4>();
-        Ptr<NetDevice> netDevice = node->GetDevice(0);
-
-        // Get the IP address
-        Ipv4Address ipAddr =
-            ipv4->GetAddress(1, 0)
-                .GetLocal(); // Interface index 1 corresponds to the first assigned IP
-
-        // Get the MAC address
-        Ptr<NetDevice> device = node->GetDevice(0); // Assuming the first device is the desired one
-        Mac48Address mac = Mac48Address::ConvertFrom(device->GetAddress());
-
-        NS_LOG_INFO("Node " << i << ": IP = " << ipAddr << ", MAC = " << mac);
-
-        // Convert to hexadecimal
-        std::string ipHex = ConvertIpToHex(ipAddr);
-        std::string macHex = ConvertMacToHex(mac);
-        NS_LOG_INFO("Node " << i << ": IP = " << ipHex << ", MAC = " << macHex);
+        p4.SetDeviceAttribute("FlowTablePath",
+                              StringValue(p4Dir + "/flowtable_" + std::to_string(i) + ".txt"));
+        p4.Install(switches.Get(i), switchNodes[i].switchDevices);
     }
 
-    // Bridge or P4 switch configuration
-    P4Helper p4SwitchHelper;
-    p4SwitchHelper.SetDeviceAttribute("JsonPath", StringValue(p4JsonPath));
-    p4SwitchHelper.SetDeviceAttribute("P4SwitchArch", UintegerValue(0));
+    // UDP from host 0 to host 1
+    InetSocketAddress dst(hosts.Get(1)->GetObject<Ipv4>()->GetAddress(1, 0).GetLocal(), 9000);
+    PacketSinkHelper sink("ns3::UdpSocketFactory", dst);
+    sink.Install(hosts.Get(1));
+    OnOffHelper onOff("ns3::UdpSocketFactory", dst);
+    onOff.SetConstantRate(DataRate(appDataRate), pktSize);
+    ApplicationContainer source = onOff.Install(hosts.Get(0));
+    source.Start(Seconds(0.5));
+    source.Stop(Seconds(2.5));
 
-    for (unsigned int i = 0; i < switchNum; i++)
+    // Probes from host 0 back to host 0, while the flow is running
+    Ptr<NetDevice> device = hosts.Get(0)->GetDevice(0);
+    hosts.Get(0)->RegisterProtocolHandler(MakeCallback(&ReceiveProbe), PROBE_TYPE, device);
+    for (uint32_t i = 0; i < N_PROBES; i++)
     {
-        std::string flowTablePath = flowTableDirPath + "flowtable_" + std::to_string(i) + ".txt";
-        p4SwitchHelper.SetDeviceAttribute("FlowTablePath", StringValue(flowTablePath));
-        NS_LOG_INFO("*** P4 switch configuration: " << p4JsonPath << ", \n " << flowTablePath);
-
-        p4SwitchHelper.Install(switchNode.Get(i), switchNodes[i].switchDevices);
+        Simulator::Schedule(Seconds(1) + i * PROBE_INTERVAL, &SendProbe, device);
+    }
+    if (pcap)
+    {
+        csma.EnablePcapAll("p4-link-monitoring");
     }
 
-    // ============================ add custom header for the p4 switch ============================
-
-    CustomHeader probeHeader;
-    probeHeader.SetLayer(HeaderLayer::LAYER_3); // Network Layer
-    probeHeader.SetOperator(ADD_AFTER);         // add before the ipv4 header
-
-    probeHeader.AddField("proto_id", 16);
-    probeHeader.AddField("hop_cnt", 8);
-    probeHeader.AddField("bos", 1);
-    probeHeader.AddField("swid", 7);
-    probeHeader.AddField("port", 8);
-    probeHeader.AddField("byte_cnt", 32);
-    probeHeader.AddField("last_time", 48);
-    probeHeader.AddField("cur_time", 48);
-
-    for (unsigned int i = 0; i < 9; i++)
-    {
-        std::string field_name = "field" + std::to_string(i);
-        probeHeader.AddField(field_name, 8);
-    }
-
-    probeHeader.SetField("proto_id", 0x0800);
-    probeHeader.SetField("hop_cnt", 0);
-    std::vector<int> forward_egress = {4, 1, 4, 1, 3, 2, 3, 2, 1};
-
-    for (unsigned int i = 0; i < 9; i++)
-    {
-        probeHeader.SetField("field" + std::to_string(i), forward_egress[i]);
-    }
-
-    for (unsigned int i = 0; i < hostNum; i++)
-    {
-        Ptr<NetDevice> device = hostNodes[i].hostDevice.Get(0);
-        if (device->GetObject<CustomP2PNetDevice>())
-        {
-            NS_LOG_DEBUG(
-                "Host " << i << " NetDevice is CustomP2PNetDevice, Setting for the Tunnel Header!");
-            Ptr<CustomP2PNetDevice> customDevice = DynamicCast<CustomP2PNetDevice>(device);
-            customDevice->SetWithCustomHeader(true);
-            customDevice->SetCustomHeader(probeHeader);
-        }
-    }
-
-    // ============================ add application to the hosts ============================
-
-    // TUNNEL stream == First == send link h0 -----> h0
-    unsigned int clientI = 1;
-    unsigned int serverI = 1;
-
-    uint16_t servPort = 12000; // setting for port
-
-    Ptr<Node> node = terminals.Get(serverI);
-    Ptr<Ipv4> ipv4_adder = node->GetObject<Ipv4>();
-    Ipv4Address serverAddr1 =
-        ipv4_adder->GetAddress(1, 0)
-            .GetLocal(); // Interface index 1 corresponds to the first assigned IP
-    InetSocketAddress dst1 = InetSocketAddress(serverAddr1, servPort);
-    PacketSinkHelper sink1 = PacketSinkHelper("ns3::UdpSocketFactory", dst1);
-    ApplicationContainer sinkApp1 = sink1.Install(terminals.Get(serverI));
-
-    sinkApp1.Start(Seconds(1));
-    sinkApp1.Stop(Seconds(30));
-
-    OnOffHelper onOff1("ns3::UdpSocketFactory", dst1);
-    onOff1.SetAttribute("PacketSize", UintegerValue(pktSize));
-    onOff1.SetAttribute("DataRate", StringValue(appDataRate));
-    onOff1.SetAttribute("OnTime", StringValue("ns3::ConstantRandomVariable[Constant=1]"));
-
-    ApplicationContainer app1 = onOff1.Install(terminals.Get(clientI));
-    app1.Start(Seconds(3));
-    app1.Stop(Seconds(30));
-
-    // Enable pcap tracing
-    if (enableTracePcap)
-    {
-        p4p2phelper.EnablePcapAll("p4-link-monitoring");
-    }
-
-    // Run simulation
-    NS_LOG_INFO("Running simulation...");
-    Simulator::Stop(Seconds(30));
+    p4sim_example::CountTraffic();
+    Simulator::Stop(Seconds(3));
     Simulator::Run();
     Simulator::Destroy();
-    NS_LOG_INFO("Run successfully!");
 
-    return 0;
+    // Frames are 42 bytes larger than their UDP payload (Ethernet, IPv4, UDP)
+    double expected = DataRate(appDataRate).GetBitRate() / 1e6 * (pktSize + 42) / pktSize;
+    std::cout << "switch  port   measured (Mbps)\n" << std::fixed << std::setprecision(3);
+    bool rates = true;
+    uint32_t lastSwitch = 0;
+    for (auto& [link, sum] : g_mbps)
+    {
+        double mbps = sum / (N_PROBES - 1); // the first probe has no last one
+        std::cout << std::setw(6) << link.first << std::setw(6) << link.second << std::setw(18)
+                  << mbps << "\n";
+        bool loaded = (link.first == 1 && link.second == 1); // switch 1 -> switch 2
+        rates = rates &&
+                (loaded ? std::abs(mbps - expected) < 0.05 * expected : mbps < 0.05 * expected);
+        lastSwitch = link.first;
+    }
+    int failed = p4sim_example::Check(g_probes == N_PROBES,
+                                      std::to_string(g_probes) + " of " + std::to_string(N_PROBES) +
+                                          " probes came back");
+    std::ostringstream what;
+    what << "the probes measure the flow (" << expected << " Mbps) on the link 1 -> 2 only";
+    failed |= p4sim_example::Check(rates && lastSwitch == 3 && g_mbps.size() == 4, what.str());
+    failed |= p4sim_example::CheckDelivery();
+    return failed;
 }

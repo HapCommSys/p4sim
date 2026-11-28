@@ -1,6 +1,12 @@
+/*
+ * Copyright (c) 2025 TU Dresden
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 #include "ns3/test.h"
 #include "ns3/log.h"
 #include "ns3/p4-topology-reader-helper.h"
+#include "ns3/p4sim-ns3-compat.h"
 
 using namespace ns3;
 
@@ -53,9 +59,9 @@ private:
 class P4TopologyReaderTestSuite : public TestSuite
 {
 public:
-  P4TopologyReaderTestSuite () : TestSuite ("p4-topology-reader", UNIT)
+  P4TopologyReaderTestSuite () : TestSuite ("p4-topology-reader", TestSuite::Type::UNIT)
   {
-    AddTestCase (new P4TopologyReaderTestCase, TestCase::QUICK);
+    AddTestCase (new P4TopologyReaderTestCase, P4SIM_TEST_QUICK);
   }
 };
 

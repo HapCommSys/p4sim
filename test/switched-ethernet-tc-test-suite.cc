@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-2.0-only
+// SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 TU Dresden. Author: Mingyu Ma <mingyu.ma@tu-dresden.de>
 
 /*
@@ -13,6 +13,7 @@
 #include "ns3/internet-module.h"
 #include "ns3/network-module.h"
 #include "ns3/p4-switch-net-device.h"
+#include "ns3/p4sim-ns3-compat.h"
 #include "ns3/switched-ethernet-helper.h"
 #include "ns3/test.h"
 #include "ns3/traffic-control-module.h"
@@ -58,23 +59,42 @@ BroadcastSocket(Ptr<Node> node, uint8_t priority)
 class HostTrafficControlTestCase : public TestCase
 {
   public:
-    /// The three cases of this suite
+    /// The cases of this suite
     enum Case
     {
-        SCHEDULE,     ///< PfifoFastQueueDisc lets a high-priority packet overtake
-        DEFAULT_QDISC, ///< Ipv4AddressHelper installs FqCoDelQueueDisc
-        NO_FLOW_CONTROL ///< DisableFlowControl(): no queue disc is installed
+        SCHEDULE,          ///< PfifoFastQueueDisc lets a high-priority packet overtake
+        DEFAULT_QDISC,     ///< Ipv4AddressHelper installs FqCoDelQueueDisc
+        NO_FLOW_CONTROL,   ///< DisableFlowControl(): no queue disc is installed
+        BIG_DEVICE_QUEUE,  ///< a large device queue takes the whole burst
+        BYTE_QUEUE_LIMITS, ///< byte queue limits keep the backlog in the queue disc
     };
 
     HostTrafficControlTestCase(Case c)
-        : TestCase(c == SCHEDULE        ? "A queue disc on a host schedules its packets"
-                   : c == DEFAULT_QDISC ? "A host gets FqCoDelQueueDisc by default"
-                                        : "DisableFlowControl leaves a host without a queue disc"),
+        : TestCase(Name(c)),
           m_case(c)
     {
     }
 
   private:
+    /// The name of case \p c
+    static std::string Name(Case c)
+    {
+        switch (c)
+        {
+        case SCHEDULE:
+            return "A queue disc on a host schedules its packets";
+        case DEFAULT_QDISC:
+            return "A host gets FqCoDelQueueDisc by default";
+        case NO_FLOW_CONTROL:
+            return "DisableFlowControl leaves a host without a queue disc";
+        case BIG_DEVICE_QUEUE:
+            return "Without queue limits, a large device queue takes the whole burst";
+        case BYTE_QUEUE_LIMITS:
+            return "Byte queue limits keep the backlog of a host in the queue disc";
+        }
+        return "";
+    }
+
     void DoRun() override;
 
     void DoTeardown() override
@@ -122,6 +142,11 @@ HostTrafficControlTestCase::DoRun()
         // A small device queue: the other packets wait in the queue disc
         eth.SetQueue("ns3::DropTailQueue<Packet>", "MaxSize", StringValue("2p"));
     }
+    if (m_case == BIG_DEVICE_QUEUE || m_case == BYTE_QUEUE_LIMITS)
+    {
+        // Room for the whole burst: only byte queue limits stop the queue disc
+        eth.SetQueue("ns3::DropTailQueue<Packet>", "MaxSize", StringValue("100p"));
+    }
     if (m_case == NO_FLOW_CONTROL)
     {
         eth.DisableFlowControl();
@@ -132,10 +157,14 @@ HostTrafficControlTestCase::DoRun()
 
     InternetStackHelper internet;
     internet.Install(host);
-    if (m_case == SCHEDULE)
+    if (m_case == SCHEDULE || m_case == BIG_DEVICE_QUEUE || m_case == BYTE_QUEUE_LIMITS)
     {
         TrafficControlHelper tch;
         tch.SetRootQueueDisc("ns3::PfifoFastQueueDisc");
+        if (m_case == BYTE_QUEUE_LIMITS)
+        {
+            tch.SetQueueLimits("ns3::DynamicQueueLimits");
+        }
         tch.Install(devs);
     }
     Ipv4AddressHelper ipv4;
@@ -160,12 +189,25 @@ HostTrafficControlTestCase::DoRun()
         return;
     }
 
-    // SCHEDULE: 10 low-priority packets, then a high-priority one, at once.
-    // The first low-priority packet goes on the link, the next two fill the
-    // device queue, which then stops the queue disc. When the device queue
-    // has room again, PfifoFastQueueDisc sends the high-priority packet first.
+    // 10 low-priority packets, then a high-priority one, at once.
+    // SCHEDULE: the first low-priority packet goes on the link, the next two
+    // fill the device queue, which then stops the queue disc. When the device
+    // queue has room again, PfifoFastQueueDisc sends the high-priority packet
+    // first: it is the fourth frame.
+    // BIG_DEVICE_QUEUE: the device queue takes all packets in the order they
+    // come, and the high-priority packet is the last frame.
+    // BYTE_QUEUE_LIMITS: DynamicQueueLimits starts with a limit of 0 bytes, so
+    // the first low-priority packet already stops the queue disc. The device
+    // sends it at once; when it has reported its bytes as sent, the queue disc
+    // goes on with the high-priority packet: it is the second frame.
+    Ptr<NetDeviceQueueInterface> ndqi = dev->GetObject<NetDeviceQueueInterface>();
+    NS_TEST_ASSERT_MSG_NE(ndqi, nullptr, "The host device has no flow control");
+    Ptr<QueueLimits> limits = ndqi->GetTxQueue(0)->GetQueueLimits();
+    NS_TEST_EXPECT_MSG_EQ((DynamicCast<DynamicQueueLimits>(limits) != nullptr),
+                          (m_case == BYTE_QUEUE_LIMITS),
+                          "SetQueueLimits() did not set the limits of the device queue");
     NS_TEST_EXPECT_MSG_EQ(dev->GetQueue()->GetMaxSize(),
-                          QueueSize("2p"),
+                          QueueSize(m_case == SCHEDULE ? "2p" : "100p"),
                           "SetQueue() did not set the device queue");
     m_low = BroadcastSocket(host.Get(0), 0);  // band 1 of PfifoFastQueueDisc
     m_high = BroadcastSocket(host.Get(0), 6); // band 0, the first one served
@@ -179,9 +221,10 @@ HostTrafficControlTestCase::DoRun()
 
     NS_TEST_EXPECT_MSG_EQ(frames.size(), N_LOW + 1, "Not every packet went on the link");
     NS_TEST_EXPECT_MSG_EQ(drops, 0, "The host device dropped packets");
+    size_t high = (m_case == SCHEDULE) ? 3 : (m_case == BIG_DEVICE_QUEUE) ? N_LOW : 1;
     for (size_t k = 0; k < frames.size(); k++)
     {
-        uint32_t expected = (k == 3) ? HIGH_SIZE + HEADERS : LOW_SIZE + HEADERS;
+        uint32_t expected = (k == high) ? HIGH_SIZE + HEADERS : LOW_SIZE + HEADERS;
         NS_TEST_EXPECT_MSG_EQ(frames[k], expected, "Frame " << k << " on the link");
     }
 }
@@ -190,13 +233,17 @@ static class SwitchedEthernetTrafficControlTestSuite : public TestSuite
 {
   public:
     SwitchedEthernetTrafficControlTestSuite()
-        : TestSuite("switched-ethernet-traffic-control", UNIT)
+        : TestSuite("switched-ethernet-traffic-control", TestSuite::Type::UNIT)
     {
         AddTestCase(new HostTrafficControlTestCase(HostTrafficControlTestCase::SCHEDULE),
-                    TestCase::QUICK);
+                    P4SIM_TEST_QUICK);
         AddTestCase(new HostTrafficControlTestCase(HostTrafficControlTestCase::DEFAULT_QDISC),
-                    TestCase::QUICK);
+                    P4SIM_TEST_QUICK);
         AddTestCase(new HostTrafficControlTestCase(HostTrafficControlTestCase::NO_FLOW_CONTROL),
-                    TestCase::QUICK);
+                    P4SIM_TEST_QUICK);
+        AddTestCase(new HostTrafficControlTestCase(HostTrafficControlTestCase::BIG_DEVICE_QUEUE),
+                    P4SIM_TEST_QUICK);
+        AddTestCase(new HostTrafficControlTestCase(HostTrafficControlTestCase::BYTE_QUEUE_LIMITS),
+                    P4SIM_TEST_QUICK);
     }
 } g_switchedEthernetTrafficControlTestSuite;

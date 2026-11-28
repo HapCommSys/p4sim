@@ -1,12 +1,23 @@
-# Builds the Docker image of P4sim and runs all of its test suites and
-# examples in it (contrib/p4sim/test/run-tests.sh).
+# Builds the Docker image of P4sim with the oldest and the newest ns-3 release
+# it supports, and runs all of its test suites and examples in each
+# (contrib/p4sim/test/run-tests.sh).
+#
+# The image builds only P4sim's tests and examples (NS3_FILTER=p4sim). Its layers
+# are kept in the GitHub Actions cache, one cache per ns-3 release: pushes to main
+# and the weekly run store them, and pull requests reuse them, so a pull request
+# that changes only P4sim compiles only P4sim (apt, Thrift, BMv2 and the ns-3
+# modules come from the cache).
 name: Docker build and tests
 
 on:
   push:
-    branches: [main, switch_channel]
+    branches: [main]
   pull_request:
   workflow_dispatch:
+  # Weekly on main: GitHub removes cache entries unused for 7 days, and a new
+  # ubuntu:24.04 image would otherwise leave pull requests without a cache
+  schedule:
+    - cron: '17 3 * * 1'
 
 permissions:
   contents: read
@@ -15,17 +26,28 @@ jobs:
   test:
     runs-on: ubuntu-24.04
     timeout-minutes: 150
+    strategy:
+      fail-fast: false
+      matrix:
+        ns3: [ns-3.39, ns-3.49]
+    name: test (${{ matrix.ns3 }})
     steps:
       - uses: actions/checkout@v5
 
-      # The image needs about 7 GB; these preinstalled SDKs are not used
-      - name: Free disk space
-        run: |
-          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
-          df -h /
+      # BuildKit in a container, which can use the GitHub Actions cache
+      - uses: docker/setup-buildx-action@v4
 
       - name: Build the image
-        run: docker build -t p4sim:ci .
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          build-args: |
+            NS3_VERSION=${{ matrix.ns3 }}
+            NS3_FILTER=p4sim
+          tags: p4sim:ci
+          load: true
+          cache-from: type=gha,scope=${{ matrix.ns3 }}
+          cache-to: ${{ github.event_name != 'pull_request' && format('type=gha,mode=max,scope={0}', matrix.ns3) || '' }}
 
       - name: Run the tests
         run: docker run --rm p4sim:ci contrib/p4sim/test/run-tests.sh

@@ -22,6 +22,7 @@
 #include "ns3/p4-switch-net-device.h"
 #include "ns3/switched-ethernet-channel.h"
 #include "ns3/primitives-pna.h"
+#include "ns3/psa-externs.h"
 #include "ns3/register-access-v1model.h"
 #include "ns3/simulator.h"
 
@@ -37,7 +38,8 @@ P4PnaNic::P4PnaNic(P4SwitchNetDevice* net_device, bool enable_swap, size_t queue
       m_queueBufferSize(queueBufferSize)
 {
     // configure for the switch pna
-    m_thriftCommand = "";             // default thrift command for pna
+    // BMv2's generic runtime CLI: it has the table commands of every target
+    m_thriftCommand = "bm_CLI";
     m_enableQueueingMetadata = false; // enable queueing metadata for pna
 
     // used by reset_target_state_()
@@ -60,6 +62,7 @@ P4PnaNic::P4PnaNic(P4SwitchNetDevice* net_device, bool enable_swap, size_t queue
     force_arith_header("pna_main_output_metadata");
 
     import_pna_primitives(); // register send_to_port, drop_packet
+    ImportPsaExterns();      // Counter, Hash, InternetChecksum, Meter, Random
 }
 
 P4PnaNic::~P4PnaNic()
@@ -121,19 +124,9 @@ P4PnaNic::main_processing_pipeline()
         return false;
     }
 
-    // Queue the frame for its port. The device sends one frame at a time and
-    // reports the end of each one through PortTxComplete().
-    auto port = static_cast<uint32_t>(out_port);
-    auto& pstate = m_portTxState[port];
-    if (pstate.queue.size() >= m_queueBufferSize)
-    {
-        NS_LOG_WARN("PNA port " << port << ": output queue full, packet dropped");
-        return false;
-    }
-    uint16_t protocol = RegisterAccess::get_ns_protocol(bm_packet.get());
-    int addr_index = RegisterAccess::get_ns_address(bm_packet.get());
-    pstate.queue.push_back({this->ConvertToNs3Packet(std::move(bm_packet)), protocol, addr_index});
-    ScheduleTxIfNeeded(port);
+    // To the output queue of the port once the pipeline delay is over (see
+    // P4SwitchCore::SetPipelineDelay()); without a delay, at once (EnqueueNow())
+    Enqueue(static_cast<uint32_t>(out_port), std::move(bm_packet));
     return true;
 }
 
@@ -178,6 +171,17 @@ P4PnaNic::receive_(port_t port_num, const char* buffer, int len)
 {
     NS_LOG_FUNCTION(this << " Port: " << port_num << " Len: " << len);
     return 0;
+}
+
+std::map<std::string, std::string>
+P4PnaNic::GetMissingPrimitives() const
+{
+    return {{"recirculate",
+             "P4sim's PNA, like BMv2's pna_nic, cannot recirculate a packet; v1model and PSA "
+             "can"},
+            {"mirror_packet",
+             "P4sim's PNA, like BMv2's pna_nic, cannot mirror a packet; v1model and PSA can "
+             "clone it"}};
 }
 
 void
@@ -231,7 +235,19 @@ P4PnaNic::HandleEgressPipeline(size_t workerId)
 void
 P4PnaNic::EnqueueNow(uint32_t egress_port, std::unique_ptr<bm::Packet>&& packet)
 {
-    NS_LOG_WARN("NO inter queue buffer in PNA, use main_processing_pipeline instead");
+    NS_LOG_FUNCTION(this << egress_port);
+    // Queue the frame for its port. The device sends one frame at a time and
+    // reports the end of each one through PortTxComplete().
+    auto& pstate = m_portTxState[egress_port];
+    if (pstate.queue.size() >= m_queueBufferSize)
+    {
+        NS_LOG_WARN("PNA port " << egress_port << ": output queue full, packet dropped");
+        return;
+    }
+    uint16_t protocol = RegisterAccess::get_ns_protocol(packet.get());
+    int addr_index = RegisterAccess::get_ns_address(packet.get());
+    pstate.queue.push_back({this->ConvertToNs3Packet(std::move(packet)), protocol, addr_index});
+    ScheduleTxIfNeeded(egress_port);
 }
 
 // ---------------------------------------------------------------------------
@@ -257,7 +273,7 @@ P4PnaNic::ScheduleTxIfNeeded(uint32_t port)
     if (!m_switchNetDevice->SendNs3Packet(frame.packet,
                                           static_cast<int>(port),
                                           frame.protocol,
-                                          m_destinationList[frame.addrIndex]))
+                                          GetDestination(frame.addrIndex)))
     {
         // Dropped by the device: nothing is on the wire, free the port.
         pstate.txCompleteEvent = Simulator::ScheduleNow(&P4PnaNic::PortTxComplete, this, port);

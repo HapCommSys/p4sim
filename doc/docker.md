@@ -1,8 +1,10 @@
 # P4sim in Docker
 
-The `Dockerfile` of this repository builds ns-3.39 with P4sim on BMv2 1.15.8 and
+The `Dockerfile` of this repository builds ns-3 with P4sim on BMv2 1.15.8 and
 Thrift 0.16.0, with the P4 compiler p4c 1.2.5.19, on Ubuntu 24.04: the versions
-P4sim is tested with. Only Docker is needed; nothing else is installed on the host.
+the CI of P4sim tests. Only Docker is needed; nothing else is installed on the host.
+To install P4sim on the host itself, see the quick installation in
+[installation.md](installation.md#quick-installation).
 
 ## Build
 
@@ -16,8 +18,17 @@ The build takes about 6 minutes on 32 cores and half an hour on 8 cores; the ima
 takes about 2 GB. With little memory, limit the parallel jobs, for example
 `--build-arg JOBS=4`. There is no prebuilt image.
 
+The image uses ns-3.39; `--build-arg NS3_VERSION=ns-3.49` (or another release from
+ns-3.40 on) builds it with that ns-3 instead.
+
 - The image has the ns-3 modules that P4sim needs (and those that `netanim` needs),
   with tests and examples. BMv2 is built with optimisation, without PI.
+- `--build-arg NS3_FILTER=p4sim` builds the tests and examples of P4sim only, not
+  those of the other ns-3 modules, which halves the time of the ns-3 build. The CI
+  builds the image this way.
+- ns-3 is built in two steps, its modules first and then P4sim. After a change to
+  P4sim, `docker build` takes the ns-3 modules from the build cache and compiles
+  only P4sim.
 - The debug information of the ns-3 build is removed, which saves several GB.
   `--build-arg DEBUG_INFO=yes` keeps it, for gdb.
 - p4c comes from the official image `p4lang/p4c`: the `p4c` driver and the back
@@ -70,5 +81,7 @@ docker run --rm --user "$(id -u):$(id -g)" -v "$PWD":/work -w /work p4sim \
 - Tested on x86-64 (amd64): Ubuntu 24.04 in WSL with Docker 29 and BuildKit, and
   Ubuntu 22.04 with Docker 29 and the older builder. The p4c image exists only for
   amd64.
-- The GitHub workflow `.github/workflows/docker.yml` builds the image and runs
-  `test/run-tests.sh` for every pull request.
+- The GitHub workflow `.github/workflows/docker.yml` builds the image with
+  `NS3_FILTER=p4sim` and runs `test/run-tests.sh` for every pull request. Pushes
+  to `main` and a weekly run keep the layers in the GitHub Actions cache, so a
+  pull request usually compiles only P4sim.

@@ -13,6 +13,8 @@
  *  └────────┘     └────────┘
  */
 
+#include "example-check.h"
+
 #include "ns3/applications-module.h"
 #include "ns3/bridge-helper.h"
 #include "ns3/core-module.h"
@@ -71,6 +73,9 @@ ReadBe32(const uint8_t* p)
            (static_cast<uint32_t>(p[2]) << 8) | static_cast<uint32_t>(p[3]);
 }
 
+bool g_answered = false; ///< the switch answered
+uint32_t g_result = 0;   ///< with this result
+
 void
 DecodeP4CalcFrame(Ptr<const Packet> packet)
 {
@@ -107,6 +112,8 @@ DecodeP4CalcFrame(Ptr<const Packet> packet)
     uint32_t opB = ReadBe32(&calcBytes[8]);
     uint32_t result = ReadBe32(&calcBytes[12]);
 
+    g_answered = true;
+    g_result = result;
     NS_LOG_INFO("P4Calc RX : op = 0x " << std::hex << static_cast<uint32_t>(op) << std::dec
                                        << " opA=" << opA << " opB=" << opB << " result=" << result);
 }
@@ -307,5 +314,13 @@ main(int argc, char* argv[])
     Simulator::Run();
     Simulator::Destroy();
 
-    return 0;
+    uint32_t expected = operation[0] == '+'   ? operandA + operandB
+                        : operation[0] == '-' ? operandA - operandB
+                        : operation[0] == '&' ? operandA & operandB
+                        : operation[0] == '|' ? operandA | operandB
+                                              : operandA ^ operandB;
+    std::ostringstream what;
+    what << operandA << " " << operation[0] << " " << operandB << " = ";
+    g_answered ? what << g_result : what << "no answer";
+    return p4sim_example::Check(g_answered && g_result == expected, what.str());
 }

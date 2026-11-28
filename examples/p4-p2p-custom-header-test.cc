@@ -1,18 +1,7 @@
 /*
  * Copyright (c) 2025 TU Dresden
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation;
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+ * SPDX-License-Identifier: Apache-2.0
  *
  * Authors: Mingyu Ma <mingyu.ma@tu-dresden.de>
  *
@@ -52,6 +41,8 @@ ns3::Ipv4Header (tos 0x0 DSCP Default ECN Not-ECT ttl 64 id 0 protocol 17 offset
 [none] length: 1028 10.1.1.1 > 10.1.1.2) ns3::UdpHeader (length: 1000 49153 > 12000) Payload
 (size=1000)
  */
+#include "example-check.h"
+
 #include "ns3/core-module.h"
 #include "ns3/custom-p2p-net-device.h"
 #include "ns3/internet-module.h"
@@ -157,8 +148,9 @@ main(int argc, char* argv[])
     p2phelper.EnablePcapAll("p4-p2p-custom-header-test");
 
     Simulator::Stop(Seconds(global_stop_time));
+    p4sim_example::CountTraffic();
     Simulator::Run();
     Simulator::Destroy();
 
-    return 0;
+    return p4sim_example::CheckDelivery();
 }

@@ -26,6 +26,7 @@
 #include "ns3/log.h"
 #include "ns3/node.h"
 #include "ns3/p4-switch-net-device.h"
+#include "ns3/p4sim-ns3-compat.h"
 #include "ns3/packet.h"
 #include "ns3/simulator.h"
 
@@ -111,7 +112,7 @@ SwitchedEthernetChannel::GetTypeId()
                 "They only take time on the wire; the far end receives the "
                 "frame as it was sent.",
                 EnumValue(LinkFraming::NONE),
-                MakeEnumAccessor(&SwitchedEthernetChannel::m_framing),
+                P4SIM_MAKE_ENUM_ACCESSOR(LinkFraming::Type, &SwitchedEthernetChannel::m_framing),
                 MakeEnumChecker(LinkFraming::NONE, "None", LinkFraming::ETHERNET, "Ethernet"));
     return tid;
 }
@@ -324,15 +325,16 @@ SwitchedEthernetChannel::TransmitEnd(uint32_t srcId)
         }
         else
         {
-            // P4 switch device: pass packet + sender pointer.
+            // P4 switch device: its port is the one attached to this channel in
+            // slot i (the sender may be a host, which has no P4 device)
             Ptr<P4SwitchNetDevice> dst = m_deviceList[i].devicePtr;
-            Ptr<P4SwitchNetDevice> sender = m_deviceList[m_currentSrc[srcId]].devicePtr;
             Simulator::ScheduleWithContext(dst->GetNode()->GetId(),
                                            m_delay,
                                            &P4SwitchNetDevice::Receive,
                                            dst,
                                            pktCopy,
-                                           sender);
+                                           Ptr<SwitchedEthernetChannel>(this),
+                                           i);
         }
     }
 

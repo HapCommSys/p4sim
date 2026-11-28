@@ -1,16 +1,6 @@
 /*
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation;
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+ * SPDX-License-Identifier: Apache-2.0
+ * Based on P4Simulator (https://github.com/kphf1995cm/P4Simulator), Apache-2.0.
  *
  * Authors: <https://github.com/kphf1995cm/>
  * Authors: Mingyu Ma <mingyu.ma@tu-dresden.de>
@@ -48,6 +38,8 @@
  * (hostNum - 1 - i). A per-flow summary (sent / received bytes, goodput) is printed
  * at the end.
  */
+
+#include "example-check.h"
 
 #include "ns3/applications-module.h"
 #include "ns3/core-module.h"
@@ -408,4 +400,5 @@ main(int argc, char* argv[])
     std::cout << "Host Num: " << hostNum << " Switch Num: " << switchNum << std::endl;
     std::cout << "Program Running time: " << end - mainStart << "ms" << std::endl;
     std::cout << "Simulate Running time: " << end - simulateStart << "ms" << std::endl;
+    return p4sim_example::CheckDelivery(totalTx, totalRx);
 }

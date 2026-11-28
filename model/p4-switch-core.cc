@@ -1,18 +1,7 @@
 /*
  * Copyright (c) 2025 TU Dresden
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation;
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+ * SPDX-License-Identifier: Apache-2.0
  *
  * Authors: Mingyu Ma <mingyu.ma@tu-dresden.de>
  */
@@ -29,32 +18,111 @@
 #endif
 
 #include <bm/spdlog/spdlog.h>
+// The externs of PSA and PNA programs (before the #undef: they include syslog.h)
+#include "../utils/psa_externs/psa_counter.h"
+#include "../utils/psa_externs/psa_meter.h"
 #undef LOG_INFO
 #undef LOG_ERROR
 #undef LOG_DEBUG
 
 #include "ns3/log.h"
+#include "ns3/node.h"
 #include "ns3/p4-switch-core.h"
 #include "ns3/p4-switch-net-device.h"
+#include "ns3/p4sim-ns3-compat.h"
+#include "ns3/rng-seed-manager.h"
 #include "ns3/simulator.h"
 
-#include <bm/bm_runtime/bm_runtime.h>
-#include <bm/bm_sim/options_parse.h>
-#include <fstream>
-
 #include <algorithm>
+#include <array>
+#include <bm/bm_runtime/bm_runtime.h>
+#include <bm/bm_sim/dev_mgr.h>
+#include <bm/bm_sim/options_parse.h>
+#include <bm/bm_sim/port_monitor.h>
 #include <cctype>
+#include <cerrno>
 #include <cstdlib>
+#include <cstring>
 #include <fcntl.h>
+#include <filesystem>
+#include <fstream>
+#include <iostream>
+#include <json/json.h>
+#include <map>
+#include <memory>
 #include <netinet/in.h>
+#include <spawn.h>
+#include <sstream>
 #include <sys/file.h>
+#include <sys/mman.h>
 #include <sys/socket.h>
+#include <sys/wait.h>
 #include <unistd.h>
+
+#ifndef MFD_NOEXEC_SEAL // glibc before 2.39
+#define MFD_NOEXEC_SEAL 0x0008U
+#endif
 
 NS_LOG_COMPONENT_DEFINE("P4SwitchCore");
 
 namespace
 {
+
+/**
+ * Run a shell command with this standard input and return what it writes to its
+ * standard output and error. The command gets no other descriptor of this process:
+ * a runtime CLI that held the listening Thrift sockets of the switches would wait
+ * for itself forever if this process ended while it runs. (With glibc before 2.34,
+ * which cannot close them, it inherits them as before.)
+ */
+std::string
+RunWithInput(const std::string& command, int input)
+{
+    int out[2];
+    if (pipe2(out, O_CLOEXEC) != 0)
+    {
+        return std::string("cannot create a pipe: ") + std::strerror(errno);
+    }
+    posix_spawn_file_actions_t actions;
+    posix_spawn_file_actions_init(&actions);
+    posix_spawn_file_actions_adddup2(&actions, input, STDIN_FILENO);
+    posix_spawn_file_actions_adddup2(&actions, out[1], STDOUT_FILENO);
+    posix_spawn_file_actions_adddup2(&actions, out[1], STDERR_FILENO);
+#if defined(__GLIBC__) && __GLIBC_PREREQ(2, 34)
+    posix_spawn_file_actions_addclosefrom_np(&actions, STDERR_FILENO + 1);
+#endif
+    const char* argv[] = {"sh", "-c", command.c_str(), nullptr};
+    pid_t pid;
+    int rc =
+        posix_spawn(&pid, "/bin/sh", &actions, nullptr, const_cast<char* const*>(argv), environ);
+    posix_spawn_file_actions_destroy(&actions);
+    close(out[1]);
+    std::string output;
+    if (rc != 0)
+    {
+        output = std::string("cannot run /bin/sh: ") + std::strerror(rc);
+    }
+    else
+    {
+        std::array<char, 4096> buffer;
+        for (ssize_t n; (n = read(out[0], buffer.data(), buffer.size())) != 0;)
+        {
+            if (n > 0)
+            {
+                output.append(buffer.data(), n);
+            }
+            else if (errno != EINTR)
+            {
+                break;
+            }
+        }
+        while (waitpid(pid, nullptr, 0) < 0 && errno == EINTR)
+        {
+        }
+    }
+    close(out[0]);
+    return output;
+}
 
 /**
  * BMv2 swaps the P4 program only when no packet of the switch holds a PHV
@@ -84,6 +152,60 @@ struct PhvSourceAccess
 };
 
 template struct PhvSourceAccess<&bm::SwitchWContexts::phv_source>;
+
+/**
+ * BMv2 device manager without ports. P4sim moves the packets between BMv2 and
+ * ns-3 itself, so a switch needs no BMv2 port and P4sim never starts a device
+ * manager. Without this one, init_from_options_parser() creates BMv2's default
+ * device manager (BMI), whose destructor joins a thread that only a start
+ * creates: with glibc 2.43 (Ubuntu 26.04) every simulation then crashes at its
+ * end (BMv2 1.15.8, bmi_port_destroy_mgr()). This one starts no thread and
+ * opens no socket.
+ */
+class NoPortsDevMgr : public bm::DevMgrIface
+{
+  public:
+    NoPortsDevMgr()
+    {
+        p_monitor = bm::PortMonitorIface::make_dummy();
+    }
+
+  private:
+    ReturnCode port_add_(const std::string& /* ifaceName */,
+                         port_t /* port */,
+                         const PortExtras& /* extras */) override
+    {
+        return ReturnCode::UNSUPPORTED;
+    }
+
+    ReturnCode port_remove_(port_t /* port */) override
+    {
+        return ReturnCode::UNSUPPORTED;
+    }
+
+    void transmit_fn_(port_t /* port */, const char* /* buffer */, int /* len */) override
+    {
+    }
+
+    void start_() override
+    {
+    }
+
+    ReturnCode set_packet_handler_(const PacketHandler& /* handler */, void* /* cookie */) override
+    {
+        return ReturnCode::SUCCESS;
+    }
+
+    bool port_is_up_(port_t /* port */) const override
+    {
+        return false;
+    }
+
+    std::map<port_t, PortInfo> get_port_info_() const override
+    {
+        return {};
+    }
+};
 
 /// Default first port of the automatic Thrift port allocation
 constexpr int P4SIM_DEFAULT_THRIFT_PORT_BASE = 9090;
@@ -128,6 +250,24 @@ IsTcpPortFree(int port)
     bool isFree = ::bind(sock, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) == 0;
     ::close(sock);
     return isFree;
+}
+
+/// True if a server on this host accepts TCP connections on port \p port
+bool
+ServerListens(int port)
+{
+    int sock = ::socket(AF_INET, SOCK_STREAM | SOCK_CLOEXEC, 0);
+    if (sock < 0)
+    {
+        return false;
+    }
+    sockaddr_in addr{};
+    addr.sin_family = AF_INET;
+    addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+    addr.sin_port = htons(static_cast<uint16_t>(port));
+    bool listens = ::connect(sock, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) == 0;
+    ::close(sock);
+    return listens;
 }
 
 /**
@@ -230,6 +370,36 @@ namespace ns3
 
 static constexpr uint16_t MAX_MIRROR_SESSION_ID = (1u << 15) - 1;
 
+namespace
+{
+
+/// The switch that loads a P4 program in this thread (see LoadingRandomEngine())
+thread_local P4SwitchCore* g_loadingSwitch = nullptr;
+
+/// Marks \p sw as the switch that loads a program in this thread, while it exists
+class LoadingSwitchScope
+{
+  public:
+    explicit LoadingSwitchScope(P4SwitchCore* sw)
+        : m_previous(g_loadingSwitch)
+    {
+        g_loadingSwitch = sw;
+    }
+
+    ~LoadingSwitchScope()
+    {
+        g_loadingSwitch = m_previous;
+    }
+
+    LoadingSwitchScope(const LoadingSwitchScope&) = delete;
+    LoadingSwitchScope& operator=(const LoadingSwitchScope&) = delete;
+
+  private:
+    P4SwitchCore* m_previous; ///< the switch marked before
+};
+
+} // namespace
+
 class P4SwitchCore::MirroringSessions
 {
   public:
@@ -317,11 +487,17 @@ P4SwitchCore::~P4SwitchCore()
     Simulator::Cancel(m_ingressEvent);
     Simulator::Cancel(m_pipelineEvent);
     Simulator::Cancel(m_swapEvent);
+    // In case P4SwitchNetDevice::DoDispose() did not: the Thrift server keeps
+    // running and must not reach this switch any more
+    StopThriftServices();
 }
 
 bm::RuntimeInterface::ErrorCode
 P4SwitchCore::load_new_config(const std::string& newConfig)
 {
+    // BMv2 creates the primitives and externs of the program now (see
+    // LoadingRandomEngine())
+    LoadingSwitchScope loading(this);
     bm::RuntimeInterface::ErrorCode rc = bm::SwitchWContexts::load_new_config(newConfig);
     if (rc == bm::RuntimeInterface::SUCCESS)
     {
@@ -346,6 +522,140 @@ P4SwitchCore::swap_configs()
         TrySwap();
     }
     return bm::RuntimeInterface::SUCCESS;
+}
+
+// The counter and meter calls of the runtime API, as in BMv2's psa_switch: a
+// name of a Counter or Meter extern reaches the extern; any other name goes
+// to BMv2's counter and meter arrays. The extern is looked up in its own
+// block: the lookup holds a lock that BMv2's array calls take again.
+
+bm::Counter::CounterErrorCode
+P4SwitchCore::read_counters(bm::cxt_id_t cxt_id,
+                            const std::string& counter_name,
+                            size_t index,
+                            bm::MatchTableAbstract::counter_value_t* bytes,
+                            bm::MatchTableAbstract::counter_value_t* packets)
+{
+    {
+        auto ex = get_context(cxt_id)->get_extern_instance(counter_name);
+        if (auto* counter = dynamic_cast<bm::psa::PSA_Counter*>(ex.get()))
+        {
+            if (index >= counter->size())
+            {
+                return bm::Counter::CounterErrorCode::INVALID_INDEX;
+            }
+            return counter->get_counter(index).query_counter(bytes, packets);
+        }
+    }
+    return bm::Switch::read_counters(cxt_id, counter_name, index, bytes, packets);
+}
+
+bm::Counter::CounterErrorCode
+P4SwitchCore::reset_counters(bm::cxt_id_t cxt_id, const std::string& counter_name)
+{
+    {
+        auto ex = get_context(cxt_id)->get_extern_instance(counter_name);
+        if (auto* counter = dynamic_cast<bm::psa::PSA_Counter*>(ex.get()))
+        {
+            return counter->reset_counters();
+        }
+    }
+    return bm::Switch::reset_counters(cxt_id, counter_name);
+}
+
+bm::Counter::CounterErrorCode
+P4SwitchCore::write_counters(bm::cxt_id_t cxt_id,
+                             const std::string& counter_name,
+                             size_t index,
+                             bm::MatchTableAbstract::counter_value_t bytes,
+                             bm::MatchTableAbstract::counter_value_t packets)
+{
+    {
+        auto ex = get_context(cxt_id)->get_extern_instance(counter_name);
+        if (auto* counter = dynamic_cast<bm::psa::PSA_Counter*>(ex.get()))
+        {
+            if (index >= counter->size())
+            {
+                return bm::Counter::CounterErrorCode::INVALID_INDEX;
+            }
+            return counter->get_counter(index).write_counter(bytes, packets);
+        }
+    }
+    return bm::Switch::write_counters(cxt_id, counter_name, index, bytes, packets);
+}
+
+bm::Meter::MeterErrorCode
+P4SwitchCore::meter_array_set_rates(bm::cxt_id_t cxt_id,
+                                    const std::string& meter_name,
+                                    const std::vector<bm::Meter::rate_config_t>& configs)
+{
+    {
+        auto ex = get_context(cxt_id)->get_extern_instance(meter_name);
+        if (auto* meter = dynamic_cast<bm::psa::PSA_Meter*>(ex.get()))
+        {
+            return meter->set_rates(configs);
+        }
+    }
+    return bm::Switch::meter_array_set_rates(cxt_id, meter_name, configs);
+}
+
+bm::Meter::MeterErrorCode
+P4SwitchCore::meter_set_rates(bm::cxt_id_t cxt_id,
+                              const std::string& meter_name,
+                              size_t idx,
+                              const std::vector<bm::Meter::rate_config_t>& configs)
+{
+    {
+        auto ex = get_context(cxt_id)->get_extern_instance(meter_name);
+        if (auto* meter = dynamic_cast<bm::psa::PSA_Meter*>(ex.get()))
+        {
+            if (idx >= meter->size())
+            {
+                return bm::Meter::MeterErrorCode::INVALID_INDEX;
+            }
+            return meter->get_meter(idx).set_rates(configs);
+        }
+    }
+    return bm::Switch::meter_set_rates(cxt_id, meter_name, idx, configs);
+}
+
+bm::Meter::MeterErrorCode
+P4SwitchCore::meter_get_rates(bm::cxt_id_t cxt_id,
+                              const std::string& meter_name,
+                              size_t idx,
+                              std::vector<bm::Meter::rate_config_t>* configs)
+{
+    {
+        auto ex = get_context(cxt_id)->get_extern_instance(meter_name);
+        if (auto* meter = dynamic_cast<bm::psa::PSA_Meter*>(ex.get()))
+        {
+            if (idx >= meter->size())
+            {
+                return bm::Meter::MeterErrorCode::INVALID_INDEX;
+            }
+            // Replace the caller's list, as BMv2 does for meter arrays (v1model)
+            *configs = meter->get_meter(idx).get_rates();
+            return bm::Meter::MeterErrorCode::SUCCESS;
+        }
+    }
+    return bm::Switch::meter_get_rates(cxt_id, meter_name, idx, configs);
+}
+
+bm::Meter::MeterErrorCode
+P4SwitchCore::meter_reset_rates(bm::cxt_id_t cxt_id, const std::string& meter_name, size_t idx)
+{
+    {
+        auto ex = get_context(cxt_id)->get_extern_instance(meter_name);
+        if (auto* meter = dynamic_cast<bm::psa::PSA_Meter*>(ex.get()))
+        {
+            if (idx >= meter->size())
+            {
+                return bm::Meter::MeterErrorCode::INVALID_INDEX;
+            }
+            return meter->get_meter(idx).reset_rates();
+        }
+    }
+    return bm::Switch::meter_reset_rates(cxt_id, meter_name, idx);
 }
 
 bool
@@ -373,7 +683,7 @@ void
 P4SwitchCore::CheckPendingSwap()
 {
     // After the current event, which may still own the packet that leaves
-    if (m_swapPending && !m_swapEvent.IsRunning())
+    if (m_swapPending && !P4simIsPending(m_swapEvent))
     {
         m_swapEvent = Simulator::ScheduleNow(&P4SwitchCore::TrySwap, this);
     }
@@ -382,6 +692,15 @@ P4SwitchCore::CheckPendingSwap()
 bool
 P4SwitchCore::HoldsPackets()
 {
+    // Frames in a transfer buffer have passed the pipeline and hold no PHV, but
+    // they have not left the switch
+    for (const auto& kv : m_transferBuffers)
+    {
+        if (!kv.second.empty())
+        {
+            return true;
+        }
+    }
     const std::unique_ptr<bm::PHVSourceIface>& phvSource = this->*PhvSource(PhvSourceTag{});
     for (bm::cxt_id_t cxt = 0; cxt < get_nb_cxts(); cxt++)
     {
@@ -406,6 +725,7 @@ P4SwitchCore::TrySwap()
     bm::RuntimeInterface::ErrorCode rc = bm::SwitchWContexts::swap_configs();
     NS_ABORT_MSG_IF(rc != bm::RuntimeInterface::SUCCESS,
                     "Switch " << m_p4SwitchId << ": the swap failed (BMv2 error " << rc << ")");
+    m_learnListsRead = false; // those of the new program
     NS_LOG_INFO("Switch " << m_p4SwitchId << " swapped its P4 program; " << m_heldFrames.size()
                           << " held frames enter the pipeline");
     std::deque<HeldFrame> held;
@@ -413,6 +733,70 @@ P4SwitchCore::TrySwap()
     for (HeldFrame& f : held)
     {
         ReceivePacket(f.frame, f.inPort, f.protocol, f.destination);
+    }
+}
+
+void
+P4SwitchCore::Learn(int listId, const bm::Packet& packet)
+{
+    NS_LOG_FUNCTION(this << listId);
+    get_learn_engine()->learn(listId, packet);
+
+    ReadLearnLists();
+    auto list = m_learnLists.find(listId);
+    if (list == m_learnLists.end())
+    {
+        NS_LOG_WARN("Switch " << m_p4SwitchId << ": the P4 program has no learn list " << listId);
+        return;
+    }
+    P4Digest digest;
+    digest.listId = static_cast<uint32_t>(listId);
+    digest.listName = list->second.name;
+    const bm::PHV* phv = packet.get_phv();
+    for (const std::string& name : list->second.fields)
+    {
+        const bm::Field& field = phv->get_field(name);
+        const bm::ByteContainer& bytes = field.get_bytes();
+        digest.fields.push_back({name,
+                                 static_cast<uint32_t>(field.get_nbits()),
+                                 std::string(bytes.data(), bytes.size())});
+    }
+    NS_LOG_DEBUG("Switch " << m_p4SwitchId << ": digest " << digest);
+    m_switchNetDevice->NotifyDigest(digest);
+}
+
+void
+P4SwitchCore::ReadLearnLists()
+{
+    if (m_learnListsRead)
+    {
+        return;
+    }
+    m_learnListsRead = true;
+    m_learnLists.clear();
+    Json::Value root;
+    Json::CharReaderBuilder reader;
+    std::string errors;
+    std::istringstream config(get_config());
+    if (!Json::parseFromStream(reader, config, &root, &errors))
+    {
+        // BMv2 has loaded this JSON, so this does not happen
+        NS_LOG_WARN("Switch " << m_p4SwitchId << ": cannot read the learn lists: " << errors);
+        return;
+    }
+    for (const Json::Value& jsonList : root["learn_lists"])
+    {
+        LearnList& list = m_learnLists[jsonList["id"].asInt()];
+        list.name = jsonList["name"].asString();
+        for (const Json::Value& element : jsonList["elements"])
+        {
+            // BMv2 accepts only fields (P4Objects::init_learn_lists())
+            if (element["type"].asString() == "field")
+            {
+                list.fields.push_back(element["value"][0].asString() + "." +
+                                      element["value"][1].asString());
+            }
+        }
     }
 }
 
@@ -436,6 +820,32 @@ P4SwitchCore::GetPipelineDelay() const
 }
 
 void
+P4SwitchCore::SetTransferBufferSize(uint32_t frames)
+{
+    m_transferBufferSize = frames;
+}
+
+uint32_t
+P4SwitchCore::GetTransferBufferSize() const
+{
+    return m_transferBufferSize;
+}
+
+uint32_t
+P4SwitchCore::GetTransferBufferLength(uint32_t port) const
+{
+    auto it = m_transferBuffers.find(port);
+    return it == m_transferBuffers.end() ? 0 : static_cast<uint32_t>(it->second.size());
+}
+
+bool
+P4SwitchCore::PortCanTakePacket(uint32_t port, bool transmitterFree) const
+{
+    uint32_t waiting = GetTransferBufferLength(port);
+    return (transmitterFree && waiting == 0) || waiting < m_transferBufferSize;
+}
+
+void
 P4SwitchCore::Enqueue(uint32_t egress_port, std::unique_ptr<bm::Packet>&& packet)
 {
     CheckPendingSwap(); // a full egress queue drops the packet
@@ -448,7 +858,7 @@ P4SwitchCore::Enqueue(uint32_t egress_port, std::unique_ptr<bm::Packet>&& packet
     // pipeline in the order in which they entered it
     Time leaves = Simulator::Now() + m_pipelineDelay;
     m_pipelinePackets.push_back({leaves, egress_port, std::move(packet)});
-    if (!m_pipelineEvent.IsRunning())
+    if (!P4simIsPending(m_pipelineEvent))
     {
         m_pipelineEvent =
             Simulator::Schedule(m_pipelineDelay, &P4SwitchCore::ReleaseFromPipeline, this);
@@ -487,7 +897,7 @@ P4SwitchCore::StartIngress()
         HandleIngressPipeline();
         return;
     }
-    if (m_ingressEvent.IsRunning())
+    if (P4simIsPending(m_ingressEvent))
     {
         return; // the pending ServeIngress() takes it
     }
@@ -515,7 +925,7 @@ P4SwitchCore::ServeIngress()
     // The pipeline is busy with this packet for one service time
     m_ingressFreeAt = Simulator::Now() + m_ingressServiceTime;
     HandleIngressPipeline();
-    if (GetNInputPackets() > 0 && !m_ingressEvent.IsRunning())
+    if (GetNInputPackets() > 0 && !P4simIsPending(m_ingressEvent))
     {
         m_ingressEvent =
             Simulator::Schedule(m_ingressServiceTime, &P4SwitchCore::ServeIngress, this);
@@ -550,8 +960,34 @@ P4SwitchCore::InitializeSwitchFromP4Json(const std::string& jsonPath)
     opt_parser.thrift_port = m_thriftPort;
     opt_parser.console_logging = false;
 
-    // Initialize the switch
-    status = init_from_options_parser(opt_parser);
+    std::string unsupported = CheckPrimitives(jsonPath);
+    if (!unsupported.empty())
+    {
+        NS_FATAL_ERROR(unsupported);
+    }
+
+    // The random numbers of the P4 program follow ns-3's seed and run; the node id
+    // and the device index give each switch numbers of its own
+    uint64_t run = RngSeedManager::GetRun();
+    uint32_t nodeId = 0;
+    uint32_t deviceIndex = 0;
+    if (Ptr<Node> node = m_switchNetDevice->GetNode())
+    {
+        nodeId = node->GetId();
+        deviceIndex = m_switchNetDevice->GetIfIndex();
+    }
+    std::seed_seq seed{RngSeedManager::GetSeed(),
+                       static_cast<uint32_t>(run),
+                       static_cast<uint32_t>(run >> 32),
+                       nodeId,
+                       deviceIndex};
+    m_randomEngine.seed(seed);
+
+    // Initialize the switch, with a device manager without ports (NoPortsDevMgr).
+    // BMv2 creates the primitives and externs of the program now (see
+    // LoadingRandomEngine()).
+    LoadingSwitchScope loading(this);
+    status = init_from_options_parser(opt_parser, nullptr, std::make_unique<NoPortsDevMgr>());
     if (status != 0)
     {
         // BMv2 prints the reason to std::cout without flushing it; flush it so
@@ -563,6 +999,69 @@ P4SwitchCore::InitializeSwitchFromP4Json(const std::string& jsonPath)
     }
 
     NS_LOG_INFO("P4 json applied successfully.");
+}
+
+std::string
+P4SwitchCore::CheckPrimitives(const std::string& jsonPath) const
+{
+    std::map<std::string, std::string> missing = GetMissingPrimitives();
+    if (missing.empty())
+    {
+        return "";
+    }
+    Json::Value root;
+    Json::CharReaderBuilder reader;
+    std::string errors;
+    std::ifstream config(jsonPath);
+    if (!config || !Json::parseFromStream(reader, config, &root, &errors))
+    {
+        return ""; // BMv2 reports a file that it cannot read
+    }
+    for (const Json::Value& action : root["actions"])
+    {
+        for (const Json::Value& primitive : action["primitives"])
+        {
+            auto it = missing.find(primitive["op"].asString());
+            if (it == missing.end())
+            {
+                continue;
+            }
+            std::ostringstream message;
+            message << "Switch ID " << m_p4SwitchId << ": ";
+            const Json::Value& source = primitive["source_info"];
+            if (source.isObject())
+            {
+                message << source["filename"].asString() << " line " << source["line"].asInt()
+                        << ": ";
+            }
+            message << it->first << "() is not supported: " << it->second;
+            return message.str();
+        }
+    }
+    return "";
+}
+
+std::map<std::string, std::string>
+P4SwitchCore::GetMissingPrimitives() const
+{
+    return {};
+}
+
+std::mt19937_64&
+P4SwitchCore::GetRandomEngine()
+{
+    return m_randomEngine;
+}
+
+std::mt19937_64&
+P4SwitchCore::LoadingRandomEngine()
+{
+    if (g_loadingSwitch)
+    {
+        return g_loadingSwitch->m_randomEngine;
+    }
+    static std::mt19937_64 engine;
+    return engine;
 }
 
 void
@@ -607,6 +1106,59 @@ P4SwitchCore::LoadFlowTableToSwitch(const std::string& flowTablePath)
     return ExecuteCliCommands(flowTablePath);
 }
 
+bool
+P4SwitchCore::ReportCliErrors(const std::string& file,
+                              const std::vector<std::pair<uint32_t, std::string>>& commands,
+                              const std::string& output) const
+{
+    // The CLI prints its prompt before the output of each command, and once more
+    // at the end of the commands
+    const std::string prompt = "RuntimeCmd: ";
+    const std::vector<std::string> signs = {"Error: ", "Invalid ", "*** Unknown syntax"};
+    size_t command = 0;
+    std::string last;    // the last line of this command that is not empty
+    bool errors = false; // whether an error was printed
+    auto report = [&](const std::string& error) {
+        errors = true;
+        std::cerr << file;
+        if (command >= 1 && command <= commands.size())
+        {
+            const auto& [number, text] = commands[command - 1];
+            std::cerr << ":" << number << ": " << text;
+        }
+        std::cerr << "\n    " << error << std::endl;
+    };
+
+    std::istringstream lines(output);
+    for (std::string line; std::getline(lines, line);)
+    {
+        while (line.rfind(prompt, 0) == 0)
+        {
+            command++;
+            last.clear();
+            line.erase(0, prompt.size());
+        }
+        if (std::any_of(signs.begin(), signs.end(), [&line](const std::string& sign) {
+                return line.rfind(sign, 0) == 0;
+            }))
+        {
+            report(line);
+        }
+        if (!line.empty())
+        {
+            last = line;
+        }
+    }
+    if (command <= commands.size())
+    {
+        report(m_thriftCommand +
+               (command == 0 ? " failed, the file is skipped"
+                             : " stopped here, the rest of the file is skipped") +
+               (last.empty() ? "" : ": " + last));
+    }
+    return errors;
+}
+
 int
 P4SwitchCore::ExecuteCliCommands(const std::string& commandsFile)
 {
@@ -619,50 +1171,94 @@ P4SwitchCore::ExecuteCliCommands(const std::string& commandsFile)
         return 1;
     }
 
-    // Check if the commands file exists
-    std::ifstream infile(commandsFile);
-    if (!infile.good())
+    // Without a flow table the tables keep the entries of the P4 program
+    if (commandsFile.empty())
     {
-        NS_LOG_ERROR("Commands file not found: " << commandsFile);
-        return 1;
+        return 0;
+    }
+    std::vector<std::pair<uint32_t, std::string>> commands; // (line number, command)
+    std::ostringstream input;
+    {
+        std::ifstream file(commandsFile);
+        if (!file || std::filesystem::is_directory(commandsFile))
+        {
+            NS_FATAL_ERROR("Switch ID " << m_p4SwitchId << ": cannot open the flow table "
+                                        << commandsFile);
+        }
+        // The CLI repeats the last command for an empty line and does not know
+        // comments or the byte order mark of UTF-8, so it gets none of them
+        uint32_t number = 0;
+        for (std::string line; std::getline(file, line);)
+        {
+            number++;
+            if (number == 1 && line.rfind("\xEF\xBB\xBF", 0) == 0)
+            {
+                line.erase(0, 3);
+            }
+            size_t start = line.find_first_not_of(" \t\r");
+            if (start != std::string::npos && line[start] != '#')
+            {
+                line.erase(line.find_last_not_of(" \t\r") + 1);
+                commands.emplace_back(number, line);
+                input << line << "\n";
+            }
+        }
     }
 
     // Get runtime port and start the server
     int port = get_runtime_port();
-    // The server thread points bm_runtime::processor_ to its processor, but for
-    // the second and later switches of a process, start_server() returns before
-    // that. So the services of the target are added after the wait, and only to
-    // a new processor: never to the server of another switch.
-    auto previousProcessor = bm_runtime::processor_;
-    bm_runtime::start_server(this, port);
-    std::this_thread::sleep_for(std::chrono::seconds(1));
-    if (bm_runtime::processor_ != previousProcessor)
+    // The server thread points bm_runtime::processor_ to its processor, registers
+    // BMv2's services, and then listens. For the second and later switches of a
+    // process, start_server() returns before that, so wait until the server
+    // listens (at most 5 s): then the services of this switch are registered
+    // after BMv2's, and only to its own processor, never to the server of
+    // another switch.
+    // The server is started once per switch: later calls use it. A second
+    // server could not bind the port, and BMv2 would end the process.
+    if (!m_thriftServerStarted)
     {
-        AddThriftServices();
-    }
-    else
-    {
-        NS_LOG_WARN("Switch ID: " << m_p4SwitchId
-                                  << " Thrift server not started in time, so the commands "
-                                     "of the target (e.g. mirroring_add) are not available");
+        m_thriftServerStarted = true;
+        auto previousProcessor = bm_runtime::processor_;
+        bm_runtime::start_server(this, port);
+        for (int i = 0; i < 500 && !ServerListens(port); i++)
+        {
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        }
+        if (ServerListens(port) && bm_runtime::processor_ != previousProcessor)
+        {
+            GuardThriftServices();
+        }
+        else
+        {
+            NS_LOG_WARN("Switch ID: " << m_p4SwitchId
+                                      << " Thrift server not started in time, so the commands "
+                                         "of the target (e.g. mirroring_add) are not available");
+        }
     }
 
-    // Construct the CLI command
-    std::ostringstream cmdStream;
-    cmdStream << m_thriftCommand << " --thrift-port " << port << " < " << commandsFile
-              << " > /dev/null 2>&1";
-    std::string cmd = cmdStream.str();
-
+    // The CLI reads the commands from a file in memory, which leaves nothing on the
+    // disk if this process is killed. Hosts with vm.memfd_noexec=2 want the flag,
+    // and Linux before 6.3 does not know it.
+    int fd = memfd_create("p4sim-cli", MFD_NOEXEC_SEAL);
+    if (fd < 0 && errno == EINVAL)
+    {
+        fd = memfd_create("p4sim-cli", 0);
+    }
+    std::string text = input.str();
+    if (fd < 0 || write(fd, text.data(), text.size()) != static_cast<ssize_t>(text.size()) ||
+        lseek(fd, 0, SEEK_SET) != 0)
+    {
+        NS_FATAL_ERROR("Switch ID " << m_p4SwitchId
+                                    << ": cannot pass the flow table to the runtime CLI");
+    }
+    // The encoding lets the CLI read bytes that are not UTF-8: it reads the commands
+    // in blocks, so such a byte would end it before the commands above run
+    std::string cmd = "PYTHONIOENCODING=utf-8:surrogateescape " + m_thriftCommand +
+                      " --thrift-port " + std::to_string(port);
     NS_LOG_DEBUG("Executing CLI command: " << cmd);
-
-    // Run the CLI command to populate table entries
-    int result = std::system(cmd.c_str());
-    if (result != 0)
-    {
-        NS_LOG_WARN("CLI command returned non-zero exit code: " << result);
-    }
-
-    return result;
+    std::string output = RunWithInput(cmd, fd);
+    close(fd);
+    return ReportCliErrors(commandsFile, commands, output) ? 1 : 0;
 }
 
 uint64_t
@@ -712,6 +1308,15 @@ P4SwitchCore::GetAddressIndex(const Address& destination)
         m_addressMap[destination] = new_index;
         return new_index;
     }
+}
+
+const Address&
+P4SwitchCore::GetDestination(int index) const
+{
+    NS_ASSERT_MSG(index >= 0 && static_cast<size_t>(index) < m_destinationList.size(),
+                  "Switch " << m_p4SwitchId << ": no destination address " << index
+                            << " (a packet copy whose registers were not set?)");
+    return m_destinationList[index];
 }
 
 int

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-2.0-only
+// SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 TU Dresden. Author: Mingyu Ma <mingyu.ma@tu-dresden.de>
 
 /*
@@ -9,13 +9,18 @@
  *   packet <port> <hex>   send this Ethernet frame into the switch on <port>
  *   expect <port> <hex>   this frame leaves the switch on <port>; '*' matches any nibble
  *   mirroring_add <session> <port>   the clones of this mirroring session leave on <port>
- *   mirroring_add_mc <session> <group>   they go to multicast group <group> (v1model)
+ *   mirroring_add_mc <session> <group>   they go to multicast group <group>
  *   register <name> <index> <value>   after the run, register <name>[<index>] holds <value>
- * Spaces in <hex> are ignored. All frames are sent at the same time, in file order.
+ *   counter <name> <index> <packets>   after the run, counter <name>[<index>] has
+ *                                      counted <packets> packets (runtime API)
+ *   meter_set_rates <name> <index> <rate>:<burst>...   as in simple_switch_CLI: the rates
+ *       of meter <name>[<index>] in units per microsecond, the lowest first
+ *   at <time>   the following frames are sent at <time> microseconds (default 1000)
+ * Spaces in <hex> are ignored. Frames of the same time are sent in file order.
  * A test passes if every port sends exactly the frames expected on it, in that
  * order. The switch has three ports, 0 to 2.
  *
- * On v1model, these commands of simple_switch_CLI configure multicast:
+ * On v1model and PSA, these commands of simple_switch_CLI configure multicast:
  *   mc_mgrp_create <group>                       create a multicast group
  *   mc_node_create <rid> <port>... [| <lag>...]  create a node; nodes get the handles 0, 1, ...
  *   mc_node_associate <group> <node handle>      add a node to a group
@@ -23,9 +28,12 @@
  */
 
 #include "ns3/core-module.h"
+#include "ns3/eth-net-device.h"
 #include "ns3/network-module.h"
 #include "ns3/p4-core-v1model.h"
 #include "ns3/p4-switch-net-device.h"
+#include "ns3/p4sim-ns3-compat.h"
+#include "ns3/switched-ethernet-channel.h"
 #include "ns3/test.h"
 
 #include <algorithm>
@@ -47,6 +55,16 @@ struct StfFrame
     uint32_t port;
     std::string hex; ///< lower case, no spaces
     int line;
+    uint64_t time; ///< "packet": when it is sent, in microseconds
+};
+
+/// A "meter_set_rates" command of an .stf file
+struct StfMeterRates
+{
+    std::string name;
+    size_t index;
+    std::vector<bm::Meter::rate_config_t> rates;
+    int line;
 };
 
 /// A multicast command of an .stf file, as in simple_switch_CLI
@@ -58,7 +76,8 @@ struct StfMcCommand
     int line;
 };
 
-/// A "register" command of an .stf file: after the run, a register holds a value
+/// A "register" command of an .stf file: after the run, a register holds a value;
+/// also a "counter" command, with the number of packets as the value
 struct StfRegister
 {
     std::string name;
@@ -144,6 +163,8 @@ class StfTestCase : public TestCase
     std::vector<StfFrame> m_packets;
     std::vector<StfFrame> m_expects;
     std::vector<StfRegister> m_registers;                           ///< in file order
+    std::vector<StfRegister> m_counters;                            ///< in file order
+    std::vector<StfMeterRates> m_meterRates;                        ///< in file order
     std::vector<std::pair<uint32_t, uint32_t>> m_mirroringSessions; ///< (session, port)
     std::vector<std::pair<uint32_t, uint32_t>> m_mcMirroringSessions; ///< (session, group)
     std::vector<Ptr<SimpleNetDevice>> m_hosts;        ///< one per switch port
@@ -159,6 +180,7 @@ StfTestCase::ReadStf(const std::string& path)
         return "cannot open " + path;
     }
     std::string line;
+    uint64_t time = 1000; // microseconds
     for (int n = 1; std::getline(in, line); n++)
     {
         std::istringstream words(line.substr(0, line.find('#')));
@@ -204,6 +226,46 @@ StfTestCase::ReadStf(const std::string& path)
             m_registers.push_back(reg);
             continue;
         }
+        if (cmd == "counter")
+        {
+            StfRegister counter{"", 0, 0, n};
+            if (!(words >> counter.name >> counter.index >> counter.value) || (words >> word))
+            {
+                return m_stf + " line " + std::to_string(n) +
+                       ": expected 'counter <name> <index> <packets>'";
+            }
+            m_counters.push_back(counter);
+            continue;
+        }
+        if (cmd == "meter_set_rates")
+        {
+            StfMeterRates meter{"", 0, {}, n};
+            bool valid = static_cast<bool>(words >> meter.name >> meter.index);
+            while (valid && words >> word)
+            {
+                double rate = 0;
+                size_t burst = 0;
+                char colon = 0;
+                std::istringstream config(word);
+                valid = (config >> rate >> colon >> burst) && colon == ':' && config.eof();
+                meter.rates.push_back(bm::Meter::rate_config_t::make(rate, burst));
+            }
+            if (!valid || meter.rates.empty())
+            {
+                return m_stf + " line " + std::to_string(n) +
+                       ": expected 'meter_set_rates <name> <index> <rate>:<burst>...'";
+            }
+            m_meterRates.push_back(meter);
+            continue;
+        }
+        if (cmd == "at")
+        {
+            if (!(words >> time) || (words >> word))
+            {
+                return m_stf + " line " + std::to_string(n) + ": expected 'at <microseconds>'";
+            }
+            continue;
+        }
         if (cmd == "mc_mgrp_create" || cmd == "mc_node_create" || cmd == "mc_node_associate" ||
             cmd == "mc_set_lag_membership")
         {
@@ -228,7 +290,7 @@ StfTestCase::ReadStf(const std::string& path)
             return m_stf + " line " + std::to_string(n) +
                    ": expected 'packet|expect <port 0-2> <Ethernet frame in hex>'";
         }
-        (cmd == "packet" ? m_packets : m_expects).push_back({port, hex, n});
+        (cmd == "packet" ? m_packets : m_expects).push_back({port, hex, n, time});
     }
     return "";
 }
@@ -287,11 +349,12 @@ StfTestCase::ApplyMcCommands(Ptr<P4SwitchNetDevice> sw) const
     {
         return "";
     }
-    if (!sw->GetV1ModelCore())
+    // v1model and PSA have a packet replication engine
+    auto pre = sw->GetCore()->get_component<bm::McSimplePreLAG>();
+    if (!pre)
     {
-        return m_stf + ": the multicast commands need v1model";
+        return m_stf + ": the multicast commands need v1model or PSA";
     }
-    auto pre = sw->GetV1ModelCore()->get_component<bm::McSimplePreLAG>();
     for (const StfMcCommand& mc : m_mcCommands)
     {
         bm::McSimplePre::PortMap ports;
@@ -409,7 +472,7 @@ StfTestCase::DoRun()
         Ptr<SimpleNetDevice> port = CreateObject<SimpleNetDevice>();
         Ptr<SimpleNetDevice> host = CreateObject<SimpleNetDevice>();
         port->SetAddress(Mac48Address::Allocate());
-        // switch_channel: the switch sends a frame on a port when the port is
+        // The switch sends a frame on a port when the port is
         // free, and a port is busy for the frame's transmission time at this
         // rate. So frames that arrive together wait in the switch's queues.
         port->SetAttribute("DataRate", DataRateValue(DataRate("1Gbps")));
@@ -437,11 +500,19 @@ StfTestCase::DoRun()
     }
     error = ApplyMcCommands(sw);
     NS_TEST_ASSERT_MSG_EQ(error, "", "Cannot configure multicast");
+    for (const StfMeterRates& meter : m_meterRates)
+    {
+        NS_TEST_ASSERT_MSG_EQ(
+            sw->GetCore()->meter_set_rates(0, meter.name, meter.index, meter.rates),
+            bm::Meter::MeterErrorCode::SUCCESS,
+            m_stf << " line " << meter.line << ": cannot set the rates of " << meter.name << "["
+                  << meter.index << "]");
+    }
 
-    // All frames at once, in file order: frames to the same port queue up
+    // Frames of the same time in file order: frames to the same port queue up
     for (const StfFrame& frame : m_packets)
     {
-        Simulator::Schedule(MilliSeconds(1), &StfTestCase::Send, this, frame);
+        Simulator::Schedule(MicroSeconds(frame.time), &StfTestCase::Send, this, frame);
     }
     Simulator::Stop(Seconds(1));
     Simulator::Run();
@@ -492,19 +563,394 @@ StfTestCase::DoRun()
                                         << reg.index << "]");
         }
     }
+
+    for (const StfRegister& counter : m_counters)
+    {
+        bm::MatchTableAbstract::counter_value_t bytes = 0;
+        bm::MatchTableAbstract::counter_value_t packets = 0;
+        bool read = sw->GetCore()->read_counters(0, counter.name, counter.index, &bytes, &packets) ==
+                    bm::Counter::CounterErrorCode::SUCCESS;
+        NS_TEST_EXPECT_MSG_EQ(read,
+                              true,
+                              m_stf << " line " << counter.line << ": cannot read " << counter.name
+                                    << "[" << counter.index << "]");
+        if (read)
+        {
+            NS_TEST_EXPECT_MSG_EQ(packets,
+                                  counter.value,
+                                  m_stf << " line " << counter.line << ": " << counter.name << "["
+                                        << counter.index << "]");
+        }
+    }
 }
+
+/**
+ * The ingress port of a frame from a host on a switched-Ethernet port: the .stf
+ * files send their frames through bridge ports. Each of three hosts, one per
+ * port, sends a broadcast frame that is not IPv4, which p4src/forward sends on
+ * by its ingress port, 0 -> 1 -> 2 -> 0: each host gets the frame of the host
+ * before it.
+ */
+class SwitchedPortTestCase : public TestCase
+{
+  public:
+    SwitchedPortTestCase(const std::string& archName, uint32_t arch, const std::string& jsonArch)
+        : TestCase(archName + ": a frame from a host on a switched-Ethernet port enters on that "
+                              "port"),
+          m_jsonArch(jsonArch),
+          m_arch(arch)
+    {
+    }
+
+  private:
+    void DoRun() override;
+
+    void DoTeardown() override
+    {
+        Simulator::Destroy();
+    }
+
+    /// Host \p host received a frame from \p from
+    bool Receive(uint32_t host,
+                 Ptr<NetDevice> device,
+                 Ptr<const Packet> packet,
+                 uint16_t protocol,
+                 const Address& from)
+    {
+        m_received[host].push_back(Mac48Address::ConvertFrom(from));
+        return true;
+    }
+
+    std::string m_jsonArch;
+    uint32_t m_arch;
+    std::vector<Mac48Address> m_received[N_PORTS]; ///< the sources of each host's frames
+};
+
+void
+SwitchedPortTestCase::DoRun()
+{
+    SetDataDir(NS_TEST_SOURCEDIR);
+    Ptr<Node> switchNode = CreateObject<Node>();
+    Ptr<Node> hostNode = CreateObject<Node>();
+    Ptr<P4SwitchNetDevice> sw = CreateObject<P4SwitchNetDevice>();
+    sw->SetAttribute("P4SwitchArch", UintegerValue(m_arch));
+    sw->SetAttribute(
+        "JsonPath",
+        StringValue(CreateDataDirFilename("p4src/forward/forward_" + m_jsonArch + ".json")));
+    sw->SetAttribute("FlowTablePath", StringValue(""));
+    switchNode->AddDevice(sw);
+    std::vector<Ptr<SwitchedEthernetHostDevice>> hosts;
+    for (uint32_t i = 0; i < N_PORTS; i++)
+    {
+        Ptr<SwitchedEthernetChannel> channel = CreateObject<SwitchedEthernetChannel>();
+        sw->Attach(channel);
+        Ptr<SwitchedEthernetHostDevice> host = CreateObject<SwitchedEthernetHostDevice>();
+        host->SetAddress(Mac48Address(("00:00:00:00:00:1" + std::to_string(i)).c_str()));
+        hostNode->AddDevice(host);
+        host->Attach(channel);
+        host->SetReceiveCallback(MakeCallback(&SwitchedPortTestCase::Receive, this).Bind(i));
+        hosts.push_back(host);
+    }
+    sw->Initialize();
+
+    for (uint32_t i = 0; i < N_PORTS; i++)
+    {
+        Simulator::Schedule(MilliSeconds(1 + i), [host = hosts[i]]() {
+            host->Send(Create<Packet>(46), Mac48Address::GetBroadcast(), 0x88b5);
+        });
+    }
+    Simulator::Stop(Seconds(1));
+    Simulator::Run();
+
+    for (uint32_t i = 0; i < N_PORTS; i++)
+    {
+        uint32_t from = (i + N_PORTS - 1) % N_PORTS;
+        NS_TEST_EXPECT_MSG_EQ(m_received[i].size(), 1u, "Host " << i << " should get one frame");
+        if (!m_received[i].empty())
+        {
+            NS_TEST_EXPECT_MSG_EQ(m_received[i][0],
+                                  Mac48Address::ConvertFrom(hosts[from]->GetAddress()),
+                                  "Host " << i << " should get the frame of host " << from);
+        }
+    }
+}
+
+/**
+ * random() follows ns-3's seed and run: a run gives the same numbers every time,
+ * another run gives others. Each switch draws from its own engine: a second
+ * switch, even one created during the simulation, neither changes the numbers
+ * of the first nor repeats them. Each switch gets two frames, and its program
+ * writes a 32-bit random() into their source MAC (op 4 of p4src/primitives).
+ */
+class RandomSeedTestCase : public TestCase
+{
+  public:
+    RandomSeedTestCase()
+        : TestCase("v1model: random() follows ns-3's seed and run, one engine per switch")
+    {
+    }
+
+  private:
+    /// The source MACs of the frames that leave port 1 of each switch
+    struct Numbers
+    {
+        std::vector<std::string> first;  ///< of the switch that is there from the start
+        std::vector<std::string> second; ///< of the switch created during the simulation
+    };
+
+    void DoRun() override
+    {
+        uint64_t oldRun = RngSeedManager::GetRun();
+        Numbers first = Run(1, false);
+        Numbers other = Run(2, false);
+        Numbers again = Run(1, false);
+        Numbers withSecond = Run(1, true);
+        RngSeedManager::SetRun(oldRun);
+
+        NS_TEST_ASSERT_MSG_EQ(first.first.size(), 2, "The switch must forward both frames");
+        NS_TEST_EXPECT_MSG_NE(first.first[0],
+                              first.first[1],
+                              "The two frames must get different numbers");
+        NS_TEST_EXPECT_MSG_EQ((again.first == first.first),
+                              true,
+                              "Run 1 must give the same numbers again");
+        NS_TEST_EXPECT_MSG_EQ((other.first == first.first), false, "Run 2 must give other numbers");
+        NS_TEST_EXPECT_MSG_EQ((withSecond.first == first.first),
+                              true,
+                              "A switch created during the simulation must not change the "
+                              "numbers of another switch");
+        NS_TEST_ASSERT_MSG_EQ(withSecond.second.size(),
+                              2,
+                              "The second switch must forward both frames");
+        NS_TEST_EXPECT_MSG_EQ((withSecond.second == withSecond.first),
+                              false,
+                              "Each switch must draw its own numbers");
+    }
+
+    void DoTeardown() override
+    {
+        Simulator::Destroy();
+    }
+
+    /// Record the source MAC of a frame in \p sources
+    static bool Record(std::vector<std::string>* sources,
+                       Ptr<NetDevice> host,
+                       Ptr<const Packet> packet,
+                       uint16_t protocol,
+                       const Address& from,
+                       const Address& to,
+                       NetDevice::PacketType type)
+    {
+        std::ostringstream source;
+        source << Mac48Address::ConvertFrom(from);
+        sources->push_back(source.str());
+        return true;
+    }
+
+    /**
+     * A switch on a new node, with a host on each of its two ports (on another new
+     * node). The frames that leave port 1 are recorded in \p sources.
+     * @return the host on port 0
+     */
+    Ptr<SimpleNetDevice> AddSwitch(std::vector<std::string>* sources, Ptr<P4SwitchNetDevice>& sw)
+    {
+        Ptr<Node> switchNode = CreateObject<Node>();
+        Ptr<Node> hostNode = CreateObject<Node>();
+        sw = CreateObject<P4SwitchNetDevice>();
+        sw->SetAttribute("P4SwitchArch", UintegerValue(P4SWITCH_ARCH_V1MODEL));
+        sw->SetAttribute(
+            "JsonPath",
+            StringValue(CreateDataDirFilename("p4src/primitives/primitives_v1model.json")));
+        sw->SetAttribute("FlowTablePath", StringValue(""));
+        switchNode->AddDevice(sw);
+        std::vector<Ptr<SimpleNetDevice>> hosts;
+        for (uint32_t i = 0; i < 2; i++)
+        {
+            Ptr<SimpleChannel> channel = CreateObject<SimpleChannel>();
+            Ptr<SimpleNetDevice> port = CreateObject<SimpleNetDevice>();
+            Ptr<SimpleNetDevice> host = CreateObject<SimpleNetDevice>();
+            port->SetAddress(Mac48Address::Allocate());
+            port->SetAttribute("DataRate", DataRateValue(DataRate("1Gbps")));
+            host->SetAddress(Mac48Address::Allocate());
+            port->SetChannel(channel);
+            host->SetChannel(channel);
+            switchNode->AddDevice(port);
+            hostNode->AddDevice(host);
+            sw->AddBridgePort(port);
+            hosts.push_back(host);
+        }
+        hosts[1]->SetPromiscReceiveCallback(MakeBoundCallback(&Record, sources));
+        return hosts[0];
+    }
+
+    /// Send two frames from \p host, \p delay from now and 1 ms later
+    static void SendTwo(Ptr<SimpleNetDevice> host, Time delay)
+    {
+        for (int i = 0; i < 2; i++)
+        {
+            uint8_t payload[] = {0, 0, 0, 4};
+            Simulator::Schedule(delay + MilliSeconds(i),
+                                &SimpleNetDevice::SendFrom,
+                                host,
+                                Create<Packet>(payload, sizeof(payload)),
+                                Mac48Address("00:00:00:00:00:00"),
+                                Mac48Address("00:00:00:00:00:01"),
+                                0x9004);
+        }
+    }
+
+    /**
+     * Run a simulation with ns-3's run \p run. The first switch gets its frames at
+     * 1 and 2 ms. With \p secondSwitch, a second switch and its nodes are created at
+     * 1.5 ms, between these frames, and get frames at 3 and 4 ms.
+     */
+    Numbers Run(uint64_t run, bool secondSwitch)
+    {
+        RngSeedManager::SetRun(run);
+        SetDataDir(NS_TEST_SOURCEDIR);
+        Numbers numbers;
+        Ptr<P4SwitchNetDevice> sw;
+        SendTwo(AddSwitch(&numbers.first, sw), MilliSeconds(1));
+        sw->Initialize();
+        if (secondSwitch)
+        {
+            Simulator::Schedule(MicroSeconds(1500), [this, &numbers]() {
+                Ptr<P4SwitchNetDevice> sw2;
+                SendTwo(AddSwitch(&numbers.second, sw2), MicroSeconds(1500));
+                sw2->Initialize();
+            });
+        }
+        Simulator::Stop(Seconds(1));
+        Simulator::Run();
+        Simulator::Destroy();
+        return numbers;
+    }
+};
+
+/**
+ * The pipeline core has no packet replication engine and no second pass. A
+ * program that asks it for multicast, a clone, resubmit or recirculation gets
+ * one warning on stderr per switch. Each run sends two frames of the same
+ * EtherType into a switch that runs one of the v1model test programs.
+ */
+class PipelineWarningTestCase : public TestCase
+{
+  public:
+    /**
+     * @param json the program, relative to the test folder
+     * @param etherType the EtherType of the two frames
+     * @param request the request that the warning names
+     * @param expected how often the warning must appear: 1, or 0 if the frames ask
+     * for nothing
+     */
+    PipelineWarningTestCase(const std::string& json,
+                            uint16_t etherType,
+                            const std::string& request,
+                            uint32_t expected)
+        : TestCase(Name(json, etherType, request, expected)),
+          m_json(json),
+          m_etherType(etherType),
+          m_request(request),
+          m_expected(expected)
+    {
+    }
+
+  private:
+    static std::string Name(const std::string& json,
+                            uint16_t etherType,
+                            const std::string& request,
+                            uint32_t expected)
+    {
+        std::string program = json.substr(json.rfind('/') + 1);
+        program = program.substr(0, program.rfind('.'));
+        std::ostringstream name;
+        name << "pipeline: " << (expected ? "one warning" : "no warning") << " about " << request
+             << ", EtherType " << std::hex << etherType << " into " << program;
+        return name.str();
+    }
+
+    void DoRun() override
+    {
+        SetDataDir(NS_TEST_SOURCEDIR);
+        Ptr<Node> switchNode = CreateObject<Node>();
+        Ptr<Node> hostNode = CreateObject<Node>();
+        Ptr<P4SwitchNetDevice> sw = CreateObject<P4SwitchNetDevice>();
+        sw->SetAttribute("P4SwitchArch", UintegerValue(P4SWITCH_ARCH_PIPELINE));
+        sw->SetAttribute("JsonPath", StringValue(CreateDataDirFilename(m_json)));
+        sw->SetAttribute("FlowTablePath", StringValue(""));
+        switchNode->AddDevice(sw);
+        std::vector<Ptr<SimpleNetDevice>> hosts;
+        for (uint32_t i = 0; i < N_PORTS; i++)
+        {
+            Ptr<SimpleChannel> channel = CreateObject<SimpleChannel>();
+            Ptr<SimpleNetDevice> port = CreateObject<SimpleNetDevice>();
+            Ptr<SimpleNetDevice> host = CreateObject<SimpleNetDevice>();
+            port->SetAddress(Mac48Address::Allocate());
+            port->SetAttribute("DataRate", DataRateValue(DataRate("1Gbps")));
+            host->SetAddress(Mac48Address::Allocate());
+            port->SetChannel(channel);
+            host->SetChannel(channel);
+            switchNode->AddDevice(port);
+            hostNode->AddDevice(host);
+            sw->AddBridgePort(port);
+            hosts.push_back(host);
+        }
+        sw->Initialize();
+        for (uint8_t i = 0; i < 2; i++)
+        {
+            uint8_t payload[] = {0, 0, 0, static_cast<uint8_t>(i + 1)};
+            Simulator::Schedule(MilliSeconds(1 + i),
+                                &SimpleNetDevice::SendFrom,
+                                hosts[0],
+                                Create<Packet>(payload, sizeof(payload)),
+                                Mac48Address("00:00:00:00:00:00"),
+                                Mac48Address("00:00:00:00:00:01"),
+                                m_etherType);
+        }
+
+        std::ostringstream captured;
+        std::streambuf* stderrBuffer = std::cerr.rdbuf(captured.rdbuf());
+        Simulator::Stop(Seconds(1));
+        Simulator::Run();
+        std::cerr.rdbuf(stderrBuffer);
+        Simulator::Destroy();
+
+        const std::string text = captured.str();
+        const std::string warning = "which ignores " + m_request + ";";
+        uint32_t found = 0;
+        for (size_t at = text.find(warning); at != std::string::npos;
+             at = text.find(warning, at + 1))
+        {
+            found++;
+        }
+        NS_TEST_EXPECT_MSG_EQ(found, m_expected, "Warnings on stderr: \"" << text << "\"");
+    }
+
+    void DoTeardown() override
+    {
+        Simulator::Destroy();
+    }
+
+    std::string m_json;    ///< the program
+    uint16_t m_etherType;  ///< the EtherType of the frames
+    std::string m_request; ///< the request that the warning names
+    uint32_t m_expected;   ///< how often the warning must appear
+};
 
 /// Every architecture runs the same program, p4src/forward, with the same .stf
 /// files (the pipeline core runs forward_v1model); p4src/drop checks mark_to_drop()
 /// in the ingress and in the egress on v1model and the pipeline core; p4src/priority checks the
 /// priority queues of v1model, p4src/resubmit and p4src/recirculate its resubmit and recirculation,
 /// p4src/clone its clones (also to a multicast group), p4src/primitives digest(), hash() with max 0
-/// and random() with lo > hi, and p4src/lag the LAG member that its multicast picks
+/// and random() with lo > hi, p4src/lag the LAG member that its multicast picks, and
+/// p4src/bounds register, counter and meter indices out of bounds and a frame that
+/// truncate() makes shorter than an Ethernet header; the pipeline core warns once
+/// about the multicast, clones, resubmit and recirculation that it ignores
 static class P4PacketTestSuite : public TestSuite
 {
   public:
     P4PacketTestSuite()
-        : TestSuite("p4-packet", UNIT)
+        : TestSuite("p4-packet", TestSuite::Type::UNIT)
     {
         // (test name, architecture, the JSON's architecture)
         const std::vector<std::tuple<std::string, uint32_t, std::string>> archs = {
@@ -517,35 +963,64 @@ static class P4PacketTestSuite : public TestSuite
         {
             for (const char* stf : {"ipv4.stf", "drop.stf", "ports.stf"})
             {
-                AddTestCase(new StfTestCase("forward", name, arch, stf, json), TestCase::QUICK);
+                AddTestCase(new StfTestCase("forward", name, arch, stf, json), P4SIM_TEST_QUICK);
             }
+            AddTestCase(new SwitchedPortTestCase(name, arch, json), P4SIM_TEST_QUICK);
         }
         AddTestCase(new StfTestCase("drop", "v1model", P4SWITCH_ARCH_V1MODEL, "mark_to_drop.stf"),
-                    TestCase::QUICK);
+                    P4SIM_TEST_QUICK);
         AddTestCase(new StfTestCase("drop",
                                     "pipeline",
                                     P4SWITCH_ARCH_PIPELINE,
                                     "mark_to_drop.stf",
                                     "v1model"),
-                    TestCase::QUICK);
+                    P4SIM_TEST_QUICK);
         AddTestCase(new StfTestCase("priority", "v1model", P4SWITCH_ARCH_V1MODEL, "priority.stf"),
-                    TestCase::QUICK);
+                    P4SIM_TEST_QUICK);
         AddTestCase(new StfTestCase("resubmit", "v1model", P4SWITCH_ARCH_V1MODEL, "resubmit.stf"),
-                    TestCase::QUICK);
+                    P4SIM_TEST_QUICK);
         AddTestCase(
             new StfTestCase("recirculate", "v1model", P4SWITCH_ARCH_V1MODEL, "recirculate.stf"),
-            TestCase::QUICK);
+            P4SIM_TEST_QUICK);
         AddTestCase(new StfTestCase("clone", "v1model", P4SWITCH_ARCH_V1MODEL, "clone.stf"),
-                    TestCase::QUICK);
+                    P4SIM_TEST_QUICK);
         AddTestCase(new StfTestCase("clone", "v1model", P4SWITCH_ARCH_V1MODEL, "clone_mc.stf"),
-                    TestCase::QUICK);
+                    P4SIM_TEST_QUICK);
         // PSA clones and mirroring sessions
         AddTestCase(new StfTestCase("clone", "psa", P4SWITCH_ARCH_PSA, "clone_psa.stf"),
-                    TestCase::QUICK);
+                    P4SIM_TEST_QUICK);
+        AddTestCase(new StfTestCase("clone", "psa", P4SWITCH_ARCH_PSA, "clone_psa_mc.stf"),
+                    P4SIM_TEST_QUICK);
+        // The externs Counter, Meter, Hash, InternetChecksum and Random
+        AddTestCase(new StfTestCase("externs", "psa", P4SWITCH_ARCH_PSA, "psa.stf"),
+                    P4SIM_TEST_QUICK);
+        AddTestCase(new StfTestCase("externs", "pna", P4NIC_ARCH_PNA, "pna.stf"), P4SIM_TEST_QUICK);
         AddTestCase(
             new StfTestCase("primitives", "v1model", P4SWITCH_ARCH_V1MODEL, "primitives.stf"),
-            TestCase::QUICK);
+            P4SIM_TEST_QUICK);
+        AddTestCase(new StfTestCase("primitives", "v1model", P4SWITCH_ARCH_V1MODEL, "meter.stf"),
+                    P4SIM_TEST_QUICK);
+        AddTestCase(new RandomSeedTestCase(), P4SIM_TEST_QUICK);
         AddTestCase(new StfTestCase("lag", "v1model", P4SWITCH_ARCH_V1MODEL, "lag.stf"),
-                    TestCase::QUICK);
+                    P4SIM_TEST_QUICK);
+        AddTestCase(new StfTestCase("bounds", "v1model", P4SWITCH_ARCH_V1MODEL, "bounds.stf"),
+                    P4SIM_TEST_QUICK);
+        AddTestCase(new StfTestCase("bounds", "v1model", P4SWITCH_ARCH_V1MODEL, "truncate.stf"),
+                    P4SIM_TEST_QUICK);
+        // The pipeline core warns about the requests it ignores (EtherTypes as in
+        // the .stf files of these programs)
+        const std::vector<std::tuple<std::string, uint16_t, std::string, uint32_t>> warnings = {
+            {"p4src/clone/clone_v1model.json", 0x9000, "clones", 0},
+            {"p4src/clone/clone_v1model.json", 0x9001, "clones", 1}, // at the ingress
+            {"p4src/clone/clone_v1model.json", 0x9002, "clones", 1}, // at the egress
+            {"p4src/lag/lag_v1model.json", 0x9000, "multicast (mcast_grp)", 1},
+            {"p4src/resubmit/resubmit_v1model.json", 0x9002, "resubmit", 1},
+            {"p4src/recirculate/recirculate_v1model.json", 0x9002, "recirculation", 1},
+        };
+        for (const auto& [json, etherType, request, expected] : warnings)
+        {
+            AddTestCase(new PipelineWarningTestCase(json, etherType, request, expected),
+                        P4SIM_TEST_QUICK);
+        }
     }
 } g_p4PacketTestSuite;

@@ -20,6 +20,8 @@
 
 #include "ns3/data-rate.h"
 #include "ns3/p4-switch-net-device.h"
+#include "ns3/p4sim-ns3-compat.h"
+#include "ns3/psa-externs.h"
 #include "ns3/switched-ethernet-channel.h"
 #include "ns3/register-access-v1model.h"
 #include "ns3/simulator.h"
@@ -136,6 +138,8 @@ P4CorePsa::P4CorePsa(P4SwitchNetDevice* net_device,
     force_arith_header("psa_egress_output_metadata");
     force_arith_header("psa_egress_deparser_input_metadata");
 
+    ImportPsaExterns(); // Counter, Hash, InternetChecksum, Meter, Random
+
     CalculateScheduleTime();
 }
 
@@ -151,6 +155,7 @@ P4CorePsa::~P4CorePsa()
     {
         Simulator::Cancel(kv.second.pendingEvent);
         Simulator::Cancel(kv.second.txCompleteEvent);
+        Simulator::Cancel(kv.second.bufferEvent);
     }
 }
 
@@ -174,15 +179,16 @@ P4CorePsa::ScheduleEgressIfNeeded(uint32_t port)
 
     auto& pstate = m_portTxState[port];
 
-    // Port busy: PortTxComplete() will re-trigger when the link is free.
-    if (pstate.busy)
+    // Port busy and transfer buffer full: PortTxComplete() will re-trigger when
+    // the link is free.
+    if (!PortCanTakePacket(port, TransmitterFree(port)))
     {
         NS_LOG_DEBUG("PSA port " << port << " busy – deferring");
         return;
     }
 
     // Cancel any stale pending event and reschedule for the tightest time.
-    if (pstate.pendingEvent.IsRunning())
+    if (P4simIsPending(pstate.pendingEvent))
     {
         Simulator::Cancel(pstate.pendingEvent);
         pstate.pendingEvent = EventId();
@@ -214,18 +220,12 @@ P4CorePsa::EventDrivenEgressDequeue(uint32_t port)
     auto& pstate = m_portTxState[port];
     pstate.pendingEvent = EventId();
 
-    if (pstate.busy)
+    // A frame is still being serialised on this port and its transfer buffer
+    // is full. The device calls PortTxComplete() when it is done, which retries
+    // the dequeue.
+    if (!PortCanTakePacket(port, TransmitterFree(port)))
     {
         NS_LOG_DEBUG("PSA port " << port << " still busy – PortTxComplete will retry");
-        return;
-    }
-
-    // Another frame is still being serialised on this port. The device calls
-    // PortTxComplete() when it is done, which retries the dequeue.
-    Ptr<SwitchedEthernetChannel> ch = m_switchNetDevice->GetPortChannel(port);
-    if (ch && ch->IsBusy(m_switchNetDevice->GetPortDeviceId(port)))
-    {
-        NS_LOG_DEBUG("PSA port " << port << ": channel busy, waiting for PortTxComplete");
         return;
     }
 
@@ -292,6 +292,10 @@ P4CorePsa::EventDrivenEgressDequeue(uint32_t port)
         {
             NS_LOG_DEBUG("PSA: cloning packet after egress to session " << clone_session_id);
             std::unique_ptr<bm::Packet> packet_copy = bm_packet->clone_no_phv_ptr();
+            // BMv2 does not copy the registers of a packet: set them, as v1model does
+            RegisterAccess::clear_all(packet_copy.get());
+            packet_copy->set_register(RegisterAccess::PACKET_LENGTH_REG_IDX,
+                                      packet_copy->get_data_size());
             auto phv_copy = packet_copy->get_phv();
             phv_copy->reset_metadata();
             phv_copy->get_field("psa_egress_parser_input_metadata.packet_path")
@@ -313,7 +317,7 @@ P4CorePsa::EventDrivenEgressDequeue(uint32_t port)
     if (drop)
     {
         NS_LOG_DEBUG("PSA: dropping packet at end of egress");
-        PortTxComplete(static_cast<uint32_t>(out_port));
+        EgressDone(static_cast<uint32_t>(out_port));
         return;
     }
 
@@ -331,24 +335,58 @@ P4CorePsa::EventDrivenEgressDequeue(uint32_t port)
         {
             NS_LOG_WARN("Input buffer full, recirculated packet dropped");
         }
-        PortTxComplete(static_cast<uint32_t>(out_port));
+        EgressDone(static_cast<uint32_t>(out_port));
         return;
     }
 
-    // ---- Transmit: the device calls PortTxComplete() once the channel has
-    // serialised the frame ----
-    pstate.busy = true;
-
+    // ---- Transmit, or wait in the transfer buffer: the device calls
+    // PortTxComplete() once the channel has serialised the frame ----
     NS_LOG_DEBUG("PSA port " << out_port << ": transmitting " << bm_packet->get_data_size()
                              << " B");
 
     uint16_t protocol = RegisterAccess::get_ns_protocol(bm_packet.get());
     int addr_index = RegisterAccess::get_ns_address(bm_packet.get());
     Ptr<Packet> ns_packet = this->ConvertToNs3Packet(std::move(bm_packet));
-    if (!m_switchNetDevice->SendNs3Packet(ns_packet,
-                                          static_cast<int>(out_port),
-                                          protocol,
-                                          m_destinationList[addr_index]))
+    SendOrBuffer(static_cast<uint32_t>(out_port), TransferFrame{ns_packet, protocol, addr_index});
+}
+
+bool
+P4CorePsa::TransmitterFree(uint32_t port)
+{
+    if (m_portTxState[port].busy)
+    {
+        return false;
+    }
+    Ptr<SwitchedEthernetChannel> ch = m_switchNetDevice->GetPortChannel(port);
+    return !(ch && ch->IsBusy(m_switchNetDevice->GetPortDeviceId(port)));
+}
+
+void
+P4CorePsa::SendOrBuffer(uint32_t port, TransferFrame&& frame)
+{
+    m_transferBuffers[port].push_back(std::move(frame));
+    if (TransmitterFree(port))
+    {
+        TransmitNext(port);
+    }
+    // With a transfer buffer, the port can take its next packet while it sends
+    ScheduleEgressIfNeeded(port);
+}
+
+void
+P4CorePsa::TransmitNext(uint32_t port)
+{
+    std::deque<TransferFrame>& buffer = m_transferBuffers[port];
+    TransferFrame frame = std::move(buffer.front());
+    buffer.pop_front();
+    CheckPendingSwap(); // the last buffered frame may leave the switch now
+
+    auto& pstate = m_portTxState[port];
+    pstate.busy = true;
+    if (!m_switchNetDevice->SendNs3Packet(frame.packet,
+                                          static_cast<int>(port),
+                                          frame.protocol,
+                                          GetDestination(frame.addressIndex)))
     {
         // Dropped by the device: nothing is on the wire, free the port.
         pstate.txCompleteEvent = Simulator::ScheduleNow(&P4CorePsa::PortTxComplete, this, port);
@@ -356,14 +394,45 @@ P4CorePsa::EventDrivenEgressDequeue(uint32_t port)
 }
 
 void
+P4CorePsa::TransmitFromBuffer(uint32_t port)
+{
+    m_portTxState[port].bufferEvent = EventId();
+    if (GetTransferBufferLength(port) > 0 && TransmitterFree(port))
+    {
+        TransmitNext(port);
+    }
+    // The transfer buffer has room again
+    ScheduleEgressIfNeeded(port);
+}
+
+void
+P4CorePsa::EgressDone(uint32_t port)
+{
+    CheckPendingSwap(); // the egress dropped the packet, or it left for ingress
+    if (egress_buffer.size(port) > 0)
+    {
+        ScheduleEgressIfNeeded(port);
+    }
+}
+
+void
 P4CorePsa::PortTxComplete(uint32_t port)
 {
     NS_LOG_FUNCTION(this << port);
-    CheckPendingSwap(); // also called for a packet that the egress dropped
+    CheckPendingSwap(); // a frame left the port, or the device refused it
     auto& pstate = m_portTxState[port];
     pstate.busy = false;
 
-    if (egress_buffer.size(port) > 0)
+    if (GetTransferBufferLength(port) > 0)
+    {
+        // The next frame waits in the transfer buffer: send it in this instant,
+        // after the device has finished its end of transmission
+        if (!P4simIsPending(pstate.bufferEvent))
+        {
+            pstate.bufferEvent = Simulator::ScheduleNow(&P4CorePsa::TransmitFromBuffer, this, port);
+        }
+    }
+    else if (egress_buffer.size(port) > 0)
     {
         NS_LOG_DEBUG("PSA port " << port << ": PortTxComplete – more packets queued");
         ScheduleEgressIfNeeded(port);
@@ -552,6 +621,8 @@ P4CorePsa::HandleIngressPipeline()
             bm_packet->restore_buffer_state(packet_in_state);
 
             std::unique_ptr<bm::Packet> packet_copy = bm_packet->clone_no_phv_ptr();
+            // BMv2 does not copy the registers of a packet: set them, as v1model does
+            RegisterAccess::clear_all(packet_copy.get());
             packet_copy->set_register(RegisterAccess::PACKET_LENGTH_REG_IDX, ingress_packet_size);
             auto phv_copy = packet_copy->get_phv();
             phv_copy->reset_metadata();
@@ -685,6 +756,8 @@ P4CorePsa::MultiCastPacket(bm::Packet* packet,
         // TODO use appropriate enum member from JSON
         f_packet_path.set(path);
         std::unique_ptr<bm::Packet> packet_copy = packet->clone_with_phv_ptr();
+        // BMv2 does not copy the registers of a packet: set them, as v1model does
+        RegisterAccess::clear_all(packet_copy.get());
         packet_copy->set_register(RegisterAccess::PACKET_LENGTH_REG_IDX, packet_size);
         Enqueue(egress_port, std::move(packet_copy));
     }

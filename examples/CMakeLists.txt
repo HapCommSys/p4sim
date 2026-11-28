@@ -17,6 +17,13 @@ set(P4SIM_BASE_LIBS
 set(P4SIM_CSMA_LIBS ${P4SIM_BASE_LIBS} ${libcsma})
 
 # ========================= V1model Architecture =======================
+# 3 hosts, 1 switch — the first example, and a test bed for own P4 programs
+build_lib_example(
+  NAME p4-hello
+  SOURCE_FILES p4-hello.cc
+  LIBRARIES_TO_LINK ${P4SIM_BASE_LIBS}
+)
+
 # 2 hosts, 1 switch - Calculator P4 program
 build_lib_example(
   NAME p4-calc
@@ -94,11 +101,53 @@ build_lib_example(
   LIBRARIES_TO_LINK ${P4SIM_CSMA_LIBS}
 )
 
+# 5 hosts, 3 switches — ECN marking at a congested port (tutorial ecn)
+build_lib_example(
+  NAME p4-ecn
+  SOURCE_FILES p4-ecn.cc
+  LIBRARIES_TO_LINK ${P4SIM_BASE_LIBS}
+)
+
+# 5 hosts, 3 switches — multi-hop route inspection (tutorial mri)
+build_lib_example(
+  NAME p4-mri
+  SOURCE_FILES p4-mri.cc
+  LIBRARIES_TO_LINK ${P4SIM_BASE_LIBS}
+)
+
+# 4 hosts, 1 switch — multicast to a group of ports (tutorial multicast)
+build_lib_example(
+  NAME p4-multicast
+  SOURCE_FILES p4-multicast.cc
+  LIBRARIES_TO_LINK ${P4SIM_BASE_LIBS}
+)
+
 # Runtime controller — flow-table updates
 build_lib_example(
   NAME p4-basic-controller
   SOURCE_FILES p4-basic-controller.cc
   LIBRARIES_TO_LINK ${P4SIM_CSMA_LIBS}
+)
+
+# Strict-priority queues, with the classification in the P4 program
+build_lib_example(
+  NAME p4-priority-queues
+  SOURCE_FILES p4-priority-queues.cc
+  LIBRARIES_TO_LINK ${P4SIM_BASE_LIBS}
+)
+
+# What makes up the one-way delay through a P4 switch
+build_lib_example(
+  NAME p4-latency
+  SOURCE_FILES p4-latency.cc
+  LIBRARIES_TO_LINK ${P4SIM_BASE_LIBS}
+)
+
+# L2 learning: the controller fills the tables from the digests of the switch
+build_lib_example(
+  NAME p4-l2-learning
+  SOURCE_FILES p4-l2-learning.cc
+  LIBRARIES_TO_LINK ${P4SIM_BASE_LIBS}
 )
 
 # Controller with action profiles
@@ -129,6 +178,20 @@ build_lib_example(
   NAME p4-psa-ipv4-forwarding
   SOURCE_FILES p4-psa-ipv4-forwarding.cc
   LIBRARIES_TO_LINK ${P4SIM_CSMA_LIBS}
+)
+
+# 3 hosts, 1 switch — a policer with the Meter and Counter externs (PSA)
+build_lib_example(
+  NAME p4-psa-meter
+  SOURCE_FILES p4-psa-meter.cc
+  LIBRARIES_TO_LINK ${P4SIM_BASE_LIBS}
+)
+
+# 2 hosts, 2 switches — ECMP with the Hash and Counter externs (PSA)
+build_lib_example(
+  NAME p4-psa-ecmp
+  SOURCE_FILES p4-psa-ecmp.cc
+  LIBRARIES_TO_LINK ${P4SIM_BASE_LIBS}
 )
 
 # ========================= PNA Architecture ===========================

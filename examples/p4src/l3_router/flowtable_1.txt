@@ -1,19 +1,12 @@
-table_set_default arp_table drop
-table_add arp_table arp_forward 10.0.0.1 => 00:00:00:00:00:01 0x0
-table_add arp_table arp_forward 10.0.2.1 => 00:00:00:00:00:05 0x0
-table_add arp_table arp_forward 10.0.2.2 => 00:00:00:00:00:06 0x0
-table_add arp_table arp_forward 10.0.1.2 => 00:00:00:00:00:04 0x1
-table_add arp_table arp_forward 10.0.4.1 => 00:00:00:00:00:09 0x1
-table_add arp_table arp_forward 10.0.4.2 => 00:00:00:00:00:0a 0x1
-table_add arp_table arp_forward 10.0.3.2 => 00:00:00:00:00:08 0x2
-table_set_default ipv4_lpm drop
+# destination => next hop, port (0: router 0, 1: router 2, 2: host 1)
 table_add ipv4_lpm ipv4_forward 10.0.2.0/24 => 10.0.0.1 0
-table_add ipv4_lpm ipv4_forward 10.0.4.0/24 => 10.0.1.2 1
-table_add ipv4_lpm ipv4_forward 10.0.1.0/24 => 10.0.1.2 1
 table_add ipv4_lpm ipv4_forward 10.0.3.0/24 => 10.0.3.2 2
+table_add ipv4_lpm ipv4_forward 10.0.4.0/24 => 10.0.1.2 1
+# next hop => its MAC address
 table_add switching_table set_dmac 10.0.0.1 => 00:00:00:00:00:01
 table_add switching_table set_dmac 10.0.1.2 => 00:00:00:00:00:04
 table_add switching_table set_dmac 10.0.3.2 => 00:00:00:00:00:08
-table_add mac_rewriting_table set_smac 0x0 => 00:00:00:00:00:02
-table_add mac_rewriting_table set_smac 0x1 => 00:00:00:00:00:03
-table_add mac_rewriting_table set_smac 0x2 => 00:00:00:00:00:0
+# port => its MAC address
+table_add mac_rewriting_table set_smac 0 => 00:00:00:00:00:02
+table_add mac_rewriting_table set_smac 1 => 00:00:00:00:00:03
+table_add mac_rewriting_table set_smac 2 => 00:00:00:00:00:07

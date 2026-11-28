@@ -1,18 +1,7 @@
 /*
  * Copyright (c) 2025 TU Dresden
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation;
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+ * SPDX-License-Identifier: Apache-2.0
  *
  * Authors: Mingyu Ma <mingyu.ma@tu-dresden.de>
  *
@@ -36,6 +25,8 @@
  *  │ host 4 │     │ host 5 │    │ host 6 │     │ host 7 │
  *  └────────┘     └────────┘    └────────┘     └────────┘
  */
+
+#include "example-check.h"
 
 #include "ns3/applications-module.h"
 #include "ns3/bridge-helper.h"
@@ -273,6 +264,11 @@ main(int argc, char* argv[])
     std::string topoInput = p4SrcDir + "/topo.txt";
     std::string topoFormat("CsmaTopo");
 
+    // ns-3's ARP sends a request after a random delay of up to 10 ms and keeps
+    // only 3 packets waiting for the reply: at 3 Mbps a fourth one can come and
+    // is dropped. Keep up to 100, close to Linux (unres_qlen 101).
+    Config::SetDefault("ns3::ArpCache::PendingQueueSize", UintegerValue(100));
+
     // ============================  command line ============================
     CommandLine cmd;
     cmd.AddValue("pktSize", "Packet size in bytes (default 1000)", pktSize);
@@ -391,6 +387,7 @@ main(int argc, char* argv[])
     NS_LOG_INFO("Running simulation...");
     unsigned long simulate_start = getTickCount();
     Simulator::Stop(Seconds(global_stop_time));
+    p4sim_example::CountTraffic();
     Simulator::Run();
     Simulator::Destroy();
 
@@ -402,5 +399,5 @@ main(int argc, char* argv[])
 
     PrintFinalThroughput();
 
-    return 0;
+    return p4sim_example::CheckDelivery();
 }

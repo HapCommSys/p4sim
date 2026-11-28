@@ -2,12 +2,28 @@
 
 #include "ns3/core-module.h"
 #include "ns3/log.h"
+#include <algorithm>
 #include <iostream>
+#include <optional>
 
 namespace ns3 {
 
 NS_LOG_COMPONENT_DEFINE("P4Controller");
 NS_OBJECT_ENSURE_REGISTERED(P4Controller);
+
+namespace {
+
+// The runtime API of the core of a switch, of any architecture; empty if the
+// switch has no core (not created yet, or already released)
+std::optional<P4RuntimeApi> RuntimeApiOf(const Ptr<P4SwitchNetDevice> &sw) {
+  P4SwitchCore *core = sw ? sw->GetCore() : nullptr;
+  if (!core) {
+    return std::nullopt;
+  }
+  return P4RuntimeApi(*core);
+}
+
+} // namespace
 
 TypeId P4Controller::GetTypeId(void) {
   static TypeId tid = TypeId("ns3::P4Controller")
@@ -18,11 +34,49 @@ TypeId P4Controller::GetTypeId(void) {
 
 P4Controller::P4Controller() { NS_LOG_FUNCTION(this); }
 
-P4Controller::~P4Controller() { NS_LOG_FUNCTION(this); }
+P4Controller::~P4Controller() {
+  NS_LOG_FUNCTION(this);
+  // The switches may outlive the controller
+  for (uint32_t i = 0; i < m_connectedSwitches.size(); ++i) {
+    m_connectedSwitches[i]->TraceDisconnectWithoutContext("Digest",
+                                                          DigestSink(i));
+  }
+}
 
 void P4Controller::RegisterSwitch(ns3::Ptr<ns3::P4SwitchNetDevice> sw) {
+  if (!sw) {
+    NS_LOG_WARN("RegisterSwitch: a null switch is not registered");
+    return;
+  }
+  if (std::find(m_connectedSwitches.begin(), m_connectedSwitches.end(), sw) !=
+      m_connectedSwitches.end()) {
+    NS_LOG_WARN("RegisterSwitch: the switch is already registered");
+    return;
+  }
   m_connectedSwitches.push_back(sw);
+  sw->TraceConnectWithoutContext("Digest",
+                                 DigestSink(m_connectedSwitches.size() - 1));
   NS_LOG_INFO("Switch registered successfully");
+}
+
+Callback<void, const P4Digest &> P4Controller::DigestSink(uint32_t index) {
+  // The index is bound as a value: ns-3.39's Callback::Bind() compares a bound
+  // variable by reference, so a callback bound to one (or connected with a
+  // context string) never compares equal again, and TraceDisconnect() would
+  // leave it connected (fixed in later ns-3 releases)
+  return MakeCallback(&P4Controller::HandleDigest, this).Bind(uint32_t{index});
+}
+
+void P4Controller::SetDigestCallback(
+    Callback<void, uint32_t, const P4Digest &> cb) {
+  m_digestCallback = cb;
+}
+
+void P4Controller::HandleDigest(uint32_t index, const P4Digest &digest) {
+  NS_LOG_INFO("Digest from switch " << index << ": " << digest);
+  if (!m_digestCallback.IsNull()) {
+    m_digestCallback(index, digest);
+  }
 }
 
 uint32_t P4Controller::GetN() { return m_connectedSwitches.size(); }
@@ -94,14 +148,14 @@ int P4Controller::GetTableEntryCount(uint32_t index,
   }
 
   Ptr<P4SwitchNetDevice> sw = m_connectedSwitches[index];
-  P4CoreV1model *core = sw->GetV1ModelCore();
+  auto api = RuntimeApiOf(sw);
 
-  if (!core) {
-    NS_LOG_WARN("Switch " << index << " has no v1model core (core is null)");
+  if (!api) {
+    NS_LOG_WARN("No core found for switch " << index);
     return -1;
   }
 
-  int num = core->GetNumEntries(tableName);
+  int num = api->GetNumEntries(tableName);
   return num;
 }
 void P4Controller::PrintTableEntryCount(uint32_t index,
@@ -112,14 +166,14 @@ void P4Controller::PrintTableEntryCount(uint32_t index,
   }
 
   Ptr<P4SwitchNetDevice> sw = m_connectedSwitches[index];
-  P4CoreV1model *core = sw->GetV1ModelCore();
+  auto api = RuntimeApiOf(sw);
 
-  if (!core) {
-    NS_LOG_WARN("Switch " << index << " has no v1model core (core is null)");
+  if (!api) {
+    NS_LOG_WARN("No core found for switch " << index);
     return;
   }
 
-  int num = core->GetNumEntries(tableName);
+  int num = api->GetNumEntries(tableName);
   NS_LOG_INFO("Switch " << index << " - Table [" << tableName << "] has " << num
                         << " entries.");
 }
@@ -133,13 +187,13 @@ void P4Controller::ClearFlowTableEntries(uint32_t index,
   }
 
   Ptr<P4SwitchNetDevice> sw = m_connectedSwitches[index];
-  P4CoreV1model *core = sw->GetV1ModelCore();
+  auto api = RuntimeApiOf(sw);
 
-  if (!core) {
-    NS_LOG_WARN("Switch " << index << " has no v1model core (core is null)");
+  if (!api) {
+    NS_LOG_WARN("No core found for switch " << index);
     return;
   }
-  int rc = core->ClearFlowTableEntries(tableName, resetDefault);
+  int rc = api->ClearFlowTableEntries(tableName, resetDefault);
 
   if (rc == 0) {
     NS_LOG_INFO("Successfully cleared entries in table ["
@@ -163,14 +217,14 @@ void P4Controller::AddFlowEntry(uint32_t index, const std::string &tableName,
   }
 
   Ptr<P4SwitchNetDevice> sw = m_connectedSwitches[index];
-  P4CoreV1model *core = sw->GetV1ModelCore();
+  auto api = RuntimeApiOf(sw);
 
-  if (!core) {
-    NS_LOG_ERROR("V1Model core not found for switch " << index);
+  if (!api) {
+    NS_LOG_ERROR("No core found for switch " << index);
     return;
   }
 
-  int result = core->AddFlowEntry(tableName, matchKey, actionName,
+  int result = api->AddFlowEntry(tableName, matchKey, actionName,
                                   std::move(actionData), &handle, priority);
   if (result == 0) {
     NS_LOG_INFO("Added flow entry to table [" << tableName << "] on switch "
@@ -195,15 +249,15 @@ void P4Controller::SetDefaultAction(uint32_t index,
   }
 
   Ptr<P4SwitchNetDevice> sw = m_connectedSwitches[index];
-  P4CoreV1model *core = sw->GetV1ModelCore();
+  auto api = RuntimeApiOf(sw);
 
-  if (!core) {
-    NS_LOG_ERROR("V1Model core not found for switch " << index);
+  if (!api) {
+    NS_LOG_ERROR("No core found for switch " << index);
     return;
   }
 
   int status =
-      core->SetDefaultAction(tableName, actionName, std::move(actionData));
+      api->SetDefaultAction(tableName, actionName, std::move(actionData));
 
   if (status == 0) {
     NS_LOG_INFO("Successfully set default action ["
@@ -226,14 +280,14 @@ void P4Controller::ResetDefaultEntry(uint32_t index,
   }
 
   Ptr<P4SwitchNetDevice> sw = m_connectedSwitches[index];
-  P4CoreV1model *core = sw->GetV1ModelCore();
+  auto api = RuntimeApiOf(sw);
 
-  if (!core) {
-    NS_LOG_ERROR("V1Model core not found for switch " << index);
+  if (!api) {
+    NS_LOG_ERROR("No core found for switch " << index);
     return;
   }
 
-  int status = core->ResetDefaultEntry(tableName);
+  int status = api->ResetDefaultEntry(tableName);
 
   if (status == 0) {
     NS_LOG_INFO("Successfully reset default entry for table ["
@@ -255,14 +309,14 @@ void P4Controller::DeleteFlowEntry(uint32_t index, const std::string &tableName,
   }
 
   Ptr<P4SwitchNetDevice> sw = m_connectedSwitches[index];
-  P4CoreV1model *core = sw->GetV1ModelCore();
+  auto api = RuntimeApiOf(sw);
 
-  if (!core) {
-    NS_LOG_ERROR("V1Model core not found for switch " << index);
+  if (!api) {
+    NS_LOG_ERROR("No core found for switch " << index);
     return;
   }
 
-  int status = core->DeleteFlowEntry(tableName, handle);
+  int status = api->DeleteFlowEntry(tableName, handle);
 
   if (status == 0) {
     NS_LOG_INFO("Successfully deleted entry (handle = "
@@ -287,14 +341,14 @@ void P4Controller::ModifyFlowEntry(uint32_t index, const std::string &tableName,
   }
 
   Ptr<P4SwitchNetDevice> sw = m_connectedSwitches[index];
-  P4CoreV1model *core = sw->GetV1ModelCore();
+  auto api = RuntimeApiOf(sw);
 
-  if (!core) {
-    NS_LOG_ERROR("V1Model core not found for switch " << index);
+  if (!api) {
+    NS_LOG_ERROR("No core found for switch " << index);
     return;
   }
 
-  int status = core->ModifyFlowEntry(tableName, handle, actionName,
+  int status = api->ModifyFlowEntry(tableName, handle, actionName,
                                      std::move(actionData));
 
   if (status == 0) {
@@ -318,14 +372,14 @@ void P4Controller::SetEntryTtl(uint32_t index, const std::string &tableName,
   }
 
   Ptr<P4SwitchNetDevice> sw = m_connectedSwitches[index];
-  P4CoreV1model *core = sw->GetV1ModelCore();
+  auto api = RuntimeApiOf(sw);
 
-  if (!core) {
-    NS_LOG_ERROR("V1Model core not found for switch " << index);
+  if (!api) {
+    NS_LOG_ERROR("No core found for switch " << index);
     return;
   }
 
-  int status = core->SetEntryTtl(tableName, handle, ttlMs);
+  int status = api->SetEntryTtl(tableName, handle, ttlMs);
 
   if (status == 0) {
     NS_LOG_INFO("Set TTL = " << ttlMs << "ms for entry handle " << handle
@@ -351,13 +405,13 @@ void P4Controller::AddActionProfileMember(
     return;
   }
 
-  auto core = m_connectedSwitches[index]->GetV1ModelCore();
-  if (!core) {
-    NS_LOG_ERROR("V1Model core not found for switch " << index);
+  auto api = RuntimeApiOf(m_connectedSwitches[index]);
+  if (!api) {
+    NS_LOG_ERROR("No core found for switch " << index);
     return;
   }
 
-  int status = core->AddActionProfileMember(profileName, actionName,
+  int status = api->AddActionProfileMember(profileName, actionName,
                                             std::move(actionData), &mbrHandle);
 
   if (status == 0) {
@@ -380,13 +434,13 @@ void P4Controller::DeleteActionProfileMember(
     return;
   }
 
-  auto core = m_connectedSwitches[index]->GetV1ModelCore();
-  if (!core) {
-    NS_LOG_ERROR("V1Model core not found for switch " << index);
+  auto api = RuntimeApiOf(m_connectedSwitches[index]);
+  if (!api) {
+    NS_LOG_ERROR("No core found for switch " << index);
     return;
   }
 
-  int status = core->DeleteActionProfileMember(profileName, memberHandle);
+  int status = api->DeleteActionProfileMember(profileName, memberHandle);
 
   if (status == 0) {
     NS_LOG_INFO("Deleted action profile member "
@@ -410,13 +464,13 @@ void P4Controller::ModifyActionProfileMember(
     return;
   }
 
-  auto core = m_connectedSwitches[index]->GetV1ModelCore();
-  if (!core) {
-    NS_LOG_ERROR("V1Model core not found for switch " << index);
+  auto api = RuntimeApiOf(m_connectedSwitches[index]);
+  if (!api) {
+    NS_LOG_ERROR("No core found for switch " << index);
     return;
   }
 
-  int status = core->ModifyActionProfileMember(
+  int status = api->ModifyActionProfileMember(
       profileName, memberHandle, actionName, std::move(actionData));
 
   if (status == 0) {
@@ -438,13 +492,13 @@ void P4Controller::CreateActionProfileGroup(
     return;
   }
 
-  P4CoreV1model *core = m_connectedSwitches[index]->GetV1ModelCore();
-  if (!core) {
-    NS_LOG_WARN("No V1Model core found for switch " << index);
+  auto api = RuntimeApiOf(m_connectedSwitches[index]);
+  if (!api) {
+    NS_LOG_WARN("No core found for switch " << index);
     return;
   }
 
-  int status = core->CreateActionProfileGroup(profileName, outHandle);
+  int status = api->CreateActionProfileGroup(profileName, outHandle);
   if (status == 0) {
     NS_LOG_INFO("Created action profile group in profile ["
                 << profileName << "] on switch " << index
@@ -463,13 +517,13 @@ void P4Controller::DeleteActionProfileGroup(
     return;
   }
 
-  P4CoreV1model *core = m_connectedSwitches[index]->GetV1ModelCore();
-  if (!core) {
-    NS_LOG_WARN("No V1Model core found for switch " << index);
+  auto api = RuntimeApiOf(m_connectedSwitches[index]);
+  if (!api) {
+    NS_LOG_WARN("No core found for switch " << index);
     return;
   }
 
-  int status = core->DeleteActionProfileGroup(profileName, groupHandle);
+  int status = api->DeleteActionProfileGroup(profileName, groupHandle);
   if (status == 0) {
     NS_LOG_INFO("Deleted group " << groupHandle << " from action profile ["
                                  << profileName << "] on switch " << index);
@@ -489,13 +543,13 @@ void P4Controller::AddMemberToGroup(uint32_t index,
     return;
   }
 
-  P4CoreV1model *core = m_connectedSwitches[index]->GetV1ModelCore();
-  if (!core) {
-    NS_LOG_WARN("No V1Model core found for switch " << index);
+  auto api = RuntimeApiOf(m_connectedSwitches[index]);
+  if (!api) {
+    NS_LOG_WARN("No core found for switch " << index);
     return;
   }
 
-  int status = core->AddMemberToGroup(profileName, memberHandle, groupHandle);
+  int status = api->AddMemberToGroup(profileName, memberHandle, groupHandle);
   if (status == 0) {
     NS_LOG_INFO("Added member " << memberHandle << " to group " << groupHandle
                                 << " in action profile [" << profileName
@@ -516,14 +570,14 @@ void P4Controller::RemoveMemberFromGroup(
     return;
   }
 
-  P4CoreV1model *core = m_connectedSwitches[index]->GetV1ModelCore();
-  if (!core) {
-    NS_LOG_WARN("No V1Model core found for switch " << index);
+  auto api = RuntimeApiOf(m_connectedSwitches[index]);
+  if (!api) {
+    NS_LOG_WARN("No core found for switch " << index);
     return;
   }
 
   int status =
-      core->RemoveMemberFromGroup(profileName, memberHandle, groupHandle);
+      api->RemoveMemberFromGroup(profileName, memberHandle, groupHandle);
   if (status == 0) {
     NS_LOG_INFO("Removed member " << memberHandle << " from group "
                                   << groupHandle << " in profile ["
@@ -545,13 +599,13 @@ P4Controller::GetActionProfileMembers(uint32_t index,
     return members;
   }
 
-  P4CoreV1model *core = m_connectedSwitches[index]->GetV1ModelCore();
-  if (!core) {
-    NS_LOG_WARN("No V1Model core found for switch " << index);
+  auto api = RuntimeApiOf(m_connectedSwitches[index]);
+  if (!api) {
+    NS_LOG_WARN("No core found for switch " << index);
     return members;
   }
 
-  int status = core->GetActionProfileMembers(profileName, &members);
+  int status = api->GetActionProfileMembers(profileName, &members);
   if (status == 0) {
     return members;
   } else {
@@ -567,14 +621,14 @@ void P4Controller::PrintActionProfileMembers(uint32_t index,
     return;
   }
 
-  P4CoreV1model *core = m_connectedSwitches[index]->GetV1ModelCore();
-  if (!core) {
-    NS_LOG_WARN("No V1Model core found for switch " << index);
+  auto api = RuntimeApiOf(m_connectedSwitches[index]);
+  if (!api) {
+    NS_LOG_WARN("No core found for switch " << index);
     return;
   }
 
   std::vector<bm::ActionProfile::Member> members;
-  int status = core->GetActionProfileMembers(profileName, &members);
+  int status = api->GetActionProfileMembers(profileName, &members);
   if (status == 0) {
     std::cout << "=============    Printing ActionProfile members ============"
               << std::endl;
@@ -611,14 +665,14 @@ void P4Controller::GetActionProfileMember(
     return;
   }
 
-  P4CoreV1model *core = m_connectedSwitches[index]->GetV1ModelCore();
-  if (!core) {
-    NS_LOG_WARN("No V1Model core found for switch " << index);
+  auto api = RuntimeApiOf(m_connectedSwitches[index]);
+  if (!api) {
+    NS_LOG_WARN("No core found for switch " << index);
     return;
   }
 
   bm::ActionProfile::Member member;
-  int status = core->GetActionProfileMember(profileName, memberHandle, &member);
+  int status = api->GetActionProfileMember(profileName, memberHandle, &member);
   if (status == 0) {
     NS_LOG_INFO("Retrieved member " << memberHandle << " from profile ["
                                     << profileName << "] on switch " << index);
@@ -635,14 +689,14 @@ void P4Controller::PrintActionProfileGroups(uint32_t index,
     return;
   }
 
-  P4CoreV1model *core = m_connectedSwitches[index]->GetV1ModelCore();
-  if (!core) {
-    NS_LOG_WARN("No V1Model core found for switch " << index);
+  auto api = RuntimeApiOf(m_connectedSwitches[index]);
+  if (!api) {
+    NS_LOG_WARN("No core found for switch " << index);
     return;
   }
 
   std::vector<bm::ActionProfile::Group> groups;
-  int status = core->GetActionProfileGroups(profileName, &groups);
+  int status = api->GetActionProfileGroups(profileName, &groups);
 
   if (status == 0) {
     NS_LOG_INFO("Retrieved " << groups.size()
@@ -674,14 +728,14 @@ void P4Controller::GetActionProfileGroups(uint32_t index,
     return;
   }
 
-  P4CoreV1model *core = m_connectedSwitches[index]->GetV1ModelCore();
-  if (!core) {
-    NS_LOG_WARN("No V1Model core found for switch " << index);
+  auto api = RuntimeApiOf(m_connectedSwitches[index]);
+  if (!api) {
+    NS_LOG_WARN("No core found for switch " << index);
     return;
   }
 
   std::vector<bm::ActionProfile::Group> groups;
-  int status = core->GetActionProfileGroups(profileName, &groups);
+  int status = api->GetActionProfileGroups(profileName, &groups);
 
   if (status == 0) {
     NS_LOG_INFO("Retrieved " << groups.size() << " groups from action profile ["
@@ -700,14 +754,14 @@ void P4Controller::GetActionProfileGroup(
     return;
   }
 
-  P4CoreV1model *core = m_connectedSwitches[index]->GetV1ModelCore();
-  if (!core) {
-    NS_LOG_WARN("No V1Model core found for switch " << index);
+  auto api = RuntimeApiOf(m_connectedSwitches[index]);
+  if (!api) {
+    NS_LOG_WARN("No core found for switch " << index);
     return;
   }
 
   bm::ActionProfile::Group group;
-  int status = core->GetActionProfileGroup(profileName, groupHandle, &group);
+  int status = api->GetActionProfileGroup(profileName, groupHandle, &group);
 
   if (status == 0) {
     NS_LOG_INFO("Retrieved group handle "
@@ -731,13 +785,13 @@ void P4Controller::AddIndirectEntry(
     return;
   }
 
-  P4CoreV1model *core = m_connectedSwitches[index]->GetV1ModelCore();
-  if (!core) {
-    NS_LOG_WARN("No V1Model core found for switch " << index);
+  auto api = RuntimeApiOf(m_connectedSwitches[index]);
+  if (!api) {
+    NS_LOG_WARN("No core found for switch " << index);
     return;
   }
 
-  int status = core->AddIndirectEntry(tableName, matchKey, memberHandle,
+  int status = api->AddIndirectEntry(tableName, matchKey, memberHandle,
                                       outHandle, priority);
 
   if (status == 0) {
@@ -759,13 +813,13 @@ void P4Controller::ModifyIndirectEntry(
     return;
   }
 
-  P4CoreV1model *core = m_connectedSwitches[index]->GetV1ModelCore();
-  if (!core) {
-    NS_LOG_WARN("No V1Model core found for switch " << index);
+  auto api = RuntimeApiOf(m_connectedSwitches[index]);
+  if (!api) {
+    NS_LOG_WARN("No core found for switch " << index);
     return;
   }
 
-  int status = core->ModifyIndirectEntry(tableName, entryHandle, memberHandle);
+  int status = api->ModifyIndirectEntry(tableName, entryHandle, memberHandle);
 
   if (status == 0) {
     NS_LOG_INFO("Modified indirect entry "
@@ -786,13 +840,13 @@ void P4Controller::DeleteIndirectEntry(uint32_t index,
     return;
   }
 
-  P4CoreV1model *core = m_connectedSwitches[index]->GetV1ModelCore();
-  if (!core) {
-    NS_LOG_WARN("No V1Model core found for switch " << index);
+  auto api = RuntimeApiOf(m_connectedSwitches[index]);
+  if (!api) {
+    NS_LOG_WARN("No core found for switch " << index);
     return;
   }
 
-  int status = core->DeleteIndirectEntry(tableName, entryHandle);
+  int status = api->DeleteIndirectEntry(tableName, entryHandle);
 
   if (status == 0) {
     NS_LOG_INFO("Deleted indirect entry " << entryHandle << " from table ["
@@ -813,13 +867,13 @@ void P4Controller::SetIndirectEntryTtl(uint32_t index,
     return;
   }
 
-  P4CoreV1model *core = m_connectedSwitches[index]->GetV1ModelCore();
-  if (!core) {
-    NS_LOG_WARN("No V1Model core found for switch " << index);
+  auto api = RuntimeApiOf(m_connectedSwitches[index]);
+  if (!api) {
+    NS_LOG_WARN("No core found for switch " << index);
     return;
   }
 
-  int status = core->SetIndirectEntryTtl(tableName, handle, ttlMs);
+  int status = api->SetIndirectEntryTtl(tableName, handle, ttlMs);
 
   if (status == 0) {
     NS_LOG_INFO("Set TTL = " << ttlMs << "ms for indirect entry " << handle
@@ -840,13 +894,13 @@ void P4Controller::SetIndirectDefaultMember(
     return;
   }
 
-  P4CoreV1model *core = m_connectedSwitches[index]->GetV1ModelCore();
-  if (!core) {
-    NS_LOG_WARN("No V1Model core found for switch " << index);
+  auto api = RuntimeApiOf(m_connectedSwitches[index]);
+  if (!api) {
+    NS_LOG_WARN("No core found for switch " << index);
     return;
   }
 
-  int status = core->SetIndirectDefaultMember(tableName, memberHandle);
+  int status = api->SetIndirectDefaultMember(tableName, memberHandle);
 
   if (status == 0) {
     NS_LOG_INFO("Set default member " << memberHandle << " for table ["
@@ -865,13 +919,13 @@ void P4Controller::ResetIndirectDefaultEntry(uint32_t index,
     return;
   }
 
-  P4CoreV1model *core = m_connectedSwitches[index]->GetV1ModelCore();
-  if (!core) {
-    NS_LOG_WARN("No V1Model core found for switch " << index);
+  auto api = RuntimeApiOf(m_connectedSwitches[index]);
+  if (!api) {
+    NS_LOG_WARN("No core found for switch " << index);
     return;
   }
 
-  int status = core->ResetIndirectDefaultEntry(tableName);
+  int status = api->ResetIndirectDefaultEntry(tableName);
 
   if (status == 0) {
     NS_LOG_INFO("Reset indirect default entry for table ["
@@ -891,13 +945,13 @@ void P4Controller::AddIndirectWsEntry(
     return;
   }
 
-  P4CoreV1model *core = m_connectedSwitches[index]->GetV1ModelCore();
-  if (!core) {
-    NS_LOG_WARN("No V1Model core found for switch " << index);
+  auto api = RuntimeApiOf(m_connectedSwitches[index]);
+  if (!api) {
+    NS_LOG_WARN("No core found for switch " << index);
     return;
   }
 
-  int status = core->AddIndirectWsEntry(tableName, matchKey, groupHandle,
+  int status = api->AddIndirectWsEntry(tableName, matchKey, groupHandle,
                                         outHandle, priority);
 
   if (status == 0) {
@@ -918,13 +972,13 @@ void P4Controller::ModifyIndirectWsEntry(
     return;
   }
 
-  P4CoreV1model *core = m_connectedSwitches[index]->GetV1ModelCore();
-  if (!core) {
-    NS_LOG_WARN("No V1Model core found for switch " << index);
+  auto api = RuntimeApiOf(m_connectedSwitches[index]);
+  if (!api) {
+    NS_LOG_WARN("No core found for switch " << index);
     return;
   }
 
-  int status = core->ModifyIndirectWsEntry(tableName, handle, groupHandle);
+  int status = api->ModifyIndirectWsEntry(tableName, handle, groupHandle);
 
   if (status == 0) {
     NS_LOG_INFO("Modified indirect WS entry "
@@ -944,13 +998,13 @@ void P4Controller::SetIndirectWsDefaultGroup(
     return;
   }
 
-  P4CoreV1model *core = m_connectedSwitches[index]->GetV1ModelCore();
-  if (!core) {
-    NS_LOG_WARN("No V1Model core found for switch " << index);
+  auto api = RuntimeApiOf(m_connectedSwitches[index]);
+  if (!api) {
+    NS_LOG_WARN("No core found for switch " << index);
     return;
   }
 
-  int status = core->SetIndirectWsDefaultGroup(tableName, groupHandle);
+  int status = api->SetIndirectWsDefaultGroup(tableName, groupHandle);
 
   if (status == 0) {
     NS_LOG_INFO("Set default group " << groupHandle
@@ -973,14 +1027,14 @@ void P4Controller::PrintFlowEntries(uint32_t index,
   }
 
   Ptr<P4SwitchNetDevice> sw = m_connectedSwitches[index];
-  P4CoreV1model *core = sw->GetV1ModelCore();
+  auto api = RuntimeApiOf(sw);
 
-  if (!core) {
-    NS_LOG_ERROR("V1Model core not found for switch " << index);
+  if (!api) {
+    NS_LOG_ERROR("No core found for switch " << index);
     return;
   }
 
-  std::vector<bm::MatchTable::Entry> entries = core->GetFlowEntries(tableName);
+  std::vector<bm::MatchTable::Entry> entries = api->GetFlowEntries(tableName);
 
   NS_LOG_INFO("Flow entries in table [" << tableName << "] on switch " << index
                                         << ":");
@@ -1005,14 +1059,14 @@ void P4Controller::PrintIndirectFlowEntries(uint32_t index,
   }
 
   Ptr<P4SwitchNetDevice> sw = m_connectedSwitches[index];
-  P4CoreV1model *core = sw->GetV1ModelCore();
-  if (!core) {
-    NS_LOG_ERROR("No V1Model core for switch " << index);
+  auto api = RuntimeApiOf(sw);
+  if (!api) {
+    NS_LOG_ERROR("No core found for switch " << index);
     return;
   }
 
   std::vector<bm::MatchTableIndirect::Entry> entries =
-      core->GetIndirectFlowEntries(tableName);
+      api->GetIndirectFlowEntries(tableName);
   NS_LOG_INFO("Indirect entries in [" << tableName << "] on switch " << index
                                       << ":");
   NS_LOG_INFO("The size of table is" << entries.size());
@@ -1031,14 +1085,14 @@ void P4Controller::PrintIndirectWsFlowEntries(uint32_t index,
   }
 
   Ptr<P4SwitchNetDevice> sw = m_connectedSwitches[index];
-  P4CoreV1model *core = sw->GetV1ModelCore();
-  if (!core) {
-    NS_LOG_ERROR("No V1Model core for switch " << index);
+  auto api = RuntimeApiOf(sw);
+  if (!api) {
+    NS_LOG_ERROR("No core found for switch " << index);
     return;
   }
 
   std::vector<bm::MatchTableIndirectWS::Entry> entries =
-      core->GetIndirectWsFlowEntries(tableName);
+      api->GetIndirectWsFlowEntries(tableName);
   NS_LOG_INFO("WS Indirect entries in [" << tableName << "] on switch " << index
                                          << ":");
   NS_LOG_INFO("The size of table is" << entries.size());
@@ -1057,14 +1111,14 @@ void P4Controller::PrintEntry(uint32_t index, const std::string &tableName,
   }
 
   Ptr<P4SwitchNetDevice> sw = m_connectedSwitches[index];
-  P4CoreV1model *core = sw->GetV1ModelCore();
-  if (!core) {
-    NS_LOG_ERROR("No V1Model core for switch " << index);
+  auto api = RuntimeApiOf(sw);
+  if (!api) {
+    NS_LOG_ERROR("No core found for switch " << index);
     return;
   }
 
   bm::MatchTable::Entry entry;
-  int rc = core->GetEntry(tableName, handle, &entry);
+  int rc = api->GetEntry(tableName, handle, &entry);
   if (rc == 0) {
     std::string actionName = entry.action_fn->get_name();
     NS_LOG_INFO("Entry for handle " << handle << ": action = " << actionName
@@ -1087,14 +1141,14 @@ void P4Controller::PrintDefaultEntry(uint32_t index,
   }
 
   Ptr<P4SwitchNetDevice> sw = m_connectedSwitches[index];
-  P4CoreV1model *core = sw->GetV1ModelCore();
-  if (!core) {
-    NS_LOG_ERROR("No V1Model core for switch " << index);
+  auto api = RuntimeApiOf(sw);
+  if (!api) {
+    NS_LOG_ERROR("No core found for switch " << index);
     return;
   }
 
   bm::MatchTable::Entry entry;
-  int rc = core->GetDefaultEntry(tableName, &entry);
+  int rc = api->GetDefaultEntry(tableName, &entry);
   if (rc != 0) {
     NS_LOG_WARN("Failed to get default entry from table: " << tableName);
     return;
@@ -1113,14 +1167,14 @@ void P4Controller::PrintIndirectDefaultEntry(uint32_t index,
   }
 
   Ptr<P4SwitchNetDevice> sw = m_connectedSwitches[index];
-  P4CoreV1model *core = sw->GetV1ModelCore();
-  if (!core) {
-    NS_LOG_ERROR("No V1Model core for switch " << index);
+  auto api = RuntimeApiOf(sw);
+  if (!api) {
+    NS_LOG_ERROR("No core found for switch " << index);
     return;
   }
 
   bm::MatchTableIndirect::Entry entry;
-  int rc = core->GetIndirectDefaultEntry(tableName, &entry);
+  int rc = api->GetIndirectDefaultEntry(tableName, &entry);
   if (rc != 0) {
     NS_LOG_WARN(
         "Failed to get indirect default entry for table: " << tableName);
@@ -1139,14 +1193,14 @@ void P4Controller::PrintIndirectWsDefaultEntry(uint32_t index,
   }
 
   Ptr<P4SwitchNetDevice> sw = m_connectedSwitches[index];
-  P4CoreV1model *core = sw->GetV1ModelCore();
-  if (!core) {
-    NS_LOG_ERROR("No V1Model core for switch " << index);
+  auto api = RuntimeApiOf(sw);
+  if (!api) {
+    NS_LOG_ERROR("No core found for switch " << index);
     return;
   }
 
   bm::MatchTableIndirectWS::Entry entry;
-  int rc = core->GetIndirectWsDefaultEntry(tableName, &entry);
+  int rc = api->GetIndirectWsDefaultEntry(tableName, &entry);
   if (rc != 0) {
     NS_LOG_WARN(
         "Failed to get indirect WS default entry for table: " << tableName);
@@ -1166,14 +1220,14 @@ void P4Controller::PrintEntryFromKey(
   }
 
   Ptr<P4SwitchNetDevice> sw = m_connectedSwitches[index];
-  P4CoreV1model *core = sw->GetV1ModelCore();
-  if (!core) {
-    NS_LOG_ERROR("No V1Model core for switch " << index);
+  auto api = RuntimeApiOf(sw);
+  if (!api) {
+    NS_LOG_ERROR("No core found for switch " << index);
     return;
   }
 
   bm::MatchTable::Entry entry;
-  int rc = core->GetEntryFromKey(tableName, matchKey, &entry);
+  int rc = api->GetEntryFromKey(tableName, matchKey, &entry);
   if (rc != 0) {
     NS_LOG_WARN("No entry found for key in table " << tableName);
     return;
@@ -1193,14 +1247,14 @@ void P4Controller::PrintIndirectEntryFromKey(
   }
 
   Ptr<P4SwitchNetDevice> sw = m_connectedSwitches[index];
-  P4CoreV1model *core = sw->GetV1ModelCore();
-  if (!core) {
-    NS_LOG_ERROR("No V1Model core for switch " << index);
+  auto api = RuntimeApiOf(sw);
+  if (!api) {
+    NS_LOG_ERROR("No core found for switch " << index);
     return;
   }
 
   bm::MatchTableIndirect::Entry entry;
-  int rc = core->GetIndirectEntryFromKey(tableName, matchKey, &entry);
+  int rc = api->GetIndirectEntryFromKey(tableName, matchKey, &entry);
   if (rc != 0) {
     NS_LOG_WARN("Indirect entry not found for key in table " << tableName);
     return;
@@ -1221,14 +1275,14 @@ void P4Controller::PrintIndirectWsEntryFromKey(
   }
 
   Ptr<P4SwitchNetDevice> sw = m_connectedSwitches[index];
-  P4CoreV1model *core = sw->GetV1ModelCore();
-  if (!core) {
-    NS_LOG_ERROR("No V1Model core for switch " << index);
+  auto api = RuntimeApiOf(sw);
+  if (!api) {
+    NS_LOG_ERROR("No core found for switch " << index);
     return;
   }
 
   bm::MatchTableIndirectWS::Entry entry;
-  int rc = core->GetIndirectWsEntryFromKey(tableName, matchKey, &entry);
+  int rc = api->GetIndirectWsEntryFromKey(tableName, matchKey, &entry);
   if (rc != 0) {
     NS_LOG_WARN("Indirect WS entry not found for key in table " << tableName);
     return;
@@ -1248,14 +1302,14 @@ void P4Controller::ReadCounters(uint32_t index, const std::string &tableName,
     return;
   }
 
-  P4CoreV1model *core = m_connectedSwitches[index]->GetV1ModelCore();
-  if (!core) {
-    NS_LOG_WARN("No V1Model core found for switch " << index);
+  auto api = RuntimeApiOf(m_connectedSwitches[index]);
+  if (!api) {
+    NS_LOG_WARN("No core found for switch " << index);
     return;
   }
 
   uint64_t bytes = 0, packets = 0;
-  if (core->ReadTableCounters(tableName, handle, &bytes, &packets) == 0) {
+  if (api->ReadTableCounters(tableName, handle, &bytes, &packets) == 0) {
     NS_LOG_INFO("Switch " << index << ", Table " << tableName << ", Handle "
                           << handle << " → Packets: " << packets
                           << ", Bytes: " << bytes);
@@ -1268,13 +1322,13 @@ void P4Controller::ResetCounters(uint32_t index, const std::string &tableName) {
     return;
   }
 
-  P4CoreV1model *core = m_connectedSwitches[index]->GetV1ModelCore();
-  if (!core) {
-    NS_LOG_WARN("No V1Model core found for switch " << index);
+  auto api = RuntimeApiOf(m_connectedSwitches[index]);
+  if (!api) {
+    NS_LOG_WARN("No core found for switch " << index);
     return;
   }
 
-  int status = core->ResetTableCounters(tableName);
+  int status = api->ResetTableCounters(tableName);
   if (status == 0) {
     NS_LOG_INFO("Reset counters for table [" << tableName << "] on switch "
                                              << index);
@@ -1292,13 +1346,13 @@ void P4Controller::WriteCounters(uint32_t index, const std::string &tableName,
     return;
   }
 
-  P4CoreV1model *core = m_connectedSwitches[index]->GetV1ModelCore();
-  if (!core) {
-    NS_LOG_WARN("No V1Model core found for switch " << index);
+  auto api = RuntimeApiOf(m_connectedSwitches[index]);
+  if (!api) {
+    NS_LOG_WARN("No core found for switch " << index);
     return;
   }
 
-  int status = core->WriteTableCounters(tableName, handle, bytes, packets);
+  int status = api->WriteTableCounters(tableName, handle, bytes, packets);
   if (status == 0) {
     NS_LOG_INFO("Wrote counters for entry handle "
                 << handle << " in table [" << tableName << "] on switch "
@@ -1317,14 +1371,14 @@ void P4Controller::ReadCounter(uint32_t index, const std::string &counterName,
     return;
   }
 
-  P4CoreV1model *core = m_connectedSwitches[index]->GetV1ModelCore();
-  if (!core) {
-    NS_LOG_WARN("No V1Model core found for switch " << index);
+  auto api = RuntimeApiOf(m_connectedSwitches[index]);
+  if (!api) {
+    NS_LOG_WARN("No core found for switch " << index);
     return;
   }
 
   bm::MatchTableAbstract::counter_value_t bytes, packets;
-  auto rc = core->ReadCounter(counterName, counterIndex, &bytes, &packets);
+  auto rc = api->ReadCounter(counterName, counterIndex, &bytes, &packets);
 
   if (rc == bm::Counter::CounterErrorCode::SUCCESS) {
     NS_LOG_INFO("ReadCounter for [" << counterName << "] at index "
@@ -1345,13 +1399,13 @@ void P4Controller::ResetCounter(uint32_t index,
     return;
   }
 
-  P4CoreV1model *core = m_connectedSwitches[index]->GetV1ModelCore();
-  if (!core) {
-    NS_LOG_WARN("No V1Model core found for switch " << index);
+  auto api = RuntimeApiOf(m_connectedSwitches[index]);
+  if (!api) {
+    NS_LOG_WARN("No core found for switch " << index);
     return;
   }
 
-  int status = core->ResetCounter(counterName);
+  int status = api->ResetCounter(counterName);
   if (status == 0) {
     NS_LOG_INFO("Reset counter [" << counterName << "] on switch " << index);
   } else {
@@ -1369,13 +1423,13 @@ void P4Controller::WriteCounter(
     return;
   }
 
-  P4CoreV1model *core = m_connectedSwitches[index]->GetV1ModelCore();
-  if (!core) {
-    NS_LOG_WARN("No V1Model core found for switch " << index);
+  auto api = RuntimeApiOf(m_connectedSwitches[index]);
+  if (!api) {
+    NS_LOG_WARN("No core found for switch " << index);
     return;
   }
 
-  int status = core->WriteCounter(counterName, counterIndex, bytes, packets);
+  int status = api->WriteCounter(counterName, counterIndex, bytes, packets);
   if (status == 0) {
     NS_LOG_INFO("Wrote counter [" << counterName << "] at index "
                                   << counterIndex << " on switch " << index
@@ -1398,13 +1452,13 @@ void P4Controller::SetMeterRates(
     return;
   }
 
-  P4CoreV1model *core = m_connectedSwitches[index]->GetV1ModelCore();
-  if (!core) {
-    NS_LOG_WARN("No V1Model core found for switch " << index);
+  auto api = RuntimeApiOf(m_connectedSwitches[index]);
+  if (!api) {
+    NS_LOG_WARN("No core found for switch " << index);
     return;
   }
 
-  bool success = core->SetMeterRates(tableName, handle, configs) == 0;
+  bool success = api->SetMeterRates(tableName, handle, configs) == 0;
   if (success) {
     NS_LOG_INFO("SetMeterRates succeeded for table ["
                 << tableName << "] on switch " << index);
@@ -1414,26 +1468,33 @@ void P4Controller::SetMeterRates(
   }
 }
 
-void P4Controller::GetMeterRates(uint32_t index, const std::string &tableName,
-                                 bm::entry_handle_t handle) {
+void P4Controller::GetMeterRates(
+    uint32_t index, const std::string &tableName, bm::entry_handle_t handle,
+    std::vector<bm::Meter::rate_config_t> *rates) {
+  if (rates) {
+    rates->clear();
+  }
   if (index >= m_connectedSwitches.size()) {
     NS_LOG_WARN("Invalid switch index " << index);
     return;
   }
 
-  P4CoreV1model *core = m_connectedSwitches[index]->GetV1ModelCore();
-  if (!core) {
-    NS_LOG_WARN("No V1Model core found for switch " << index);
+  auto api = RuntimeApiOf(m_connectedSwitches[index]);
+  if (!api) {
+    NS_LOG_WARN("No core found for switch " << index);
     return;
   }
 
   std::vector<bm::Meter::rate_config_t> configs;
-  bool success = core->GetMeterRates(tableName, handle, &configs) == 0;
+  bool success = api->GetMeterRates(tableName, handle, &configs) == 0;
   if (success) {
     NS_LOG_INFO("Meter rates for [" << tableName << "] handle " << handle
                                     << " on switch " << index << ":");
     for (const auto &cfg : configs) {
       NS_LOG_INFO("  CIR=" << cfg.info_rate << ", PBS=" << cfg.burst_size);
+    }
+    if (rates) {
+      *rates = configs;
     }
   } else {
     NS_LOG_WARN("GetMeterRates failed for table [" << tableName
@@ -1448,13 +1509,13 @@ void P4Controller::ResetMeterRates(uint32_t index, const std::string &tableName,
     return;
   }
 
-  P4CoreV1model *core = m_connectedSwitches[index]->GetV1ModelCore();
-  if (!core) {
-    NS_LOG_WARN("No V1Model core found for switch " << index);
+  auto api = RuntimeApiOf(m_connectedSwitches[index]);
+  if (!api) {
+    NS_LOG_WARN("No core found for switch " << index);
     return;
   }
 
-  bool success = core->ResetMeterRates(tableName, handle) == 0;
+  bool success = api->ResetMeterRates(tableName, handle) == 0;
   if (success) {
     NS_LOG_INFO("ResetMeterRates succeeded for table ["
                 << tableName << "] on switch " << index);
@@ -1472,13 +1533,13 @@ void P4Controller::SetMeterArrayRates(
     return;
   }
 
-  P4CoreV1model *core = m_connectedSwitches[index]->GetV1ModelCore();
-  if (!core) {
-    NS_LOG_WARN("No V1Model core found for switch " << index);
+  auto api = RuntimeApiOf(m_connectedSwitches[index]);
+  if (!api) {
+    NS_LOG_WARN("No core found for switch " << index);
     return;
   }
 
-  bool success = core->SetMeterArrayRates(meterName, configs) == 0;
+  bool success = api->SetMeterArrayRates(meterName, configs) == 0;
   if (success) {
     NS_LOG_INFO("SetMeterArrayRates succeeded for meter ["
                 << meterName << "] on switch " << index);
@@ -1488,7 +1549,7 @@ void P4Controller::SetMeterArrayRates(
   }
 }
 
-void P4Controller::SetMeterRates(
+void P4Controller::MeterSetRates(
     uint32_t index, const std::string &meterName, size_t idx,
     const std::vector<bm::Meter::rate_config_t> &configs) {
   if (index >= m_connectedSwitches.size()) {
@@ -1496,70 +1557,94 @@ void P4Controller::SetMeterRates(
     return;
   }
 
-  P4CoreV1model *core = m_connectedSwitches[index]->GetV1ModelCore();
-  if (!core) {
-    NS_LOG_WARN("No V1Model core found for switch " << index);
+  auto api = RuntimeApiOf(m_connectedSwitches[index]);
+  if (!api) {
+    NS_LOG_WARN("No core found for switch " << index);
     return;
   }
 
-  bool success = core->SetMeterRates(meterName, idx, configs) == 0;
+  bool success = api->MeterSetRates(meterName, idx, configs) == 0;
   if (success) {
-    NS_LOG_INFO("SetMeterRates succeeded for meter ["
+    NS_LOG_INFO("MeterSetRates succeeded for meter ["
                 << meterName << "] index " << idx << " on switch " << index);
   } else {
-    NS_LOG_WARN("SetMeterRates failed for meter ["
+    NS_LOG_WARN("MeterSetRates failed for meter ["
                 << meterName << "] index " << idx << " on switch " << index);
   }
 }
 
-void P4Controller::GetMeterRates(uint32_t index, const std::string &meterName,
-                                 size_t idx) {
+void P4Controller::MeterGetRates(
+    uint32_t index, const std::string &meterName, size_t idx,
+    std::vector<bm::Meter::rate_config_t> *rates) {
+  if (rates) {
+    rates->clear();
+  }
   if (index >= m_connectedSwitches.size()) {
     NS_LOG_WARN("Invalid switch index " << index);
     return;
   }
 
-  P4CoreV1model *core = m_connectedSwitches[index]->GetV1ModelCore();
-  if (!core) {
-    NS_LOG_WARN("No V1Model core found for switch " << index);
+  auto api = RuntimeApiOf(m_connectedSwitches[index]);
+  if (!api) {
+    NS_LOG_WARN("No core found for switch " << index);
     return;
   }
 
   std::vector<bm::Meter::rate_config_t> configs;
-  bool success = core->GetMeterRates(meterName, idx, &configs) == 0;
+  bool success = api->MeterGetRates(meterName, idx, &configs) == 0;
   if (success) {
     NS_LOG_INFO("Meter rates for [" << meterName << "] index " << idx
                                     << " on switch " << index << ":");
     for (const auto &cfg : configs) {
       NS_LOG_INFO("  CIR=" << cfg.info_rate << ", PBS=" << cfg.burst_size);
     }
+    if (rates) {
+      *rates = configs;
+    }
   } else {
-    NS_LOG_WARN("GetMeterRates failed for meter ["
+    NS_LOG_WARN("MeterGetRates failed for meter ["
                 << meterName << "] index " << idx << " on switch " << index);
   }
 }
 
-void P4Controller::ResetMeterRates(uint32_t index, const std::string &meterName,
+void P4Controller::MeterResetRates(uint32_t index, const std::string &meterName,
                                    size_t idx) {
   if (index >= m_connectedSwitches.size()) {
     NS_LOG_WARN("Invalid switch index " << index);
     return;
   }
 
-  P4CoreV1model *core = m_connectedSwitches[index]->GetV1ModelCore();
-  if (!core) {
-    NS_LOG_WARN("No V1Model core found for switch " << index);
+  auto api = RuntimeApiOf(m_connectedSwitches[index]);
+  if (!api) {
+    NS_LOG_WARN("No core found for switch " << index);
     return;
   }
 
-  bool success = core->ResetMeterRates(meterName, idx) == 0;
+  bool success = api->MeterResetRates(meterName, idx) == 0;
   if (success) {
-    NS_LOG_INFO("ResetMeterRates succeeded for meter ["
+    NS_LOG_INFO("MeterResetRates succeeded for meter ["
                 << meterName << "] index " << idx << " on switch " << index);
   } else {
-    NS_LOG_WARN("ResetMeterRates failed for meter ["
+    NS_LOG_WARN("MeterResetRates failed for meter ["
                 << meterName << "] index " << idx << " on switch " << index);
   }
+}
+
+// The deprecated names of the meter-array functions
+void P4Controller::SetMeterRates(
+    uint32_t index, const std::string &meterName, size_t idx,
+    const std::vector<bm::Meter::rate_config_t> &configs) {
+  MeterSetRates(index, meterName, idx, configs);
+}
+
+void P4Controller::GetMeterRates(uint32_t index, const std::string &meterName,
+                                 size_t idx) {
+  MeterGetRates(index, meterName, idx);
+}
+
+void P4Controller::ResetMeterRates(uint32_t index, const std::string &meterName,
+                                   size_t idx) {
+  MeterResetRates(index, meterName, idx);
 }
 
 // ======= Register  Functions  =======
@@ -1573,14 +1658,14 @@ void P4Controller::RegisterRead(uint32_t index, const std::string &registerName,
   }
 
   Ptr<P4SwitchNetDevice> sw = m_connectedSwitches[index];
-  P4CoreV1model *core = sw->GetV1ModelCore();
+  auto api = RuntimeApiOf(sw);
 
-  if (!core) {
-    NS_LOG_ERROR("V1Model core not found for switch " << index);
+  if (!api) {
+    NS_LOG_ERROR("No core found for switch " << index);
     return;
   }
 
-  int status = core->RegisterRead(registerName, regIndex, value);
+  int status = api->RegisterRead(registerName, regIndex, value);
 
   if (status == 0) {
     NS_LOG_INFO("RegisterRead succeeded: switch "
@@ -1604,14 +1689,14 @@ void P4Controller::RegisterWrite(uint32_t index,
   }
 
   Ptr<P4SwitchNetDevice> sw = m_connectedSwitches[index];
-  P4CoreV1model *core = sw->GetV1ModelCore();
+  auto api = RuntimeApiOf(sw);
 
-  if (!core) {
-    NS_LOG_ERROR("V1Model core not found for switch " << index);
+  if (!api) {
+    NS_LOG_ERROR("No core found for switch " << index);
     return;
   }
 
-  int status = core->RegisterWrite(registerName, regIndex, value);
+  int status = api->RegisterWrite(registerName, regIndex, value);
 
   if (status == 0) {
     NS_LOG_INFO("RegisterWrite succeeded: switch "
@@ -1634,14 +1719,14 @@ void P4Controller::RegisterReadAll(uint32_t index,
   }
 
   Ptr<P4SwitchNetDevice> sw = m_connectedSwitches[index];
-  P4CoreV1model *core = sw->GetV1ModelCore();
+  auto api = RuntimeApiOf(sw);
 
-  if (!core) {
-    NS_LOG_ERROR("V1Model core not found for switch " << index);
+  if (!api) {
+    NS_LOG_ERROR("No core found for switch " << index);
     return;
   }
 
-  std::vector<bm::Data> values = core->RegisterReadAll(registerName);
+  std::vector<bm::Data> values = api->RegisterReadAll(registerName);
 
   if (!values.empty()) {
     NS_LOG_INFO("RegisterReadAll succeeded for register ["
@@ -1666,15 +1751,15 @@ void P4Controller::RegisterWriteRange(uint32_t index,
   }
 
   Ptr<P4SwitchNetDevice> sw = m_connectedSwitches[index];
-  P4CoreV1model *core = sw->GetV1ModelCore();
+  auto api = RuntimeApiOf(sw);
 
-  if (!core) {
-    NS_LOG_ERROR("V1Model core not found for switch " << index);
+  if (!api) {
+    NS_LOG_ERROR("No core found for switch " << index);
     return;
   }
 
   int status =
-      core->RegisterWriteRange(registerName, startIndex, endIndex, value);
+      api->RegisterWriteRange(registerName, startIndex, endIndex, value);
 
   if (status == 0) {
     NS_LOG_INFO("RegisterWriteRange succeeded: switch "
@@ -1697,14 +1782,14 @@ void P4Controller::RegisterReset(uint32_t index,
   }
 
   Ptr<P4SwitchNetDevice> sw = m_connectedSwitches[index];
-  P4CoreV1model *core = sw->GetV1ModelCore();
+  auto api = RuntimeApiOf(sw);
 
-  if (!core) {
-    NS_LOG_ERROR("V1Model core not found for switch " << index);
+  if (!api) {
+    NS_LOG_ERROR("No core found for switch " << index);
     return;
   }
 
-  int status = core->RegisterReset(registerName);
+  int status = api->RegisterReset(registerName);
 
   if (status == 0) {
     NS_LOG_INFO("RegisterReset succeeded for register ["
@@ -1722,14 +1807,14 @@ void P4Controller::ParseVsetGet(uint32_t index, const std::string &vsetName) {
     return;
   }
 
-  P4CoreV1model *core = m_connectedSwitches[index]->GetV1ModelCore();
-  if (!core) {
-    NS_LOG_ERROR("V1Model core not found for switch " << index);
+  auto api = RuntimeApiOf(m_connectedSwitches[index]);
+  if (!api) {
+    NS_LOG_ERROR("No core found for switch " << index);
     return;
   }
 
   std::vector<bm::ByteContainer> values;
-  int status = core->ParseVsetGet(vsetName, &values);
+  int status = api->ParseVsetGet(vsetName, &values);
 
   if (status == 0) {
     NS_LOG_INFO("ParseVsetGet succeeded for switch "
@@ -1752,13 +1837,13 @@ void P4Controller::ParseVsetAdd(uint32_t index, const std::string &vsetName,
     return;
   }
 
-  P4CoreV1model *core = m_connectedSwitches[index]->GetV1ModelCore();
-  if (!core) {
-    NS_LOG_ERROR("V1Model core not found for switch " << index);
+  auto api = RuntimeApiOf(m_connectedSwitches[index]);
+  if (!api) {
+    NS_LOG_ERROR("No core found for switch " << index);
     return;
   }
 
-  int status = core->ParseVsetAdd(vsetName, value);
+  int status = api->ParseVsetAdd(vsetName, value);
   if (status == 0) {
     NS_LOG_INFO("ParseVsetAdd succeeded for switch "
                 << index << ", vset [" << vsetName
@@ -1778,13 +1863,13 @@ void P4Controller::ParseVsetRemove(uint32_t index, const std::string &vsetName,
     return;
   }
 
-  P4CoreV1model *core = m_connectedSwitches[index]->GetV1ModelCore();
-  if (!core) {
-    NS_LOG_ERROR("V1Model core not found for switch " << index);
+  auto api = RuntimeApiOf(m_connectedSwitches[index]);
+  if (!api) {
+    NS_LOG_ERROR("No core found for switch " << index);
     return;
   }
 
-  int status = core->ParseVsetRemove(vsetName, value);
+  int status = api->ParseVsetRemove(vsetName, value);
   if (status == 0) {
     NS_LOG_INFO("ParseVsetRemove succeeded for switch "
                 << index << ", vset [" << vsetName
@@ -1803,13 +1888,13 @@ void P4Controller::ParseVsetClear(uint32_t index, const std::string &vsetName) {
     return;
   }
 
-  auto core = m_connectedSwitches[index]->GetV1ModelCore();
-  if (!core) {
-    NS_LOG_ERROR("V1Model core not found for switch " << index);
+  auto api = RuntimeApiOf(m_connectedSwitches[index]);
+  if (!api) {
+    NS_LOG_ERROR("No core found for switch " << index);
     return;
   }
 
-  int status = core->ParseVsetClear(vsetName);
+  int status = api->ParseVsetClear(vsetName);
   if (status == 0) {
     NS_LOG_INFO("ParseVsetClear succeeded for switch " << index << ", vset ["
                                                        << vsetName << "]");
@@ -1827,13 +1912,13 @@ void P4Controller::ResetState(uint32_t index) {
     return;
   }
 
-  P4CoreV1model *core = m_connectedSwitches[index]->GetV1ModelCore();
-  if (!core) {
-    NS_LOG_ERROR("V1Model core not found for switch " << index);
+  auto api = RuntimeApiOf(m_connectedSwitches[index]);
+  if (!api) {
+    NS_LOG_ERROR("No core found for switch " << index);
     return;
   }
 
-  int status = core->ResetState();
+  int status = api->ResetState();
   if (status == 0) {
     NS_LOG_INFO("ResetState succeeded for switch " << index);
   } else {
@@ -1849,13 +1934,13 @@ void P4Controller::Serialize(uint32_t index, std::ostream *out) {
     return;
   }
 
-  P4CoreV1model *core = m_connectedSwitches[index]->GetV1ModelCore();
-  if (!core) {
-    NS_LOG_ERROR("V1Model core not found for switch " << index);
+  auto api = RuntimeApiOf(m_connectedSwitches[index]);
+  if (!api) {
+    NS_LOG_ERROR("No core found for switch " << index);
     return;
   }
 
-  int status = core->Serialize(out);
+  int status = api->Serialize(out);
   if (status == 0) {
     NS_LOG_INFO("Serialize succeeded for switch " << index);
   } else {
@@ -1871,13 +1956,13 @@ void P4Controller::LoadNewConfig(uint32_t index, const std::string &newConfig) {
     return;
   }
 
-  P4CoreV1model *core = m_connectedSwitches[index]->GetV1ModelCore();
-  if (!core) {
-    NS_LOG_ERROR("V1Model core not found for switch " << index);
+  auto api = RuntimeApiOf(m_connectedSwitches[index]);
+  if (!api) {
+    NS_LOG_ERROR("No core found for switch " << index);
     return;
   }
 
-  int status = core->LoadNewConfig(newConfig);
+  int status = api->LoadNewConfig(newConfig);
   if (status == 0) {
     NS_LOG_INFO("LoadNewConfig succeeded for switch " << index);
   } else {
@@ -1893,13 +1978,13 @@ void P4Controller::SwapConfigs(uint32_t index) {
     return;
   }
 
-  auto core = m_connectedSwitches[index]->GetV1ModelCore();
-  if (!core) {
-    NS_LOG_ERROR("V1Model core not found for switch " << index);
+  auto api = RuntimeApiOf(m_connectedSwitches[index]);
+  if (!api) {
+    NS_LOG_ERROR("No core found for switch " << index);
     return;
   }
 
-  int status = core->SwapConfigs();
+  int status = api->SwapConfigs();
   if (status == 0) {
     NS_LOG_INFO("SwapConfigs succeeded on switch " << index);
   } else {
@@ -1915,14 +2000,14 @@ void P4Controller::GetConfig(uint32_t index) {
     return;
   }
 
-  auto core = m_connectedSwitches[index]->GetV1ModelCore();
-  if (!core) {
-    NS_LOG_ERROR("V1Model core not found for switch " << index);
+  auto api = RuntimeApiOf(m_connectedSwitches[index]);
+  if (!api) {
+    NS_LOG_ERROR("No core found for switch " << index);
     return;
   }
 
   std::string config;
-  int status = core->GetConfig(&config);
+  int status = api->GetConfig(&config);
   if (status == 0) {
     NS_LOG_INFO("GetConfig succeeded for switch " << index);
     NS_LOG_INFO("  Config string: " << config);
@@ -1939,14 +2024,14 @@ void P4Controller::GetConfigMd5(uint32_t index) {
     return;
   }
 
-  auto core = m_connectedSwitches[index]->GetV1ModelCore();
-  if (!core) {
-    NS_LOG_ERROR("V1Model core not found for switch " << index);
+  auto api = RuntimeApiOf(m_connectedSwitches[index]);
+  if (!api) {
+    NS_LOG_ERROR("No core found for switch " << index);
     return;
   }
 
   std::string md5;
-  int status = core->GetConfigMd5(&md5);
+  int status = api->GetConfigMd5(&md5);
   if (status == 0) {
     NS_LOG_INFO("GetConfigMd5 succeeded for switch " << index);
     NS_LOG_INFO("  Config MD5: " << md5);
@@ -1966,9 +2051,9 @@ bool P4Controller::MirroringAdd(uint32_t index, uint32_t sessionId,
     return false;
   }
 
-  P4CoreV1model *core = m_connectedSwitches[index]->GetV1ModelCore();
+  P4SwitchCore *core = m_connectedSwitches[index]->GetCore();
   if (!core) {
-    NS_LOG_ERROR("V1Model core not found for switch " << index);
+    NS_LOG_ERROR("No core found for switch " << index);
     return false;
   }
 
@@ -1995,9 +2080,9 @@ bool P4Controller::MirroringAddMc(uint32_t index, uint32_t sessionId,
     return false;
   }
 
-  P4CoreV1model *core = m_connectedSwitches[index]->GetV1ModelCore();
+  P4SwitchCore *core = m_connectedSwitches[index]->GetCore();
   if (!core) {
-    NS_LOG_ERROR("V1Model core not found for switch " << index);
+    NS_LOG_ERROR("No core found for switch " << index);
     return false;
   }
 
@@ -2023,9 +2108,9 @@ bool P4Controller::MirroringDelete(uint32_t index, uint32_t sessionId) {
     return false;
   }
 
-  P4CoreV1model *core = m_connectedSwitches[index]->GetV1ModelCore();
+  P4SwitchCore *core = m_connectedSwitches[index]->GetCore();
   if (!core) {
-    NS_LOG_ERROR("V1Model core not found for switch " << index);
+    NS_LOG_ERROR("No core found for switch " << index);
     return false;
   }
 
@@ -2048,9 +2133,9 @@ bool P4Controller::MirroringGet(uint32_t index, uint32_t sessionId,
     return false;
   }
 
-  P4CoreV1model *core = m_connectedSwitches[index]->GetV1ModelCore();
+  P4SwitchCore *core = m_connectedSwitches[index]->GetCore();
   if (!core) {
-    NS_LOG_ERROR("V1Model core not found for switch " << index);
+    NS_LOG_ERROR("No core found for switch " << index);
     return false;
   }
 

@@ -28,7 +28,8 @@ Design
 A ``P4SwitchNetDevice`` is an |ns3| ``NetDevice`` that forwards frames with a P4
 program.  Each switch loads a P4 program compiled for BMv2 (JSON) and, at
 start-up, runs a flow-table file with the runtime CLI of its architecture
-(``simple_switch_CLI`` or ``psa_switch_CLI``) on its own Thrift port.  BMv2 is
+(``simple_switch_CLI``, ``psa_switch_CLI``, or ``bm_CLI`` for PNA) on its own
+Thrift port.  BMv2 is
 linked as a library: the parser, the match-action tables, the externs and the
 deparser are those of BMv2, while |ns3| provides the ports, the queues and the
 time.
@@ -75,24 +76,35 @@ number is the order in which the ports are added.
 **Packet path and timing.**
 
 1. A frame received on a port enters the input buffer of the pipeline
-   (``InputBufferSizeLow`` packets; on v1model, resubmitted and recirculated
-   packets use a second buffer, ``InputBufferSizeHigh``, which is served first).
-   A full input buffer drops the frame (trace ``MacRxDrop``).
-2. The pipeline takes the packets at ``SwitchRate`` packets per second (0, the
-   default, means no limit) and delays each of them by ``PipelineDelay`` (0 by
-   default).
+   (``InputBufferSizeLow`` packets on v1model and PSA, 1024 on PNA; on v1model,
+   resubmitted and recirculated packets use a second buffer,
+   ``InputBufferSizeHigh``, which is served first). A full input buffer drops the
+   frame (trace ``MacRxDrop``). The pipeline core has no input buffer.
+2. On v1model and PSA, the pipeline takes the packets at ``SwitchRate`` packets
+   per second (0, the default, means no limit). Every architecture delays each
+   packet by ``PipelineDelay`` (0 by default).
 3. The packets then wait in output queues of ``QueueBufferSize`` packets: one
    per port and priority (v1model, PSA) or one per port (PNA).  On v1model,
    ``EnableVoqFabric`` replaces the output queues with a traffic manager of
    virtual output queues and a fabric scheduler (``P4TrafficManager``).
 4. A port takes its next packet when its device reports that the previous frame
-   has been sent, so a congested port sends back to back at its line rate.  The
-   links serialise every frame at their data rate, and every device stores a
-   frame completely before it forwards it.
+   has been sent, so a congested port sends back to back at its line rate.  With
+   ``TransferBufferSize`` (v1model and PSA; 0 by default), it also takes packets
+   while its transfer buffer, the port queue after the egress, has room: they
+   pass the egress pipeline then and wait there in order, and are not overtaken
+   any more; v1model's ``deq_timedelta`` does not contain this wait.  A pending
+   program swap waits for these frames too.  The links
+   serialise every frame at their data rate, and every device stores a frame
+   completely before it forwards it.
 
-**Control plane.**  Besides the flow-table file, the tables of a v1model switch
-can be changed during the simulation with ``P4Controller`` (flow entries, action
-profiles, counters, meters, registers, mirroring sessions).  The runtime CLIs of
+**Control plane.**  Besides the flow-table file, the tables of a switch can be
+changed during the simulation with ``P4Controller`` (flow entries, action
+profiles, counters, meters, registers, mirroring sessions), on every
+architecture.  It calls the BMv2 runtime API of the switch through
+``P4RuntimeApi``, which a simulation can also use directly.  The records of
+``digest()`` (v1model and the pipeline core) reach the trace source ``Digest``
+of the switch and the digest callback of ``P4Controller``, so that a controller
+in the simulation can learn from them; the example ``p4-l2-learning`` does.  The runtime CLIs of
 BMv2 connect to the Thrift port of a switch (attribute ``ThriftPort``; by
 default the first free port from ``$P4SIM_THRIFT_PORT_BASE``, 9090).
 
@@ -102,13 +114,14 @@ The main classes are:
   ``P4CoreV1model``, ``P4CorePsa``, ``P4PnaNic`` and ``P4CorePipeline``;
   ``SwitchedEthernetChannel`` and ``SwitchedEthernetHostDevice``;
   ``CustomP2PNetDevice``, ``P4P2PChannel`` and ``P4BridgeChannel``;
-  ``LinkFraming``; ``CustomHeader``; ``P4Controller``; ``P4TopologyReader``.
+  ``LinkFraming``; ``CustomHeader``; ``P4Controller`` and ``P4RuntimeApi``;
+  ``P4TopologyReader``.
 * **Helpers** -- ``P4Helper``, ``SwitchedEthernetHelper``,
   ``P4PointToPointHelper``, ``P4TopologyReaderHelper``,
   ``BuildNetworkFromTopology()`` (``p4-net-builder.h``), ``BuildFlowtableHelper``.
 * **Utilities** -- ``format-utils`` (paths of the P4 files, conversions),
-  ``SwitchApi`` (BMv2 runtime API), the input buffer and output queues
-  (``p4-queue.h``), ``P4TrafficManager``, ``FattreeTopoHelper``.
+  the input buffer and output queues (``p4-queue.h``), ``P4TrafficManager``,
+  ``FattreeTopoHelper``.
 
 ``doc/switch.md`` describes the switched-Ethernet devices and their timing, and
 ``doc/traffic-manager.md`` the traffic manager.
@@ -119,19 +132,33 @@ Scope and Limitations
 * P4sim runs P4 programs as BMv2 does.  Its timing model is that of the links
   and queues above; it does not model the stages of a hardware pipeline, and it
   does not forward cut-through.
-* BMv2 is built with C++17, so |ns3| must be too: ns-3.39 or earlier.  P4sim is
-  tested with ns-3.39, BMv2 1.15.8 and p4c 1.2.5.19 on Ubuntu 24.04.
+* P4sim builds with ns-3.39 to ns-3.49 and is tested with ns-3.39 and ns-3.49,
+  BMv2 1.15.8, on Ubuntu 24.04 and 26.04.  From ns-3.41 on, |ns3| builds as
+  C++20 or C++23, and the spdlog that BMv2 bundles does not compile as C++20;
+  P4sim then uses a copy of these headers with the fix
+  (``patches/bmv2-spdlog-cxx20.patch``).
 * The P4 program sees every frame, ARP included, and must forward it; the
   example programs do.
-* PNA ignores ``PipelineDelay``, has no Thrift service of its own, and does not
-  load its ``FlowTablePath``.
-* ``P4Controller`` works on v1model switches only.
-* ``digest()`` sends its records to the notification socket of BMv2; nothing in
-  the simulation receives them.
+* PNA has no Thrift service of its own: its ``FlowTablePath`` runs in BMv2's
+  generic ``bm_CLI``, which has the table commands but not the time commands of
+  ``pna_nic_CLI``.
+* PSA and PNA programs give no digest records, as BMv2's ``psa_switch`` and
+  ``pna_nic`` give none.
+* PSA and PNA programs can use the externs ``Counter``, ``Meter``, ``Hash``,
+  ``InternetChecksum`` and ``Random`` (BMv2's, in ``utils/psa_externs``).  p4c
+  does not compile ``DirectCounter`` and ``DirectMeter``, or a ``Counter`` in a
+  PNA program, for BMv2 yet.  Their meters measure simulation time, as the
+  meters of v1model programs do; only v1model direct meters (``direct_meter``)
+  measure the wall clock, as in BMv2.
 * The pipeline core (``P4SwitchArch`` 3) has no output queue: a congested port
-  can lose frames.
+  can lose frames.  It has no packet replication engine either: multicast
+  (``mcast_grp``), clones, resubmit and recirculation have no effect, and the
+  frame goes to ``egress_spec`` only.  The switch warns on stderr, once for
+  each of them, when the P4 program asks for one.
 * The Thrift server of a switch runs in its own thread.  Use the runtime CLIs
-  before and after the simulation, and ``P4Controller`` during it.
+  before and after the simulation, and ``P4Controller`` during it.  BMv2 cannot
+  stop the server, so the Thrift port of a destroyed switch stays open; it
+  answers every call with an error.
 
 ``doc/TODO.md`` in the module lists the open items.
 
@@ -158,14 +185,26 @@ Usage
 Prerequisites
 =============
 
-1. Install BMv2, p4c and their dependencies with the install script of
-   `p4lang/tutorials <https://github.com/p4lang/tutorials>`_ (Ubuntu 24.04).
+The quickest way is ``install.sh`` in ``contrib/p4sim``: on Ubuntu 24.04 or
+26.04, it installs the packages, p4c and BMv2 1.15.8, then builds and tests
+|ns3| with P4sim::
+
+  git clone --depth 1 -b ns-3.39 https://github.com/nsnam/ns-3-dev-git.git ns3.39
+  git clone https://github.com/HapCommSys/p4sim.git ns3.39/contrib/p4sim
+  ns3.39/contrib/p4sim/install.sh
+
+Otherwise:
+
+1. Install BMv2, p4c and their dependencies, for example with the install
+   script of `p4lang/tutorials <https://github.com/p4lang/tutorials>`_
+   (Ubuntu 24.04).
 2. Run ``sudo ./set_pkg_config_env.sh`` inside ``contrib/p4sim/`` to
    register the ``bm`` pkg-config package.
 3. No environment variable is needed: P4sim reads the P4 files from the
    p4sim folder of the build.
 
-``doc/vm-env.md`` has the full step-by-step guide.
+``doc/installation.md`` has the full guide, and ``doc/docker.md`` describes
+the Docker image.
 
 Building
 ========
@@ -236,31 +275,34 @@ Attributes of ``ns3::P4SwitchNetDevice``:
      - Architecture: 0 V1model, 1 PSA, 2 PNA, 3 Pipeline
    * - ``SwitchRate``
      - 0
-     - Packets per second that the pipeline takes; 0 means no limit
+     - V1model and PSA: packets per second that the pipeline takes; 0 means no limit
    * - ``PipelineDelay``
      - 0 s
-     - Latency of every packet in the pipeline (not PNA)
+     - Latency of every packet in the pipeline
    * - ``InputBufferSizeLow``
      - 128
-     - Input buffer for the packets received on the ports, in packets
+     - V1model and PSA: input buffer for the packets received on the ports, in packets (PNA: 1024)
    * - ``InputBufferSizeHigh``
      - 128
      - V1model: input buffer for resubmitted and recirculated packets
    * - ``QueueBufferSize``
      - 128
      - Each output queue, in packets: per port and priority (v1model, PSA), or per port (PNA)
+   * - ``TransferBufferSize``
+     - 0
+     - Frames a port holds after the egress pipeline, besides the one it sends (v1model and PSA, not with ``EnableVoqFabric``)
    * - ``EnableVoqFabric``
      - false
      - V1model: use the VOQ + fabric traffic manager instead of the output queues
    * - ``BmLogLevel``
      - off
-     - Level of the BMv2 pipeline log in ``/tmp/bmv2-<thrift port>-pipeline.log``; ``off`` writes none, ``trace`` logs every packet and is slower
+     - Level of the BMv2 pipeline log in ``/tmp/bmv2-<thrift port>-pipeline.log.txt``; ``off`` writes none, ``trace`` logs every packet and is slower
    * - ``ThriftPort``
      - 0
      - Thrift port of the runtime CLI; 0 picks the first free port
    * - ``EnableSwap``
      - false
-     - Swapping the P4 program at run time; the swap waits until the switch holds no packet
+     - Swapping the P4 program at run time; the swap waits until the switch holds no packet (PNA: except those in its output queues)
    * - ``Mtu``
      - 1500
      - Maximum transmission unit
@@ -284,7 +326,8 @@ Output
   ``P4PointToPointHelper``.
 * **Trace sources** of ``P4SwitchNetDevice`` -- ``MacTx``, ``MacTxDrop``,
   ``MacRx``, ``MacRxDrop`` (full input buffer), ``Sniffer``,
-  ``PromiscSniffer`` and ``SwitchEvent``.
+  ``PromiscSniffer``, ``SwitchEvent`` and ``Digest`` (the records of
+  ``digest()``).
 * **Logging** -- each component has its own ``NS_LOG`` component
   (e.g. ``P4SwitchNetDevice``, ``P4CoreV1model``, ``P4Controller``), and BMv2
   writes its pipeline log as set by ``BmLogLevel``.
@@ -328,18 +371,29 @@ Run any built-in example with::
      - The same over point-to-point or CSMA bridge ports
    * - ``p4-psa-ipv4-forwarding``, ``p4-pna-ipv4-forwarding``
      - The same with PSA and PNA
+   * - ``p4-psa-meter``, ``p4-psa-ecmp``
+     - PSA externs: a policer with ``Meter`` and ``Counter``, ECMP with ``Hash``
    * - ``p4-basic-example``
      - Four hosts and four switches (p4lang tutorial ``basic``)
    * - ``p4-basic-controller``
      - Flow entries changed by ``P4Controller`` during the simulation
+   * - ``p4-l2-learning``
+     - L2 learning: ``P4Controller`` fills the tables from the digests of the switch
    * - ``p4-basic-tunnel``
      - A tunnel with a custom header
    * - ``p4-firewall``
      - A stateful TCP firewall (p4lang tutorial ``firewall``)
+   * - ``p4-ecn``, ``p4-mri``, ``p4-multicast``
+     - The p4lang tutorials ``ecn``, ``mri`` and ``multicast``, with their solutions
+       unchanged; they also check your own solution (``doc/tutorials.md``)
    * - ``p4-spine-leaf-topo``
      - Spine-leaf network with ECMP load balancing
    * - ``p4-topo-fattree``
      - Generated k-ary fat tree with its flow tables
+   * - ``p4-priority-queues``
+     - Strict-priority queues, with the classification in the P4 program
+   * - ``p4-latency``
+     - What makes up the one-way delay through a P4 switch
    * - ``p4-voq-fabric-throughput``
      - Throughput of the VOQ + fabric traffic manager
 
@@ -352,9 +406,11 @@ Troubleshooting
 * If ``./ns3 configure`` reports that ``bm`` is not found, re-run
   ``sudo ./set_pkg_config_env.sh`` and verify with
   ``pkg-config --modversion bm``.
-* If a simulation fails with "file not found" for JSON or flow-table
-  paths, check that the file is in ``contrib/p4sim/examples/p4src/`` of
-  the ns-3 tree that you built.
+* If a simulation ends with "failed to load P4 JSON" or "cannot open the flow
+  table", check that the file is in ``contrib/p4sim/examples/p4src/`` of the
+  ns-3 tree that you built.
+* P4sim prints each command of a flow table that the runtime CLI rejects, with
+  the file and the line, and goes on.
 * BMv2 writes no pipeline log by default. To see how a P4 program handles
   each packet, set ``BmLogLevel`` to ``trace`` (for example with
   ``--ns3::P4SwitchNetDevice::BmLogLevel=trace``); the log slows long
@@ -363,7 +419,7 @@ Troubleshooting
 Validation
 **********
 
-The module has 18 test suites with 113 test cases, from unit tests of
+The module has 21 test suites with 167 test cases, from unit tests of
 single classes to packet tests that send frames through a switch and check the
 frames that leave it (``p4-packet``, with test files in the format of p4c's
 STF).  Among them:
@@ -371,9 +427,12 @@ STF).  Among them:
 * ``p4-packet`` -- forwarding on every architecture; drops, priorities,
   resubmit, recirculation, clones, multicast and LAG.
 * ``p4-egress``, ``p4-switch-rate``, ``p4-pipeline-delay``,
-  ``link-framing`` -- the timing of ports, pipeline and links.
+  ``p4-transfer-buffer``, ``link-framing`` -- the timing of ports, pipeline and
+  links.
 * ``p4-traffic-manager`` -- the VOQ + fabric traffic manager.
 * ``p4-controller`` -- ``P4Controller`` and the runtime CLIs.
+* ``p4-digest`` -- the records of ``digest()``, and L2 learning with
+  ``P4Controller``.
 * ``p4-config-swap`` -- swapping the P4 program at run time.
 
 ``test/Readme.md`` describes every suite and how to run them, for example::

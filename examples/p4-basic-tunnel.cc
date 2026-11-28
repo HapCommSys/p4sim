@@ -1,21 +1,12 @@
 /*
  * Copyright (c) 2025 TU Dresden
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation;
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+ * SPDX-License-Identifier: Apache-2.0
  *
  * Authors: Mingyu Ma <mingyu.ma@tu-dresden.de>
  */
+
+#include "example-check.h"
 
 #include "ns3/applications-module.h"
 #include "ns3/bridge-helper.h"
@@ -366,6 +357,7 @@ main(int argc, char* argv[])
     NS_LOG_INFO("Running simulation...");
     unsigned long simulate_start = getTickCount();
     Simulator::Stop(Seconds(global_stop_time));
+    p4sim_example::CountTraffic();
     Simulator::Run();
     Simulator::Destroy();
 
@@ -376,5 +368,5 @@ main(int argc, char* argv[])
                                           << "Run successfully!");
 
     PrintFinalThroughput();
-    return 0;
+    return p4sim_example::CheckDelivery();
 }

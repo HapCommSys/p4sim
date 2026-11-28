@@ -1,18 +1,7 @@
 /*
  * Copyright (c) 2025 TU Dresden
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation;
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+ * SPDX-License-Identifier: Apache-2.0
  *
  * Authors: Mingyu Ma <mingyu.ma@tu-dresden.de>
  */
@@ -24,6 +13,7 @@
 #include "ns3/mac48-address.h"
 #include "ns3/names.h"
 #include "ns3/p4-switch-net-device.h"
+#include "ns3/p4sim-ns3-compat.h"
 #include "ns3/packet.h"
 #include "ns3/pcap-file-wrapper.h"
 #include "ns3/trace-helper.h"
@@ -128,8 +118,7 @@ P4Helper::EnablePcapInternal(std::string    prefix,
     std::string filename = explicitFilename ? prefix
                                             : pcapHelper.GetFilenameFromDevice(prefix, device);
 
-    Ptr<PcapFileWrapper> file =
-        pcapHelper.CreateFile(filename, std::ios::out, PcapHelper::DLT_EN10MB);
+    Ptr<PcapFileWrapper> file = pcapHelper.CreateFile(filename, std::ios::out, P4SIM_PCAP_ETHERNET);
 
     if (promiscuous)
     {

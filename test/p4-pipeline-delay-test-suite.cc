@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-2.0-only
+// SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 TU Dresden. Author: Mingyu Ma <mingyu.ma@tu-dresden.de>
 
 /*
@@ -24,6 +24,7 @@
 #include "ns3/eth-net-device.h"
 #include "ns3/network-module.h"
 #include "ns3/p4-switch-net-device.h"
+#include "ns3/p4sim-ns3-compat.h"
 #include "ns3/switched-ethernet-channel.h"
 #include "ns3/test.h"
 
@@ -352,7 +353,7 @@ static class P4PipelineDelayTestSuite : public TestSuite
 {
   public:
     P4PipelineDelayTestSuite()
-        : TestSuite("p4-pipeline-delay", UNIT)
+        : TestSuite("p4-pipeline-delay", TestSuite::Type::UNIT)
     {
         // Sent at 1 us, then one serialisation on each of the two 10 Gbps links
         const Time txTime = DataRate("10Gbps").CalculateBytesTxTime(PAYLOAD + 14);
@@ -364,30 +365,35 @@ static class P4PipelineDelayTestSuite : public TestSuite
                                       {"v1model", P4SWITCH_ARCH_V1MODEL, false, 0, "10Gbps", 20},
                                       delay,
                                       first),
-            TestCase::QUICK);
+            P4SIM_TEST_QUICK);
         AddTestCase(
             new PipelineDelayTestCase("v1model: the VOQ path is delayed the same way",
                                       {"v1model", P4SWITCH_ARCH_V1MODEL, true, 0, "10Gbps", 20},
                                       delay,
                                       Time(0)),
-            TestCase::QUICK);
+            P4SIM_TEST_QUICK);
         AddTestCase(new PipelineDelayTestCase("psa: every frame arrives PipelineDelay later",
                                               {"psa", P4SWITCH_ARCH_PSA, false, 0, "10Gbps", 20},
                                               delay,
                                               first),
-                    TestCase::QUICK);
+                    P4SIM_TEST_QUICK);
+        AddTestCase(new PipelineDelayTestCase("pna: every frame arrives PipelineDelay later",
+                                              {"pna", P4NIC_ARCH_PNA, false, 0, "10Gbps", 20},
+                                              delay,
+                                              first),
+                    P4SIM_TEST_QUICK);
         AddTestCase(
             new PipelineDelayTestCase("pipeline: every frame arrives PipelineDelay later",
                                       {"pipeline", P4SWITCH_ARCH_PIPELINE, false, 0, "10Gbps", 20},
                                       delay,
                                       first),
-            TestCase::QUICK);
+            P4SIM_TEST_QUICK);
         AddTestCase(new PipelineDelayTestCase(
                         "v1model: with SwitchRate, the frames keep its spacing",
                         {"v1model", P4SWITCH_ARCH_V1MODEL, false, 100000, "10Gbps", 20},
                         delay,
                         first),
-                    TestCase::QUICK);
+                    P4SIM_TEST_QUICK);
         // Port 1 runs at 1 Gbps: its frames queue up and leave back to back every
         // 8.1 us. A delay longer than that shows that the pipeline does not hold
         // one packet at a time.
@@ -396,7 +402,7 @@ static class P4PipelineDelayTestSuite : public TestSuite
                                       {"v1model", P4SWITCH_ARCH_V1MODEL, false, 0, "1Gbps", 10},
                                       MicroSeconds(20),
                                       Time(0)),
-            TestCase::QUICK);
+            P4SIM_TEST_QUICK);
         // recirculate_v1model.p4: EtherType 0x9002 recirculates a frame twice.
         // clone_v1model.p4: 0x9001 clones it at the end of the ingress, 0x9002
         // at the end of the egress. The original goes to host 1, the clone to
@@ -407,21 +413,21 @@ static class P4PipelineDelayTestSuite : public TestSuite
                                                0x9002,
                                                {3},
                                                {}),
-                    TestCase::QUICK);
+                    P4SIM_TEST_QUICK);
         AddTestCase(new PipelinePassesTestCase("v1model: an ingress clone is delayed once, as "
                                                "its original",
                                                "clone",
                                                0x9001,
                                                {1},
                                                {1}),
-                    TestCase::QUICK);
+                    P4SIM_TEST_QUICK);
         AddTestCase(new PipelinePassesTestCase("v1model: an egress clone is delayed once more "
                                                "than its original",
                                                "clone",
                                                0x9002,
                                                {1},
                                                {2}),
-                    TestCase::QUICK);
-        AddTestCase(new PipelineDelayTeardownTestCase, TestCase::QUICK);
+                    P4SIM_TEST_QUICK);
+        AddTestCase(new PipelineDelayTeardownTestCase, P4SIM_TEST_QUICK);
     }
 } g_p4PipelineDelayTestSuite;

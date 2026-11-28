@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-2.0-only
+// SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 TU Dresden. Author: Mingyu Ma <mingyu.ma@tu-dresden.de>
 
 /*
@@ -18,6 +18,7 @@
 #include "ns3/core-module.h"
 #include "ns3/eth-net-device.h"
 #include "ns3/network-module.h"
+#include "ns3/p4sim-ns3-compat.h"
 #include "ns3/switched-ethernet-channel.h"
 #include "ns3/test.h"
 
@@ -280,13 +281,13 @@ static class SwitchedEthernetHostTestSuite : public TestSuite
 {
   public:
     SwitchedEthernetHostTestSuite()
-        : TestSuite("switched-ethernet-host", UNIT)
+        : TestSuite("switched-ethernet-host", TestSuite::Type::UNIT)
     {
-        AddTestCase(new HostTxQueueTestCase(0), TestCase::QUICK);
-        AddTestCase(new HostTxQueueTestCase(5), TestCase::QUICK);
-        AddTestCase(new HostDetachTestCase(), TestCase::QUICK);
-        AddTestCase(new HostExactRateTestCase(""), TestCase::QUICK);
-        AddTestCase(new HostExactRateTestCase("100Gbps"), TestCase::QUICK);
-        AddTestCase(new HostExactRateTestCase("400Gbps"), TestCase::QUICK);
+        AddTestCase(new HostTxQueueTestCase(0), P4SIM_TEST_QUICK);
+        AddTestCase(new HostTxQueueTestCase(5), P4SIM_TEST_QUICK);
+        AddTestCase(new HostDetachTestCase(), P4SIM_TEST_QUICK);
+        AddTestCase(new HostExactRateTestCase(""), P4SIM_TEST_QUICK);
+        AddTestCase(new HostExactRateTestCase("100Gbps"), P4SIM_TEST_QUICK);
+        AddTestCase(new HostExactRateTestCase("400Gbps"), P4SIM_TEST_QUICK);
     }
 } g_switchedEthernetHostTestSuite;

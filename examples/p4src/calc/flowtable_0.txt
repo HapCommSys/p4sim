@@ -1,1 +1,1 @@
-table_set_default calculate operation_drop
+# No commands: the entries and the default action of table calculate are const

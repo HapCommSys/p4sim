@@ -25,6 +25,7 @@
 #include "ns3/mac48-address.h"
 #include "ns3/net-device.h"
 #include "ns3/nstime.h"
+#include "ns3/p4-digest.h"
 #include "ns3/traced-callback.h"
 
 #include <cstdint>
@@ -150,17 +151,19 @@ class P4SwitchNetDevice : public NetDevice
     /**
      * \brief Receive a frame from the channel.
      *
-     * Called by SwitchedEthernetChannel::PropagationCompleteEvent() after the
+     * Scheduled by SwitchedEthernetChannel::TransmitEnd() after the
      * propagation delay.  The packet arrives as a complete Ethernet frame
      * (header already present).
      *
-     * In switch mode the frame is injected into the P4 pipeline.
+     * In switch mode the frame is injected into the P4 pipeline, on the port
+     * that is attached to \p channel in \p slot.
      * In NIC mode the frame is delivered up the protocol stack.
      *
      * \param packet Full Ethernet frame.
-     * \param sender The device that transmitted the frame.
+     * \param channel The channel that carried the frame.
+     * \param slot The slot of this device in \p channel (see Attach()).
      */
-    void Receive(Ptr<Packet> packet, Ptr<P4SwitchNetDevice> sender);
+    void Receive(Ptr<Packet> packet, Ptr<SwitchedEthernetChannel> channel, uint32_t slot);
 
     // -----------------------------------------------------------------------
     // Egress from P4 pipeline (called by pipeline cores)
@@ -185,7 +188,8 @@ class P4SwitchNetDevice : public NetDevice
      *                      when the frame was accepted onto the channel (left
      *                      unchanged when the frame was dropped).
      * \return true if the frame was handed to the channel; false if it was
-     *         dropped (null packet, drop port, invalid port, or channel busy).
+     *         dropped (null packet, drop port, invalid port, a frame shorter
+     *         than an Ethernet header, or channel busy).
      */
     bool SendNs3Packet(Ptr<Packet> packetOut,
                        int outPort,
@@ -203,7 +207,10 @@ class P4SwitchNetDevice : public NetDevice
     /** \return Channel at port \p n, or nullptr if out of range. */
     Ptr<SwitchedEthernetChannel> GetPortChannel(uint32_t n) const;
 
-    /** \return Port index of \p sender, or UINT32_MAX if not found. */
+    /**
+     * \return Index of the switched-Ethernet port whose other end is the P4
+     *         device \p sender, or UINT32_MAX if there is none (or \p sender is null).
+     */
     uint32_t GetPortNumber(Ptr<P4SwitchNetDevice> sender) const;
 
     /** \return Number of ports of both kinds, the same as GetNPorts() (main's name). */
@@ -283,6 +290,20 @@ class P4SwitchNetDevice : public NetDevice
      *        because its input buffer was full (see SwitchRate).
      */
     void NotifyMacRxDrop(Ptr<const Packet> packet);
+
+    /**
+     * \brief Fire Digest with \p digest, the record of a digest() that the P4 core
+     *        read at the end of the ingress. It fires in an event at the same
+     *        time, once the core is done with the packet, so that a trace sink
+     *        may change the tables of the switch or send a frame into it.
+     */
+    void NotifyDigest(const P4Digest& digest);
+
+    /**
+     * TracedCallback signature for the record of a digest().
+     * \param [in] digest the record
+     */
+    typedef void (*DigestTracedCallback)(const P4Digest& digest);
 
     /**
      * \brief Connect the P4 core's internal event trace to this device's
@@ -396,6 +417,9 @@ class P4SwitchNetDevice : public NetDevice
     /// Bridge port \p port has sent (PhyTxEnd) or given up (PhyTxDrop) a frame
     void BridgePortTxEnd(uint32_t port, Ptr<const Packet> packet);
 
+    /// Fire the Digest trace (see NotifyDigest())
+    void FireDigest(const P4Digest& digest);
+
     /// Runs when a port has finished serialising a frame (see SetPortTxDoneCallback())
     Callback<void, uint32_t> m_portTxDone;
 
@@ -428,6 +452,7 @@ class P4SwitchNetDevice : public NetDevice
     size_t m_queueBufferSize;
     uint64_t m_switchRate;
     Time m_pipelineDelay; //!< "PipelineDelay" attribute, passed to the core
+    uint32_t m_transferBufferSize{0}; //!< "TransferBufferSize" attribute, passed to the core
 
     /// When true, a V1model core routes traffic through the VOQ + fabric
     /// Traffic Manager instead of the legacy output queues (attribute
@@ -499,6 +524,9 @@ class P4SwitchNetDevice : public NetDevice
      * not take because its input buffer was full (see SwitchRate).
      */
     TracedCallback<Ptr<const Packet>> m_macRxDropTrace;
+
+    /// The records of digest() in the P4 program (see NotifyDigest())
+    TracedCallback<const P4Digest&> m_digestTrace;
 
     /**
      * A trace source that emulates a non-promiscuous protocol sniffer connected

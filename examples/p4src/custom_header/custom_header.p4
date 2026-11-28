@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2018 Nate Foster
+// SPDX-License-Identifier: Apache-2.0
+// Based on exercises/basic_tunnel/solution/basic_tunnel.p4 of https://github.com/p4lang/tutorials.
 /* -*- P4_16 -*- */
 #include <core.p4>
 #include <v1model.p4>

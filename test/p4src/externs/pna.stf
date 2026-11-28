@@ -1,0 +1,14 @@
+# The PNA externs of externs_pna.p4, as psa.stf without the counter (p4c cannot
+# compile a PNA Counter for BMv2 yet). The frames are sent at once; the meter
+# has no rates and gives green (1).
+#              ext: idx color a    b    c    d    crc  csum rnd  ok pad
+packet 0 000000000001 000000000002 88b5  00 00  4500 0030 1234 abcd 0000 0000 0000 00 00
+expect 1 000000000001 000000000002 88b5  00 01  4500 0030 1234 abcd 187e fccd **** 01 00
+packet 2 000000000001 000000000002 88b5  03 00  ffff 0001 0000 0000 0000 0000 0000 00 00
+expect 1 000000000001 000000000002 88b5  03 01  ffff 0001 0000 0000 cb7d fffe **** 01 00
+# Index 4 is out of range (4 meters): the meter leaves the color unset, and the
+# frame goes on
+packet 0 000000000001 000000000002 88b5  04 00  0000 0000 0000 0000 0000 0000 0000 00 00
+expect 1 000000000001 000000000002 88b5  04 **  0000 0000 0000 0000 0000 ffff **** 01 00
+# Not EtherType 0x88b5: dropped
+packet 0 000000000001 000000000002 0800  4500 0030

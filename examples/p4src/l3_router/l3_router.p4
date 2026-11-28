@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2018 Nate Foster
+// SPDX-License-Identifier: Apache-2.0
+// Based on exercises/basic/solution/basic.p4 of https://github.com/p4lang/tutorials.
 #include <core.p4>
 #include <v1model.p4>
 

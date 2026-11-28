@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-2.0-only
+// SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 TU Dresden. Author: Mingyu Ma <mingyu.ma@tu-dresden.de>
 
 /*
@@ -19,6 +19,7 @@
 #include "ns3/network-module.h"
 #include "ns3/p4-p2p-helper.h"
 #include "ns3/p4-switch-net-device.h"
+#include "ns3/p4sim-ns3-compat.h"
 #include "ns3/simple-channel.h"
 #include "ns3/simple-net-device.h"
 #include "ns3/switched-ethernet-channel.h"
@@ -354,11 +355,11 @@ static class P4BridgePortTestSuite : public TestSuite
 {
   public:
     P4BridgePortTestSuite()
-        : TestSuite("p4-bridge-port", UNIT)
+        : TestSuite("p4-bridge-port", TestSuite::Type::UNIT)
     {
-        AddTestCase(new BridgePortTestCase("v1model", P4SWITCH_ARCH_V1MODEL), TestCase::QUICK);
-        AddTestCase(new BridgePortTestCase("psa", P4SWITCH_ARCH_PSA), TestCase::QUICK);
-        AddTestCase(new BridgePortNoTxEndTestCase(DataRate(0)), TestCase::QUICK);
-        AddTestCase(new BridgePortNoTxEndTestCase(DataRate("100Mbps")), TestCase::QUICK);
+        AddTestCase(new BridgePortTestCase("v1model", P4SWITCH_ARCH_V1MODEL), P4SIM_TEST_QUICK);
+        AddTestCase(new BridgePortTestCase("psa", P4SWITCH_ARCH_PSA), P4SIM_TEST_QUICK);
+        AddTestCase(new BridgePortNoTxEndTestCase(DataRate(0)), P4SIM_TEST_QUICK);
+        AddTestCase(new BridgePortNoTxEndTestCase(DataRate("100Mbps")), P4SIM_TEST_QUICK);
     }
 } g_p4BridgePortTestSuite;

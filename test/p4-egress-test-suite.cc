@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-2.0-only
+// SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 TU Dresden. Author: Mingyu Ma <mingyu.ma@tu-dresden.de>
 
 /*
@@ -17,6 +17,7 @@
 #include "ns3/network-module.h"
 #include "ns3/p4-core-v1model.h"
 #include "ns3/p4-switch-net-device.h"
+#include "ns3/p4sim-ns3-compat.h"
 #include "ns3/switched-ethernet-channel.h"
 #include "ns3/test.h"
 
@@ -264,19 +265,18 @@ static class P4EgressTestSuite : public TestSuite
 {
   public:
     P4EgressTestSuite()
-        : TestSuite("p4-egress", UNIT)
+        : TestSuite("p4-egress", TestSuite::Type::UNIT)
     {
         for (uint32_t nPorts : {1, 2})
         {
             AddTestCase(new EgressRateTestCase("v1model", P4SWITCH_ARCH_V1MODEL, nPorts),
-                        TestCase::QUICK);
-            AddTestCase(new EgressRateTestCase("psa", P4SWITCH_ARCH_PSA, nPorts),
-                        TestCase::QUICK);
-            AddTestCase(new EgressRateTestCase("pna", P4NIC_ARCH_PNA, nPorts), TestCase::QUICK);
+                        P4SIM_TEST_QUICK);
+            AddTestCase(new EgressRateTestCase("psa", P4SWITCH_ARCH_PSA, nPorts), P4SIM_TEST_QUICK);
+            AddTestCase(new EgressRateTestCase("pna", P4NIC_ARCH_PNA, nPorts), P4SIM_TEST_QUICK);
         }
-        AddTestCase(new EgressTeardownTestCase(), TestCase::QUICK);
+        AddTestCase(new EgressTeardownTestCase(), P4SIM_TEST_QUICK);
         AddTestCase(new EgressRefusedTeardownTestCase("v1model", P4SWITCH_ARCH_V1MODEL),
-                    TestCase::QUICK);
-        AddTestCase(new EgressRefusedTeardownTestCase("psa", P4SWITCH_ARCH_PSA), TestCase::QUICK);
+                    P4SIM_TEST_QUICK);
+        AddTestCase(new EgressRefusedTeardownTestCase("psa", P4SWITCH_ARCH_PSA), P4SIM_TEST_QUICK);
     }
 } g_p4EgressTestSuite;

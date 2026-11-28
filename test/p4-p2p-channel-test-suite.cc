@@ -18,6 +18,7 @@
  * Author: Mathieu Lacage <mathieu.lacage@sophia.inria.fr>
  */
 
+#include "ns3/p4sim-ns3-compat.h"
 #include "ns3/test.h"
 #include "ns3/drop-tail-queue.h"
 #include "ns3/simulator.h"
@@ -221,10 +222,10 @@ public:
   PointToPointTestSuite ();
 };
 
-PointToPointTestSuite::PointToPointTestSuite () : TestSuite ("p4-p2p-channel", UNIT)
+PointToPointTestSuite::PointToPointTestSuite () : TestSuite ("p4-p2p-channel", TestSuite::Type::UNIT)
 {
-  AddTestCase (new PointToPointTest, TestCase::QUICK);
-  AddTestCase (new PointToPointExactRateTest, TestCase::QUICK);
+  AddTestCase (new PointToPointTest, P4SIM_TEST_QUICK);
+  AddTestCase (new PointToPointExactRateTest, P4SIM_TEST_QUICK);
 }
 
 static PointToPointTestSuite g_pointToPointTestSuite; //!< The testsuite

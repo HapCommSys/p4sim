@@ -1,0 +1,1206 @@
+{
+  "header_types" : [
+    {
+      "name" : "ethernet_t",
+      "id" : 0,
+      "fields" : [
+        ["dstAddr", 48, false],
+        ["srcAddr", 48, false],
+        ["etherType", 16, false]
+      ]
+    },
+    {
+      "name" : "ext_t",
+      "id" : 1,
+      "fields" : [
+        ["idx", 8, false],
+        ["color", 8, false],
+        ["a", 16, false],
+        ["b", 16, false],
+        ["c", 16, false],
+        ["d", 16, false],
+        ["crc", 16, false],
+        ["csum", 16, false],
+        ["rnd", 16, false],
+        ["rnd_ok", 8, false],
+        ["pad", 8, false]
+      ]
+    },
+    {
+      "name" : "pna_main_parser_input_metadata_t",
+      "id" : 2,
+      "fields" : [
+        ["recirculated", 1, false],
+        ["input_port", 32, false],
+        ["_padding", 7, false]
+      ]
+    },
+    {
+      "name" : "pna_main_input_metadata_t",
+      "id" : 3,
+      "fields" : [
+        ["recirculated", 1, false],
+        ["timestamp", 64, false],
+        ["parser_error", 32, false],
+        ["class_of_service", 8, false],
+        ["input_port", 32, false],
+        ["_padding_0", 7, false]
+      ]
+    },
+    {
+      "name" : "pna_main_output_metadata_t",
+      "id" : 4,
+      "fields" : [
+        ["class_of_service", 8, false]
+      ]
+    },
+    {
+      "name" : "scalars_t",
+      "id" : 5,
+      "fields" : [
+        ["tmp", 16, false],
+        ["tmp_0", 16, false],
+        ["tmp_1", 16, false],
+        ["tmp_2", 16, false],
+        ["tmp_3", 16, false],
+        ["tmp_4", 16, false],
+        ["tmp_5", 16, false],
+        ["tmp_6", 16, false],
+        ["color_0", 32, false],
+        ["pna_main_parser_input_metadata_t.recirculated", 1, false],
+        ["pna_main_parser_input_metadata_t.input_port", 32, false],
+        ["pna_main_input_metadata_t.recirculated", 1, false],
+        ["pna_main_input_metadata_t.timestamp", 64, false],
+        ["pna_main_input_metadata_t.parser_error", 32, false],
+        ["pna_main_input_metadata_t.class_of_service", 8, false],
+        ["pna_main_input_metadata_t.input_port", 32, false],
+        ["pna_main_output_metadata_t.class_of_service", 8, false],
+        ["metadata_t.csum", 16, false],
+        ["_padding_1", 6, false]
+      ]
+    }
+  ],
+  "headers" : [
+    {
+      "name" : "ethernet",
+      "id" : 0,
+      "header_type" : "ethernet_t",
+      "metadata" : false,
+      "pi_omit" : true
+    },
+    {
+      "name" : "ext",
+      "id" : 1,
+      "header_type" : "ext_t",
+      "metadata" : false,
+      "pi_omit" : true
+    },
+    {
+      "name" : "pna_main_parser_input_metadata",
+      "id" : 2,
+      "header_type" : "pna_main_parser_input_metadata_t",
+      "metadata" : true,
+      "pi_omit" : true
+    },
+    {
+      "name" : "pna_main_input_metadata",
+      "id" : 3,
+      "header_type" : "pna_main_input_metadata_t",
+      "metadata" : true,
+      "pi_omit" : true
+    },
+    {
+      "name" : "pna_main_output_metadata",
+      "id" : 4,
+      "header_type" : "pna_main_output_metadata_t",
+      "metadata" : true,
+      "pi_omit" : true
+    },
+    {
+      "name" : "scalars",
+      "id" : 5,
+      "header_type" : "scalars_t",
+      "metadata" : true,
+      "pi_omit" : true
+    }
+  ],
+  "header_stacks" : [],
+  "header_union_types" : [],
+  "header_unions" : [],
+  "header_union_stacks" : [],
+  "field_lists" : [],
+  "errors" : [],
+  "enums" : [
+    {
+      "name" : "PNA_MeterColor_t",
+      "entries" : [
+        ["RED", 0],
+        ["GREEN", 1],
+        ["YELLOW", 2]
+      ]
+    }
+  ],
+  "parsers" : [
+    {
+      "name" : "main_parser",
+      "id" : 0,
+      "init_state" : "start",
+      "parse_states" : [
+        {
+          "name" : "start",
+          "id" : 0,
+          "parser_ops" : [
+            {
+              "parameters" : [
+                {
+                  "type" : "regular",
+                  "value" : "ethernet"
+                }
+              ],
+              "op" : "extract"
+            }
+          ],
+          "transitions" : [
+            {
+              "type" : "hexstr",
+              "value" : "0x88b5",
+              "mask" : null,
+              "next_state" : "parse_ext"
+            },
+            {
+              "type" : "default",
+              "value" : null,
+              "mask" : null,
+              "next_state" : null
+            }
+          ],
+          "transition_key" : [
+            {
+              "type" : "field",
+              "value" : ["ethernet", "etherType"]
+            }
+          ]
+        },
+        {
+          "name" : "parse_ext",
+          "id" : 1,
+          "parser_ops" : [
+            {
+              "parameters" : [
+                {
+                  "type" : "regular",
+                  "value" : "ext"
+                }
+              ],
+              "op" : "extract"
+            },
+            {
+              "parameters" : [
+                {
+                  "op" : "_InternetChecksum_clear",
+                  "parameters" : [
+                    {
+                      "type" : "extern",
+                      "value" : "MainParserImpl.checksum"
+                    }
+                  ],
+                  "source_info" : {
+                    "filename" : "externs_pna.p4",
+                    "line" : 54,
+                    "column" : 8,
+                    "source_fragment" : "checksum.clear()"
+                  }
+                }
+              ],
+              "op" : "primitive"
+            },
+            {
+              "parameters" : [
+                {
+                  "type" : "field",
+                  "value" : ["scalars", "tmp"]
+                },
+                {
+                  "type" : "field",
+                  "value" : ["ext", "a"]
+                }
+              ],
+              "op" : "set"
+            },
+            {
+              "parameters" : [
+                {
+                  "type" : "field",
+                  "value" : ["scalars", "tmp_0"]
+                },
+                {
+                  "type" : "field",
+                  "value" : ["ext", "b"]
+                }
+              ],
+              "op" : "set"
+            },
+            {
+              "parameters" : [
+                {
+                  "type" : "field",
+                  "value" : ["scalars", "tmp_1"]
+                },
+                {
+                  "type" : "field",
+                  "value" : ["ext", "c"]
+                }
+              ],
+              "op" : "set"
+            },
+            {
+              "parameters" : [
+                {
+                  "type" : "field",
+                  "value" : ["scalars", "tmp_2"]
+                },
+                {
+                  "type" : "field",
+                  "value" : ["ext", "d"]
+                }
+              ],
+              "op" : "set"
+            },
+            {
+              "parameters" : [
+                {
+                  "op" : "_InternetChecksum_add",
+                  "parameters" : [
+                    {
+                      "type" : "extern",
+                      "value" : "MainParserImpl.checksum"
+                    },
+                    {
+                      "type" : "field_list",
+                      "value" : [
+                        {
+                          "type" : "field",
+                          "value" : ["scalars", "tmp"]
+                        },
+                        {
+                          "type" : "field",
+                          "value" : ["scalars", "tmp_0"]
+                        },
+                        {
+                          "type" : "field",
+                          "value" : ["scalars", "tmp_1"]
+                        },
+                        {
+                          "type" : "field",
+                          "value" : ["scalars", "tmp_2"]
+                        }
+                      ]
+                    }
+                  ],
+                  "source_info" : {
+                    "filename" : "externs_pna.p4",
+                    "line" : 55,
+                    "column" : 8,
+                    "source_fragment" : "checksum.add({hdr.ext.a, hdr.ext.b, hdr.ext.c, hdr.ext.d})"
+                  }
+                }
+              ],
+              "op" : "primitive"
+            },
+            {
+              "parameters" : [
+                {
+                  "op" : "_InternetChecksum_get",
+                  "parameters" : [
+                    {
+                      "type" : "extern",
+                      "value" : "MainParserImpl.checksum"
+                    },
+                    {
+                      "type" : "field",
+                      "value" : ["scalars", "metadata_t.csum"]
+                    }
+                  ],
+                  "source_info" : {
+                    "filename" : "externs_pna.p4",
+                    "line" : 56,
+                    "column" : 20,
+                    "source_fragment" : "checksum.get()"
+                  }
+                }
+              ],
+              "op" : "primitive"
+            }
+          ],
+          "transitions" : [
+            {
+              "type" : "default",
+              "value" : null,
+              "mask" : null,
+              "next_state" : null
+            }
+          ],
+          "transition_key" : []
+        }
+      ]
+    }
+  ],
+  "parse_vsets" : [],
+  "deparsers" : [
+    {
+      "name" : "main_deparser",
+      "id" : 0,
+      "source_info" : {
+        "filename" : "externs_pna.p4",
+        "line" : 93,
+        "column" : 8,
+        "source_fragment" : "MainDeparserImpl"
+      },
+      "order" : ["ethernet", "ext"],
+      "primitives" : []
+    }
+  ],
+  "meter_arrays" : [],
+  "counter_arrays" : [],
+  "register_arrays" : [],
+  "calculations" : [],
+  "learn_lists" : [],
+  "actions" : [
+    {
+      "name" : "externs_pna75",
+      "id" : 0,
+      "runtime_data" : [],
+      "primitives" : [
+        {
+          "op" : "assign",
+          "parameters" : [
+            {
+              "type" : "field",
+              "value" : ["ext", "color"]
+            },
+            {
+              "type" : "hexstr",
+              "value" : "0x01"
+            }
+          ],
+          "source_info" : {
+            "filename" : "externs_pna.p4",
+            "line" : 75,
+            "column" : 12,
+            "source_fragment" : "hdr.ext.color = 1"
+          }
+        }
+      ]
+    },
+    {
+      "name" : "externs_pna77",
+      "id" : 1,
+      "runtime_data" : [],
+      "primitives" : [
+        {
+          "op" : "assign",
+          "parameters" : [
+            {
+              "type" : "field",
+              "value" : ["ext", "color"]
+            },
+            {
+              "type" : "hexstr",
+              "value" : "0x02"
+            }
+          ],
+          "source_info" : {
+            "filename" : "externs_pna.p4",
+            "line" : 77,
+            "column" : 12,
+            "source_fragment" : "hdr.ext.color = 2"
+          }
+        }
+      ]
+    },
+    {
+      "name" : "externs_pna79",
+      "id" : 2,
+      "runtime_data" : [],
+      "primitives" : [
+        {
+          "op" : "assign",
+          "parameters" : [
+            {
+              "type" : "field",
+              "value" : ["ext", "color"]
+            },
+            {
+              "type" : "hexstr",
+              "value" : "0x00"
+            }
+          ],
+          "source_info" : {
+            "filename" : "externs_pna.p4",
+            "line" : 79,
+            "column" : 12,
+            "source_fragment" : "hdr.ext.color = 0"
+          }
+        }
+      ]
+    },
+    {
+      "name" : "externs_pna73",
+      "id" : 3,
+      "runtime_data" : [],
+      "primitives" : [
+        {
+          "op" : "_Meter_execute",
+          "parameters" : [
+            {
+              "type" : "extern",
+              "value" : "MainControlImpl.meter"
+            },
+            {
+              "type" : "field",
+              "value" : ["ext", "idx"]
+            },
+            {
+              "type" : "field",
+              "value" : ["scalars", "color_0"]
+            }
+          ],
+          "source_info" : {
+            "filename" : "externs_pna.p4",
+            "line" : 73,
+            "column" : 33,
+            "source_fragment" : "meter.execute(hdr.ext.idx)"
+          }
+        }
+      ]
+    },
+    {
+      "name" : "externs_pna85",
+      "id" : 4,
+      "runtime_data" : [],
+      "primitives" : [
+        {
+          "op" : "assign",
+          "parameters" : [
+            {
+              "type" : "field",
+              "value" : ["ext", "rnd_ok"]
+            },
+            {
+              "type" : "hexstr",
+              "value" : "0x01"
+            }
+          ],
+          "source_info" : {
+            "filename" : "externs_pna.p4",
+            "line" : 85,
+            "column" : 12,
+            "source_fragment" : "hdr.ext.rnd_ok = 1"
+          }
+        }
+      ]
+    },
+    {
+      "name" : "externs_pna87",
+      "id" : 5,
+      "runtime_data" : [],
+      "primitives" : [
+        {
+          "op" : "assign",
+          "parameters" : [
+            {
+              "type" : "field",
+              "value" : ["ext", "rnd_ok"]
+            },
+            {
+              "type" : "hexstr",
+              "value" : "0x00"
+            }
+          ],
+          "source_info" : {
+            "filename" : "externs_pna.p4",
+            "line" : 87,
+            "column" : 12,
+            "source_fragment" : "hdr.ext.rnd_ok = 0"
+          }
+        }
+      ]
+    },
+    {
+      "name" : "externs_pna81",
+      "id" : 6,
+      "runtime_data" : [],
+      "primitives" : [
+        {
+          "op" : "assign",
+          "parameters" : [
+            {
+              "type" : "field",
+              "value" : ["scalars", "tmp_3"]
+            },
+            {
+              "type" : "field",
+              "value" : ["ext", "a"]
+            }
+          ],
+          "source_info" : {
+            "filename" : "externs_pna.p4",
+            "line" : 81,
+            "column" : 38,
+            "source_fragment" : "hdr.ext.a"
+          }
+        },
+        {
+          "op" : "assign",
+          "parameters" : [
+            {
+              "type" : "field",
+              "value" : ["scalars", "tmp_4"]
+            },
+            {
+              "type" : "field",
+              "value" : ["ext", "b"]
+            }
+          ],
+          "source_info" : {
+            "filename" : "externs_pna.p4",
+            "line" : 81,
+            "column" : 49,
+            "source_fragment" : "hdr.ext.b"
+          }
+        },
+        {
+          "op" : "assign",
+          "parameters" : [
+            {
+              "type" : "field",
+              "value" : ["scalars", "tmp_5"]
+            },
+            {
+              "type" : "field",
+              "value" : ["ext", "c"]
+            }
+          ],
+          "source_info" : {
+            "filename" : "externs_pna.p4",
+            "line" : 81,
+            "column" : 60,
+            "source_fragment" : "hdr.ext.c"
+          }
+        },
+        {
+          "op" : "assign",
+          "parameters" : [
+            {
+              "type" : "field",
+              "value" : ["scalars", "tmp_6"]
+            },
+            {
+              "type" : "field",
+              "value" : ["ext", "d"]
+            }
+          ],
+          "source_info" : {
+            "filename" : "externs_pna.p4",
+            "line" : 81,
+            "column" : 71,
+            "source_fragment" : "hdr.ext.d"
+          }
+        },
+        {
+          "op" : "_Hash_get_hash",
+          "parameters" : [
+            {
+              "type" : "extern",
+              "value" : "MainControlImpl.crc16"
+            },
+            {
+              "type" : "field",
+              "value" : ["ext", "crc"]
+            },
+            {
+              "type" : "field_list",
+              "value" : [
+                {
+                  "type" : "field",
+                  "value" : ["scalars", "tmp_3"]
+                },
+                {
+                  "type" : "field",
+                  "value" : ["scalars", "tmp_4"]
+                },
+                {
+                  "type" : "field",
+                  "value" : ["scalars", "tmp_5"]
+                },
+                {
+                  "type" : "field",
+                  "value" : ["scalars", "tmp_6"]
+                }
+              ]
+            }
+          ],
+          "source_info" : {
+            "filename" : "externs_pna.p4",
+            "line" : 81,
+            "column" : 22,
+            "source_fragment" : "crc16.get_hash({hdr.ext.a, hdr.ext.b, hdr.ext.c, hdr.ext.d})"
+          }
+        },
+        {
+          "op" : "assign",
+          "parameters" : [
+            {
+              "type" : "field",
+              "value" : ["ext", "csum"]
+            },
+            {
+              "type" : "field",
+              "value" : ["scalars", "metadata_t.csum"]
+            }
+          ],
+          "source_info" : {
+            "filename" : "externs_pna.p4",
+            "line" : 82,
+            "column" : 8,
+            "source_fragment" : "hdr.ext.csum = meta.csum"
+          }
+        },
+        {
+          "op" : "modify_field_rng_uniform",
+          "parameters" : [
+            {
+              "type" : "field",
+              "value" : ["ext", "rnd"]
+            },
+            {
+              "type" : "hexstr",
+              "value" : "0x0064"
+            },
+            {
+              "type" : "hexstr",
+              "value" : "0x00c8"
+            }
+          ],
+          "source_info" : {
+            "filename" : "/usr/share/p4c/p4include/bmv2/pna.p4",
+            "line" : 508,
+            "column" : 4,
+            "source_fragment" : "read"
+          }
+        }
+      ]
+    },
+    {
+      "name" : "externs_pna89",
+      "id" : 7,
+      "runtime_data" : [],
+      "primitives" : [
+        {
+          "op" : "send_to_port",
+          "source_info" : {
+            "filename" : "externs_pna.p4",
+            "line" : 89,
+            "column" : 8,
+            "source_fragment" : "send_to_port((PortId_t) 32w1)"
+          },
+          "parameters" : [
+            {
+              "type" : "hexstr",
+              "value" : "0x00000001"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name" : "externs_pna70",
+      "id" : 8,
+      "runtime_data" : [],
+      "primitives" : [
+        {
+          "op" : "drop_packet",
+          "source_info" : {
+            "filename" : "externs_pna.p4",
+            "line" : 70,
+            "column" : 12,
+            "source_fragment" : "drop_packet()"
+          },
+          "parameters" : []
+        }
+      ]
+    }
+  ],
+  "pipelines" : [
+    {
+      "name" : "main_control",
+      "id" : 0,
+      "source_info" : {
+        "filename" : "externs_pna.p4",
+        "line" : 61,
+        "column" : 8,
+        "source_fragment" : "MainControlImpl"
+      },
+      "init_table" : "node_2",
+      "tables" : [
+        {
+          "name" : "tbl_externs_pna73",
+          "id" : 0,
+          "source_info" : {
+            "filename" : "externs_pna.p4",
+            "line" : 73,
+            "column" : 25,
+            "source_fragment" : "color"
+          },
+          "key" : [],
+          "match_type" : "exact",
+          "type" : "simple",
+          "max_size" : 1024,
+          "with_counters" : false,
+          "support_timeout" : false,
+          "direct_meters" : null,
+          "action_ids" : [3],
+          "actions" : ["externs_pna73"],
+          "base_default_next" : "node_4",
+          "next_tables" : {
+            "externs_pna73" : "node_4"
+          },
+          "default_entry" : {
+            "action_id" : 3,
+            "action_const" : true,
+            "action_data" : [],
+            "action_entry_const" : true
+          }
+        },
+        {
+          "name" : "tbl_externs_pna75",
+          "id" : 1,
+          "source_info" : {
+            "filename" : "externs_pna.p4",
+            "line" : 75,
+            "column" : 26,
+            "source_fragment" : "="
+          },
+          "key" : [],
+          "match_type" : "exact",
+          "type" : "simple",
+          "max_size" : 1024,
+          "with_counters" : false,
+          "support_timeout" : false,
+          "direct_meters" : null,
+          "action_ids" : [0],
+          "actions" : ["externs_pna75"],
+          "base_default_next" : "tbl_externs_pna81",
+          "next_tables" : {
+            "externs_pna75" : "tbl_externs_pna81"
+          },
+          "default_entry" : {
+            "action_id" : 0,
+            "action_const" : true,
+            "action_data" : [],
+            "action_entry_const" : true
+          }
+        },
+        {
+          "name" : "tbl_externs_pna77",
+          "id" : 2,
+          "source_info" : {
+            "filename" : "externs_pna.p4",
+            "line" : 77,
+            "column" : 26,
+            "source_fragment" : "="
+          },
+          "key" : [],
+          "match_type" : "exact",
+          "type" : "simple",
+          "max_size" : 1024,
+          "with_counters" : false,
+          "support_timeout" : false,
+          "direct_meters" : null,
+          "action_ids" : [1],
+          "actions" : ["externs_pna77"],
+          "base_default_next" : "tbl_externs_pna81",
+          "next_tables" : {
+            "externs_pna77" : "tbl_externs_pna81"
+          },
+          "default_entry" : {
+            "action_id" : 1,
+            "action_const" : true,
+            "action_data" : [],
+            "action_entry_const" : true
+          }
+        },
+        {
+          "name" : "tbl_externs_pna79",
+          "id" : 3,
+          "source_info" : {
+            "filename" : "externs_pna.p4",
+            "line" : 79,
+            "column" : 26,
+            "source_fragment" : "="
+          },
+          "key" : [],
+          "match_type" : "exact",
+          "type" : "simple",
+          "max_size" : 1024,
+          "with_counters" : false,
+          "support_timeout" : false,
+          "direct_meters" : null,
+          "action_ids" : [2],
+          "actions" : ["externs_pna79"],
+          "base_default_next" : "tbl_externs_pna81",
+          "next_tables" : {
+            "externs_pna79" : "tbl_externs_pna81"
+          },
+          "default_entry" : {
+            "action_id" : 2,
+            "action_const" : true,
+            "action_data" : [],
+            "action_entry_const" : true
+          }
+        },
+        {
+          "name" : "tbl_externs_pna81",
+          "id" : 4,
+          "source_info" : {
+            "filename" : "externs_pna.p4",
+            "line" : 81,
+            "column" : 20,
+            "source_fragment" : "= crc16.get_hash({hdr.ext.a, hdr.ext.b, hdr.ext.c, hdr.ext.d}); ..."
+          },
+          "key" : [],
+          "match_type" : "exact",
+          "type" : "simple",
+          "max_size" : 1024,
+          "with_counters" : false,
+          "support_timeout" : false,
+          "direct_meters" : null,
+          "action_ids" : [6],
+          "actions" : ["externs_pna81"],
+          "base_default_next" : "node_10",
+          "next_tables" : {
+            "externs_pna81" : "node_10"
+          },
+          "default_entry" : {
+            "action_id" : 6,
+            "action_const" : true,
+            "action_data" : [],
+            "action_entry_const" : true
+          }
+        },
+        {
+          "name" : "tbl_externs_pna85",
+          "id" : 5,
+          "source_info" : {
+            "filename" : "externs_pna.p4",
+            "line" : 85,
+            "column" : 27,
+            "source_fragment" : "="
+          },
+          "key" : [],
+          "match_type" : "exact",
+          "type" : "simple",
+          "max_size" : 1024,
+          "with_counters" : false,
+          "support_timeout" : false,
+          "direct_meters" : null,
+          "action_ids" : [4],
+          "actions" : ["externs_pna85"],
+          "base_default_next" : "tbl_externs_pna89",
+          "next_tables" : {
+            "externs_pna85" : "tbl_externs_pna89"
+          },
+          "default_entry" : {
+            "action_id" : 4,
+            "action_const" : true,
+            "action_data" : [],
+            "action_entry_const" : true
+          }
+        },
+        {
+          "name" : "tbl_externs_pna87",
+          "id" : 6,
+          "source_info" : {
+            "filename" : "externs_pna.p4",
+            "line" : 87,
+            "column" : 27,
+            "source_fragment" : "="
+          },
+          "key" : [],
+          "match_type" : "exact",
+          "type" : "simple",
+          "max_size" : 1024,
+          "with_counters" : false,
+          "support_timeout" : false,
+          "direct_meters" : null,
+          "action_ids" : [5],
+          "actions" : ["externs_pna87"],
+          "base_default_next" : "tbl_externs_pna89",
+          "next_tables" : {
+            "externs_pna87" : "tbl_externs_pna89"
+          },
+          "default_entry" : {
+            "action_id" : 5,
+            "action_const" : true,
+            "action_data" : [],
+            "action_entry_const" : true
+          }
+        },
+        {
+          "name" : "tbl_externs_pna89",
+          "id" : 7,
+          "source_info" : {
+            "filename" : "externs_pna.p4",
+            "line" : 89,
+            "column" : 8,
+            "source_fragment" : "send_to_port((PortId_t) 32w1)"
+          },
+          "key" : [],
+          "match_type" : "exact",
+          "type" : "simple",
+          "max_size" : 1024,
+          "with_counters" : false,
+          "support_timeout" : false,
+          "direct_meters" : null,
+          "action_ids" : [7],
+          "actions" : ["externs_pna89"],
+          "base_default_next" : null,
+          "next_tables" : {
+            "externs_pna89" : null
+          },
+          "default_entry" : {
+            "action_id" : 7,
+            "action_const" : true,
+            "action_data" : [],
+            "action_entry_const" : true
+          }
+        },
+        {
+          "name" : "tbl_externs_pna70",
+          "id" : 8,
+          "source_info" : {
+            "filename" : "externs_pna.p4",
+            "line" : 70,
+            "column" : 12,
+            "source_fragment" : "drop_packet()"
+          },
+          "key" : [],
+          "match_type" : "exact",
+          "type" : "simple",
+          "max_size" : 1024,
+          "with_counters" : false,
+          "support_timeout" : false,
+          "direct_meters" : null,
+          "action_ids" : [8],
+          "actions" : ["externs_pna70"],
+          "base_default_next" : null,
+          "next_tables" : {
+            "externs_pna70" : null
+          },
+          "default_entry" : {
+            "action_id" : 8,
+            "action_const" : true,
+            "action_data" : [],
+            "action_entry_const" : true
+          }
+        }
+      ],
+      "action_profiles" : [],
+      "conditionals" : [
+        {
+          "name" : "node_2",
+          "id" : 0,
+          "source_info" : {
+            "filename" : "externs_pna.p4",
+            "line" : 69,
+            "column" : 13,
+            "source_fragment" : "hdr.ext.isValid()"
+          },
+          "expression" : {
+            "type" : "expression",
+            "value" : {
+              "op" : "d2b",
+              "left" : null,
+              "right" : {
+                "type" : "field",
+                "value" : ["ext", "$valid$"]
+              }
+            }
+          },
+          "true_next" : "tbl_externs_pna73",
+          "false_next" : "tbl_externs_pna70"
+        },
+        {
+          "name" : "node_4",
+          "id" : 1,
+          "source_info" : {
+            "filename" : "externs_pna.p4",
+            "line" : 74,
+            "column" : 12,
+            "source_fragment" : "color == PNA_MeterColor_t.GREEN"
+          },
+          "expression" : {
+            "type" : "expression",
+            "value" : {
+              "op" : "==",
+              "left" : {
+                "type" : "field",
+                "value" : ["scalars", "color_0"]
+              },
+              "right" : {
+                "type" : "hexstr",
+                "value" : "0x00000001"
+              }
+            }
+          },
+          "true_next" : "tbl_externs_pna75",
+          "false_next" : "node_6"
+        },
+        {
+          "name" : "node_6",
+          "id" : 2,
+          "source_info" : {
+            "filename" : "externs_pna.p4",
+            "line" : 76,
+            "column" : 19,
+            "source_fragment" : "color == PNA_MeterColor_t.YELLOW"
+          },
+          "expression" : {
+            "type" : "expression",
+            "value" : {
+              "op" : "==",
+              "left" : {
+                "type" : "field",
+                "value" : ["scalars", "color_0"]
+              },
+              "right" : {
+                "type" : "hexstr",
+                "value" : "0x00000002"
+              }
+            }
+          },
+          "true_next" : "tbl_externs_pna77",
+          "false_next" : "tbl_externs_pna79"
+        },
+        {
+          "name" : "node_10",
+          "id" : 3,
+          "source_info" : {
+            "filename" : "externs_pna.p4",
+            "line" : 84,
+            "column" : 12,
+            "source_fragment" : "hdr.ext.rnd >= 100 && hdr.ext.rnd <= 200"
+          },
+          "expression" : {
+            "type" : "expression",
+            "value" : {
+              "op" : "and",
+              "left" : {
+                "type" : "expression",
+                "value" : {
+                  "op" : ">=",
+                  "left" : {
+                    "type" : "field",
+                    "value" : ["ext", "rnd"]
+                  },
+                  "right" : {
+                    "type" : "hexstr",
+                    "value" : "0x0064"
+                  }
+                }
+              },
+              "right" : {
+                "type" : "expression",
+                "value" : {
+                  "op" : "<=",
+                  "left" : {
+                    "type" : "field",
+                    "value" : ["ext", "rnd"]
+                  },
+                  "right" : {
+                    "type" : "hexstr",
+                    "value" : "0x00c8"
+                  }
+                }
+              }
+            }
+          },
+          "true_next" : "tbl_externs_pna85",
+          "false_next" : "tbl_externs_pna87"
+        }
+      ]
+    }
+  ],
+  "checksums" : [],
+  "force_arith" : [],
+  "extern_instances" : [
+    {
+      "name" : "MainParserImpl.checksum",
+      "id" : 0,
+      "type" : "InternetChecksum",
+      "source_info" : {
+        "filename" : "externs_pna.p4",
+        "line" : 43,
+        "column" : 23,
+        "source_fragment" : "checksum"
+      }
+    },
+    {
+      "name" : "MainControlImpl.meter",
+      "id" : 1,
+      "type" : "Meter",
+      "source_info" : {
+        "filename" : "externs_pna.p4",
+        "line" : 64,
+        "column" : 46,
+        "source_fragment" : "meter"
+      },
+      "attribute_values" : [
+        {
+          "name" : "is_direct",
+          "type" : "hexstr",
+          "value" : 0
+        },
+        {
+          "name" : "n_meters",
+          "type" : "hexstr",
+          "value" : "0x00000004"
+        },
+        {
+          "name" : "rate_count",
+          "type" : "hexstr",
+          "value" : 2
+        },
+        {
+          "name" : "type",
+          "type" : "string",
+          "value" : "packets"
+        }
+      ]
+    },
+    {
+      "name" : "MainControlImpl.crc16",
+      "id" : 2,
+      "type" : "Hash",
+      "source_info" : {
+        "filename" : "externs_pna.p4",
+        "line" : 65,
+        "column" : 45,
+        "source_fragment" : "crc16"
+      },
+      "attribute_values" : [
+        {
+          "name" : "algo",
+          "type" : "string",
+          "value" : "crc16"
+        }
+      ]
+    }
+  ],
+  "field_aliases" : [],
+  "program" : "externs_pna.p4",
+  "__meta__" : {
+    "version" : [2, 23],
+    "compiler" : "https://github.com/p4lang/p4c"
+  }
+}

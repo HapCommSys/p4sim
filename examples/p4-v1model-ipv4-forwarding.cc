@@ -1,18 +1,7 @@
 /*
  * Copyright (c) 2025 TU Dresden
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation;
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+ * SPDX-License-Identifier: Apache-2.0
  *
  * Authors: Mingyu Ma <mingyu.ma@tu-dresden.de>
  */
@@ -36,6 +25,8 @@
  *                           ├── BridgeNetDevice (switch)
  *   host1 ──[CsmaChannel]──┘
  */
+
+#include "example-check.h"
 
 #include "ns3/applications-module.h"
 #include "ns3/bridge-helper.h"
@@ -244,6 +235,11 @@ main(int argc, char* argv[])
     std::string p4JsonPath = p4SrcDir + "/simple_v1model.json";
     std::string flowTablePath = p4SrcDir + "/flowtable_0.txt";
 
+    // ns-3's ARP sends a request after a random delay of up to 10 ms and keeps
+    // only 3 packets waiting for the reply: at 3 Mbps a fourth one can come and
+    // is dropped. Keep up to 100, close to Linux (unres_qlen 101).
+    Config::SetDefault("ns3::ArpCache::PendingQueueSize", UintegerValue(100));
+
     CommandLine cmd;
     cmd.AddValue("pktSize", "Application payload size (bytes)", pktSize);
     cmd.AddValue("appDataRate", "OnOff application data rate", appDataRate);
@@ -350,6 +346,15 @@ main(int argc, char* argv[])
 
             switchPorts.Add(swDev);
 
+            // The bridge ports get addresses of their own, 00:00:00:00:01:<port+1>.
+            // CsmaHelper hands out 00:00:00:00:00:01 and up, the addresses that the
+            // hosts get below, and the bridge takes the address of its first port:
+            // it would keep the frames for host 0 to itself
+            std::ostringstream portMacStr;
+            portMacStr << "00:00:00:00:01:" << std::hex << std::setfill('0') << std::setw(2)
+                       << (i + 1);
+            swDev->SetAddress(Mac48Address(portMacStr.str().c_str()));
+
             std::ostringstream macStr;
             macStr << "00:00:00:00:00:" << std::hex << std::setfill('0') << std::setw(2) << (i + 1);
             hostDev->SetAddress(Mac48Address(macStr.str().c_str()));
@@ -409,12 +414,13 @@ main(int argc, char* argv[])
                                                MakeBoundCallback(&RxCallback, (uint32_t)pktSize));
 
     // -----------------------------------------------------------------------
-    // MAC-level traces (only available on CSMA devices in model == 1)
+    // MAC-level traces on the host devices: device 1, after the loopback device
+    // that the Internet stack added
     // -----------------------------------------------------------------------
     if (model == 1)
     {
         Ptr<CsmaNetDevice> txDev =
-            DynamicCast<CsmaNetDevice>(terminals.Get(clientIndex)->GetDevice(0));
+            DynamicCast<CsmaNetDevice>(terminals.Get(clientIndex)->GetDevice(1));
         if (txDev)
         {
             txDev->TraceConnectWithoutContext(
@@ -429,7 +435,7 @@ main(int argc, char* argv[])
         }
 
         Ptr<CsmaNetDevice> rxDev =
-            DynamicCast<CsmaNetDevice>(terminals.Get(serverIndex)->GetDevice(0));
+            DynamicCast<CsmaNetDevice>(terminals.Get(serverIndex)->GetDevice(1));
         if (rxDev)
         {
             rxDev->TraceConnectWithoutContext(
@@ -483,6 +489,7 @@ main(int argc, char* argv[])
     unsigned long simulate_start = getTickCount();
 
     Simulator::Stop(Seconds(simDuration));
+    p4sim_example::CountTraffic();
     Simulator::Run();
     Simulator::Destroy();
 
@@ -491,5 +498,5 @@ main(int argc, char* argv[])
                                   << end - start << " ms" << "  Run successfully!");
 
     PrintFinalThroughput();
-    return 0;
+    return p4sim_example::CheckDelivery();
 }

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-2.0-only
+// SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 TU Dresden. Author: Mingyu Ma <mingyu.ma@tu-dresden.de>
 
 /*
@@ -19,9 +19,14 @@
 #include "ns3/core-module.h"
 #include "ns3/eth-net-device.h"
 #include "ns3/network-module.h"
+#include "ns3/p4-switch-core.h"
 #include "ns3/p4-switch-net-device.h"
+#include "ns3/p4sim-ns3-compat.h"
 #include "ns3/switched-ethernet-channel.h"
 #include "ns3/test.h"
+
+#include <fstream>
+#include <string>
 
 using namespace ns3;
 
@@ -55,12 +60,19 @@ DisposeOnDrop(Ptr<P4SwitchNetDevice> sw, uint32_t* drops, Ptr<const Packet> fram
 
 } // namespace
 
-/// Host 0 sends one frame to port 1, one to port 2 and one nowhere
+/// Host 0 sends one frame to port 1, one to port 2 and one nowhere; with the
+/// flow table file, whose default action sends it to port 2, the third one too
 class PnaForwardTestCase : public TestCase
 {
   public:
-    PnaForwardTestCase()
-        : TestCase("pna: a frame leaves on the port the program selects, otherwise it is dropped")
+    /// \param flowTable a flow table file in p4src/egress_ports, or "" for none
+    explicit PnaForwardTestCase(const std::string& flowTable = "")
+        : TestCase(flowTable.empty()
+                       ? "pna: a frame leaves on the port the program selects, otherwise it is "
+                         "dropped"
+                       : "pna: the flow table file runs in bm_CLI: its default action sends a "
+                         "frame to an unknown address to port 2"),
+          m_flowTable(flowTable)
     {
     }
 
@@ -75,6 +87,7 @@ class PnaForwardTestCase : public TestCase
     /// Host 0 sends one frame to \p dst
     void Send(Mac48Address dst);
 
+    std::string m_flowTable;                              ///< flow table file, "" = none
     std::vector<Ptr<SwitchedEthernetHostDevice>> m_hosts; ///< the host on each port
     uint32_t m_frames[3]{0, 0, 0};                        ///< frames received per host
     uint32_t m_switchTx{0};                               ///< frames the switch sends
@@ -96,7 +109,10 @@ PnaForwardTestCase::DoRun()
     sw->SetAttribute(
         "JsonPath",
         StringValue(CreateDataDirFilename("p4src/egress_ports/egress_ports_pna.json")));
-    sw->SetAttribute("FlowTablePath", StringValue(""));
+    sw->SetAttribute("FlowTablePath",
+                     StringValue(m_flowTable.empty()
+                                     ? ""
+                                     : CreateDataDirFilename("p4src/egress_ports/" + m_flowTable)));
     switchNode->AddDevice(sw);
 
     const char* macs[] = {"00:00:00:00:00:10", "00:00:00:00:00:01", "00:00:00:00:00:02"};
@@ -132,9 +148,19 @@ PnaForwardTestCase::DoRun()
 
     NS_TEST_EXPECT_MSG_EQ(m_frames[1], 1, "The frame to port 1 did not arrive");
     NS_TEST_EXPECT_MSG_EQ(m_frames[2], 1, "The frame to port 2 did not arrive");
-    NS_TEST_EXPECT_MSG_EQ(m_switchTx,
-                          2,
-                          "A frame for which the program selected no port was not dropped");
+    if (m_flowTable.empty())
+    {
+        NS_TEST_EXPECT_MSG_EQ(m_switchTx,
+                              2,
+                              "A frame for which the program selected no port was not dropped");
+    }
+    else
+    {
+        // The host on port 2 ignores the third frame (not its address); the switch sent it
+        NS_TEST_EXPECT_MSG_EQ(m_switchTx,
+                              3,
+                              "The default action of the flow table file did not apply");
+    }
 }
 
 /**
@@ -256,14 +282,86 @@ class PnaRefusedTeardownTestCase : public TestCase
     }
 };
 
+/**
+ * \ingroup p4sim-tests
+ * A PNA program that calls recirculate() or mirror_packet() is rejected with a
+ * message that names the call, its line and what to use instead. BMv2 would
+ * report the parameters of v1model's recirculate. InitializeSwitchFromP4Json()
+ * ends the simulation with the message, so the test calls CheckPrimitives().
+ */
+class PnaMissingPrimitivesTestCase : public TestCase
+{
+  public:
+    PnaMissingPrimitivesTestCase()
+        : TestCase("pna: a program that calls recirculate() or mirror_packet() is rejected")
+    {
+    }
+
+  private:
+    /// An initialized switch without ports
+    Ptr<P4SwitchNetDevice> CreateSwitch(uint32_t arch, const std::string& json)
+    {
+        Ptr<Node> node = CreateObject<Node>();
+        Ptr<P4SwitchNetDevice> sw = CreateObject<P4SwitchNetDevice>();
+        sw->SetAttribute("P4SwitchArch", UintegerValue(arch));
+        sw->SetAttribute("JsonPath", StringValue(CreateDataDirFilename(json)));
+        sw->SetAttribute("FlowTablePath", StringValue(""));
+        node->AddDevice(sw);
+        sw->Initialize();
+        return sw;
+    }
+
+    void DoRun() override
+    {
+        SetDataDir(NS_TEST_SOURCEDIR);
+        Ptr<P4SwitchNetDevice> pna =
+            CreateSwitch(P4NIC_ARCH_PNA, "p4src/simple_pna/simple_pna.json");
+        Ptr<P4SwitchNetDevice> v1model =
+            CreateSwitch(P4SWITCH_ARCH_V1MODEL, "p4src/simple_v1model/simple_v1model.json");
+        // The parts of a P4 JSON that CheckPrimitives() reads
+        std::string recirculate = CreateTempDirFilename("pna_recirculate.json");
+        std::ofstream(recirculate) << R"({"actions": [{"name": "a", "primitives": [)"
+                                   << R"({"op": "assign", "parameters": []},)"
+                                   << R"({"op": "recirculate", "parameters": [],)"
+                                   << R"( "source_info": {"filename": "nic.p4", "line": 7}}]}]})";
+        std::string mirror = CreateTempDirFilename("pna_mirror.json");
+        std::ofstream(mirror) << R"({"actions": [{"name": "a", "primitives": [)"
+                              << R"({"op": "mirror_packet", "parameters": []}]}]})";
+
+        std::string message = pna->GetCore()->CheckPrimitives(recirculate);
+        NS_TEST_EXPECT_MSG_NE(message.find(": nic.p4 line 7: recirculate() is not supported: "
+                                           "P4sim's PNA, like BMv2's pna_nic, cannot recirculate"),
+                              std::string::npos,
+                              "Unexpected message: " << message);
+        message = pna->GetCore()->CheckPrimitives(mirror);
+        NS_TEST_EXPECT_MSG_NE(message.find(": mirror_packet() is not supported: "),
+                              std::string::npos,
+                              "Unexpected message: " << message);
+        NS_TEST_EXPECT_MSG_EQ(pna->GetCore()->CheckPrimitives(
+                                  CreateDataDirFilename("p4src/simple_pna/simple_pna.json")),
+                              "",
+                              "simple_pna calls neither");
+        NS_TEST_EXPECT_MSG_EQ(v1model->GetCore()->CheckPrimitives(recirculate),
+                              "",
+                              "v1model has recirculate");
+    }
+
+    void DoTeardown() override
+    {
+        Simulator::Destroy();
+    }
+};
+
 static class P4PnaTestSuite : public TestSuite
 {
   public:
     P4PnaTestSuite()
-        : TestSuite("p4-pna", UNIT)
+        : TestSuite("p4-pna", TestSuite::Type::UNIT)
     {
-        AddTestCase(new PnaForwardTestCase(), TestCase::QUICK);
-        AddTestCase(new PnaQueueFullTestCase(), TestCase::QUICK);
-        AddTestCase(new PnaRefusedTeardownTestCase(), TestCase::QUICK);
+        AddTestCase(new PnaForwardTestCase(), P4SIM_TEST_QUICK);
+        AddTestCase(new PnaForwardTestCase("flowtable_pna_cli.txt"), P4SIM_TEST_QUICK);
+        AddTestCase(new PnaQueueFullTestCase(), P4SIM_TEST_QUICK);
+        AddTestCase(new PnaRefusedTeardownTestCase(), P4SIM_TEST_QUICK);
+        AddTestCase(new PnaMissingPrimitivesTestCase(), P4SIM_TEST_QUICK);
     }
 } g_p4PnaTestSuite;

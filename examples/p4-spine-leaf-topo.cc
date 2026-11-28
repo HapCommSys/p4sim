@@ -1,18 +1,7 @@
 /*
  * Copyright (c) 2026 TU Dresden
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation;
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+ * SPDX-License-Identifier: Apache-2.0
  *
  * Authors: Mingyu Ma <mingyu.ma@tu-dresden.de>
  */
@@ -30,6 +19,8 @@
  * 80k packets) keep the run short. When scaling numFlows, appDataRate or duration up,
  * keep switchRate above the peak packet rate.
  */
+
+#include "example-check.h"
 
 #include "ns3/applications-module.h"
 #include "ns3/bridge-helper.h"
@@ -702,5 +693,7 @@ main(int argc, char* argv[])
                                           << std::endl
                                           << "Run successfully!");
 
-    return 0;
+    int failed = p4sim_example::Check(switch2.totalRxBytes > 0 && switch3.totalRxBytes > 0,
+                                      "the flows to h3 use both spines");
+    return failed | p4sim_example::CheckDelivery(clientTxBytes, sinkRxBytes, "h3");
 }

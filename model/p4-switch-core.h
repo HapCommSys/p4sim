@@ -1,18 +1,7 @@
 /*
  * Copyright (c) 2025 TU Dresden
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation;
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+ * SPDX-License-Identifier: Apache-2.0
  *
  * Authors: Mingyu Ma <mingyu.ma@tu-dresden.de>
  */
@@ -31,10 +20,21 @@
 #include <deque>
 #include <map>
 #include <memory>
+#include <random>
+#include <string>
 #include <thread>
+#include <unordered_map>
 #include <vector>
 
 #define SSWITCH_DROP_PORT 511
+
+namespace apache
+{
+namespace thrift
+{
+class TProcessor;
+} // namespace thrift
+} // namespace apache
 
 namespace ns3
 {
@@ -59,10 +59,54 @@ class P4SwitchCore : public bm::Switch
 
     /**
      * @brief Initialize the switch with the P4 program
+     *
+     * It also seeds GetRandomEngine() from ns-3's seed and run.
+     *
      * @param jsonPath the path to the JSON file
      * @return void
      */
     void InitializeSwitchFromP4Json(const std::string& jsonPath);
+
+    /**
+     * @brief Look for a primitive that the P4 program calls and this architecture lacks
+     *
+     * BMv2 finds a primitive by its name alone: a PNA program that calls
+     * recirculate() meets the recirculate of v1model, and BMv2 reports a wrong
+     * number of parameters. InitializeSwitchFromP4Json() ends the simulation
+     * with this message instead, before BMv2 reads the program.
+     *
+     * @param jsonPath the path to the JSON file
+     * @return a message that names the first such call, its source line and
+     *         what to use instead; empty if there is none
+     */
+    std::string CheckPrimitives(const std::string& jsonPath) const;
+
+    /**
+     * @brief The random number engine of the P4 program of this switch
+     *
+     * random() of v1model and the Random extern of PSA and PNA draw from it.
+     * InitializeSwitchFromP4Json() seeds it from ns-3's seed and run number
+     * (RngSeedManager, or --RngSeed and --RngRun) and from the node id and device
+     * index of the switch. So a simulation gives the same random numbers every
+     * time it runs with the same seed and run, each switch draws its own, and a
+     * switch created during the simulation does not change those of the others.
+     * A program swap keeps the engine.
+     *
+     * @return the engine
+     */
+    std::mt19937_64& GetRandomEngine();
+
+    /**
+     * @brief The random number engine of the switch that is loading a P4 program
+     *
+     * BMv2 creates the primitives and externs of a program while a switch loads
+     * it (InitializeSwitchFromP4Json(), load_new_config()), in the thread that
+     * loads it. random() and the Random extern take the engine of their switch
+     * from here then.
+     *
+     * @return the engine of that switch; outside a load, a process-wide engine
+     */
+    static std::mt19937_64& LoadingRandomEngine();
 
     /**
      * @brief Set the BMv2 log level used by InitializeSwitchFromP4Json()
@@ -93,6 +137,18 @@ class P4SwitchCore : public bm::Switch
     int GetThriftPort() const;
 
     /**
+     * @brief Stop the Thrift services of this switch; call it before the switch
+     *        is destroyed (P4SwitchNetDevice::DoDispose() does)
+     *
+     * BMv2 cannot stop the Thrift server of a switch: it runs until the process
+     * ends. Its services run each call only while the switch has not stopped
+     * them, and a call that runs when they are stopped finishes first. Afterwards
+     * the server answers every call with an error ("... destroyed"), so a runtime
+     * CLI that connects late does not reach the freed switch.
+     */
+    void StopThriftServices();
+
+    /**
      * @brief Set the time a packet spends in the P4 pipeline (the PipelineDelay
      *        attribute of P4SwitchNetDevice)
      * @param delay the delay, not negative; 0 (the default) means none
@@ -112,6 +168,38 @@ class P4SwitchCore : public bm::Switch
     Time GetPipelineDelay() const;
 
     /**
+     * @brief Set the size of each port's transfer buffer (the TransferBufferSize
+     *        attribute of P4SwitchNetDevice)
+     * @param frames how many frames a port holds after the egress pipeline,
+     *        besides the one it is sending; 0 (the default) means none
+     *
+     * The transfer buffer stands for the hardware port queue after the egress.
+     * A port takes its next packet from the egress queues when it is idle or its
+     * transfer buffer has room; the packet passes the egress pipeline at once and
+     * waits in the transfer buffer, in order, until the port has sent the frames
+     * before it. So the backlog of a congested port stays in the egress queues,
+     * where the priorities are applied, and a frame in the transfer buffer is not
+     * overtaken any more. The transfer buffer never drops. With 0, a port takes
+     * its next packet only when it is idle. v1model (without the VOQ traffic
+     * manager) and PSA; PNA and the pipeline core have no egress queues and do
+     * not use it.
+     */
+    void SetTransferBufferSize(uint32_t frames);
+
+    /**
+     * @brief Get the size of each port's transfer buffer
+     * @return the size set by SetTransferBufferSize()
+     */
+    uint32_t GetTransferBufferSize() const;
+
+    /**
+     * @brief Get the number of frames in a port's transfer buffer
+     * @param port the port
+     * @return the frames that passed the egress pipeline and wait for the port
+     */
+    uint32_t GetTransferBufferLength(uint32_t port) const;
+
+    /**
      * @brief Load the flow table to the switch
      * @param flowTablePath the path to the flow table file
      * @return int the status code
@@ -128,8 +216,15 @@ class P4SwitchCore : public bm::Switch
 
     /**
      * @brief Execute the CLI commands from a file
-     * @param commandsFile the path to the CLI commands file
-     * @return int the status code
+     *
+     * Empty lines and lines that start with '#' are skipped. A command that the
+     * CLI reports as an error is printed with its line number, and the rest of
+     * the file runs. A file that cannot be read ends the simulation. It can be
+     * called again later in the simulation: the first call starts the Thrift
+     * server of the switch, and the later calls use it.
+     *
+     * @param commandsFile the path to the CLI commands file, empty for none
+     * @return 0 if every command ran without an error, 1 otherwise
      */
     int ExecuteCliCommands(const std::string& commandsFile);
 
@@ -224,6 +319,57 @@ class P4SwitchCore : public bm::Switch
      */
     bm::RuntimeInterface::ErrorCode swap_configs() override;
 
+    // === Counters and meters of the runtime API (runtime CLI, P4RuntimeApi) ===
+    // A PSA or PNA program declares Counter and Meter as externs, which keep
+    // their own arrays (utils/psa_externs). As in BMv2's psa_switch, these calls
+    // reach the extern of that name; any other name goes to BMv2's counter and
+    // meter arrays, as before (v1model, direct counters and meters).
+
+    /// @brief Read a counter (runtime API)
+    bm::Counter::CounterErrorCode read_counters(
+        bm::cxt_id_t cxt_id,
+        const std::string& counter_name,
+        size_t index,
+        bm::MatchTableAbstract::counter_value_t* bytes,
+        bm::MatchTableAbstract::counter_value_t* packets) override;
+
+    /// @brief Reset all counters of a counter array (runtime API)
+    bm::Counter::CounterErrorCode reset_counters(bm::cxt_id_t cxt_id,
+                                                 const std::string& counter_name) override;
+
+    /// @brief Write a counter (runtime API)
+    bm::Counter::CounterErrorCode write_counters(
+        bm::cxt_id_t cxt_id,
+        const std::string& counter_name,
+        size_t index,
+        bm::MatchTableAbstract::counter_value_t bytes,
+        bm::MatchTableAbstract::counter_value_t packets) override;
+
+    /// @brief Set the rates of all meters of a meter array (runtime API)
+    bm::Meter::MeterErrorCode meter_array_set_rates(
+        bm::cxt_id_t cxt_id,
+        const std::string& meter_name,
+        const std::vector<bm::Meter::rate_config_t>& configs) override;
+
+    /// @brief Set the rates of one meter (runtime API)
+    bm::Meter::MeterErrorCode meter_set_rates(
+        bm::cxt_id_t cxt_id,
+        const std::string& meter_name,
+        size_t idx,
+        const std::vector<bm::Meter::rate_config_t>& configs) override;
+
+    /// @brief Read the rates of one meter (runtime API)
+    bm::Meter::MeterErrorCode meter_get_rates(
+        bm::cxt_id_t cxt_id,
+        const std::string& meter_name,
+        size_t idx,
+        std::vector<bm::Meter::rate_config_t>* configs) override;
+
+    /// @brief Unset the rates of one meter (runtime API)
+    bm::Meter::MeterErrorCode meter_reset_rates(bm::cxt_id_t cxt_id,
+                                                const std::string& meter_name,
+                                                size_t idx) override;
+
     /**
      * @brief Whether a swap waits for the switch to empty (see swap_configs())
      * @return true while it waits
@@ -295,10 +441,26 @@ class P4SwitchCore : public bm::Switch
     /**
      * @brief Add the Thrift services of the target to the Thrift server of this
      * switch, such as "simple_switch" for the commands that simple_switch_CLI adds
-     * to the runtime CLI. ExecuteCliCommands() calls it after starting the server.
-     * The default adds none.
+     * to the runtime CLI, with AddThriftService(). ExecuteCliCommands() calls it
+     * after starting the server. The default adds none.
      */
     virtual void AddThriftServices();
+
+    /**
+     * @brief Add a Thrift service to the Thrift server of this switch, guarded:
+     * it runs a call only until StopThriftServices()
+     * @param name the name of the service, as the runtime CLI asks for it
+     * @param processor the Thrift processor of the service
+     */
+    void AddThriftService(const std::string& name,
+                          std::shared_ptr<apache::thrift::TProcessor> processor);
+
+    /**
+     * @brief The primitives that this architecture lacks, for CheckPrimitives()
+     * @return for each primitive (as the P4 JSON names it), what the message
+     *         suggests instead. The default is none.
+     */
+    virtual std::map<std::string, std::string> GetMissingPrimitives() const;
 
     /**
      * @brief Ingress processing pipeline
@@ -359,6 +521,18 @@ class P4SwitchCore : public bm::Switch
     void CheckPendingSwap();
 
     /**
+     * @brief Pass on the digest of \p packet: digest() in the ingress chose the
+     *        learn list \p listId. Call it at the end of the ingress, where
+     *        simple_switch calls learn(). As there, the fields are read now, from
+     *        the PHV of the packet. BMv2's learn engine gets the packet (for its
+     *        notification socket), and the device the record (see
+     *        P4SwitchNetDevice::NotifyDigest()); every call gives one record.
+     * @param listId the learn list
+     * @param packet the packet
+     */
+    void Learn(int listId, const bm::Packet& packet);
+
+    /**
      * @brief Retrieves the index of the given destination address.
      *
      * This function checks if the specified destination address already exists
@@ -374,6 +548,35 @@ class P4SwitchCore : public bm::Switch
      */
     int GetAddressIndex(const Address& destination);
 
+    /**
+     * @brief The destination address with an index that GetAddressIndex() gave
+     * @param index the index, as the packet registers keep it
+     * @return the address; another index aborts in a build with asserts (a
+     *         packet copy whose registers were not set, for example)
+     */
+    const Address& GetDestination(int index) const;
+
+    /// A frame that passed the egress pipeline and waits for its port
+    struct TransferFrame
+    {
+        Ptr<Packet> packet; //!< the frame
+        uint16_t protocol;  //!< its protocol
+        int addressIndex;   //!< index of its destination address in m_destinationList
+    };
+
+    /**
+     * @brief Whether a port can take its next packet from the egress queues
+     *        (see SetTransferBufferSize())
+     * @param port the port
+     * @param transmitterFree whether the port could send a frame now
+     * @return true if the port is idle with an empty transfer buffer, or its
+     *         transfer buffer has room
+     */
+    bool PortCanTakePacket(uint32_t port, bool transmitterFree) const;
+
+    /// The transfer buffer of each port, oldest frame first (see SetTransferBufferSize())
+    std::unordered_map<uint32_t, std::deque<TransferFrame>> m_transferBuffers;
+
     int m_p4SwitchId;                          //!< ID of the switch
     P4SwitchNetDevice* m_switchNetDevice;      //!< Pointer to the switch net device
     bool m_enableQueueingMetadata{false};      //!< Enable queueing metadata
@@ -384,8 +587,22 @@ class P4SwitchCore : public bm::Switch
     std::vector<Address> m_destinationList; //!< List of addresses (O(log n) search)
     std::map<Address, int> m_addressMap;    //!< Map for fast lookup
   private:
+    /**
+     * @brief Print the commands that the runtime CLI reported as errors, with
+     * the file and the line, and the command at which it stopped
+     * @param file the path to the CLI commands file
+     * @param commands the line number and text of each command given to the CLI
+     * @param output what the CLI printed
+     * @return whether an error was printed
+     */
+    bool ReportCliErrors(const std::string& file,
+                         const std::vector<std::pair<uint32_t, std::string>>& commands,
+                         const std::string& output) const;
+
     class MirroringSessions;            //!< Mirroring sessions for clone .etc
+    std::mt19937_64 m_randomEngine;     //!< Random numbers of the P4 program
     int m_thriftPort{0};                //!< Thrift port of the switch (allocated at init)
+    bool m_thriftServerStarted{false};  //!< ExecuteCliCommands() started the Thrift server
     uint16_t m_requestedThriftPort{0};  //!< Requested Thrift port, 0 = automatic
     std::string m_bmLogLevel{"off"};    //!< BMv2 log level
     size_t m_nbQueuesPerPort;           //!< Number of queues per port (default 8)
@@ -393,6 +610,16 @@ class P4SwitchCore : public bm::Switch
     uint64_t m_startTimestamp;          //!< Start time of the switch
     bm::TargetParserBasic* m_argParser; //!< Structure of parsers
     std::unique_ptr<MirroringSessions> m_mirroringSessions; //!< Mirroring sessions
+
+    /**
+     * @brief Register the Thrift services of this switch, guarded (see
+     * StopThriftServices()): BMv2's "standard" and "simple_pre"/"simple_pre_lag",
+     * which the server added unguarded, and those of the target
+     * (AddThriftServices()). ExecuteCliCommands() calls it once the server listens.
+     */
+    void GuardThriftServices();
+
+    uint64_t m_thriftId{0}; //!< ID of this switch's Thrift services; 0 = none
 
     /**
      * @brief Run the ingress pipeline on the next packet of the input buffer,
@@ -418,11 +645,13 @@ class P4SwitchCore : public bm::Switch
         std::unique_ptr<bm::Packet> packet; //!< the packet
     };
 
+    uint32_t m_transferBufferSize{0};             //!< see SetTransferBufferSize(); 0 = none
     Time m_pipelineDelay;                         //!< see SetPipelineDelay(); 0 = none
     std::deque<PipelinePacket> m_pipelinePackets; //!< the packets in the pipeline, oldest first
     EventId m_pipelineEvent;                      //!< the pending ReleaseFromPipeline()
 
-    /// Whether a packet of this switch exists, as BMv2 counts them for a swap
+    /// Whether the switch holds a packet, as BMv2 counts them for a swap, or a frame
+    /// in a transfer buffer
     bool HoldsPackets();
 
     /// Do the waiting swap if the switch holds no packet, then let in the held frames
@@ -442,6 +671,19 @@ class P4SwitchCore : public bm::Switch
     std::thread::id m_simulationThread;         //!< the thread that runs the simulation
     std::deque<HeldFrame> m_heldFrames;         //!< frames that arrived while a swap waited
     EventId m_swapEvent;                        //!< the pending TrySwap()
+
+    /// A learn list of the P4 program ("learn_lists" in the BMv2 JSON)
+    struct LearnList
+    {
+        std::string name;                ///< its name
+        std::vector<std::string> fields; ///< its fields, "header.field", in their order
+    };
+
+    /// Read the learn lists of the P4 program, unless they are read since the last swap
+    void ReadLearnLists();
+
+    std::map<int, LearnList> m_learnLists; //!< the learn lists of the P4 program, by ID
+    bool m_learnListsRead{false};          //!< m_learnLists holds those of the current program
 };
 
 } // namespace ns3

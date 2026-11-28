@@ -1,0 +1,20 @@
+BMv2's bundled spdlog names two constructors registry_t<Mutex>(...), which is
+ill-formed from C++20 on (a template-id is not allowed as a constructor name)
+and rejected by g++. This fix for BMv2 1.15.8 (third_party/spdlog) keeps the
+meaning: registry_t is the injected-class-name. P4sim's CMakeLists.txt applies
+the same change to a copy of the installed headers when it builds as C++20 or later.
+The lines below are from spdlog (Copyright (c) 2014 Gabi Melman), under the MIT License.
+
+--- a/third_party/spdlog/bm/spdlog/details/registry.h	2026-11-20 13:49:43.546184240 +0100
++++ b/third_party/spdlog/bm/spdlog/details/registry.h	2026-11-20 13:49:43.554063141 +0100
+@@ -158,8 +158,8 @@
+             throw spdlog_ex("logger with name " + logger_name + " already exists");
+         _loggers[logger->name()] = logger;
+     }
+-    registry_t<Mutex>(){}
+-    registry_t<Mutex>(const registry_t<Mutex>&) = delete;
++    registry_t(){}
++    registry_t(const registry_t<Mutex>&) = delete;
+     registry_t<Mutex>& operator=(const registry_t<Mutex>&) = delete;
+     Mutex _mutex;
+     std::unordered_map <std::string, std::shared_ptr<logger>> _loggers;

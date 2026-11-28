@@ -1,21 +1,12 @@
 /*
  * Copyright (c) 2026 TU Dresden
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation;
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+ * SPDX-License-Identifier: Apache-2.0
  *
  * Authors: Mingyu Ma <mingyu.ma@tu-dresden.de>
  */
+
+#include "example-check.h"
 
 #include "ns3/applications-module.h"
 #include "ns3/bridge-helper.h"
@@ -95,8 +86,10 @@ main(int argc, char* argv[])
     // P4 files: examples/p4src in the p4sim folder of this build
     std::string p4SrcDir = GetP4ExamplePath() + "/fat-tree";
     std::string p4JsonPath = p4SrcDir + "/switch.json";
-    std::string flowTableDirPath = p4SrcDir + "/";
-    std::string topoInput = p4SrcDir + "/topo.txt";
+    // The topology and the flow tables are generated into the working directory
+    std::string flowTableDirPath = "p4-topo-fattree-files/";
+    std::filesystem::create_directories(flowTableDirPath);
+    std::string topoInput = flowTableDirPath + "topo.txt";
     std::string topoFormat("CsmaTopo");
 
     // ============================  command line ============================
@@ -305,7 +298,7 @@ main(int argc, char* argv[])
         // index i.
         unsigned int serverI = hostNum - i - 1;
         Ipv4Address serverAddr = hostNodes[serverI].hostIpv4.GetAddress(0);
-        InetSocketAddress dst = InetSocketAddress(serverAddr);
+        InetSocketAddress dst = InetSocketAddress(serverAddr, 9093);
 
         OnOffHelper onOff = OnOffHelper("ns3::UdpSocketFactory", dst);
         onOff.SetAttribute("PacketSize", UintegerValue(pktSize));
@@ -332,6 +325,7 @@ main(int argc, char* argv[])
     NS_LOG_INFO("Running simulation...");
     unsigned long simulate_start = getTickCount();
     Simulator::Stop(Seconds(global_stop_time));
+    p4sim_example::CountTraffic();
     Simulator::Run();
     Simulator::Destroy();
 
@@ -341,5 +335,5 @@ main(int argc, char* argv[])
                                           << std::endl
                                           << "Run successfully!");
 
-    return 0;
+    return p4sim_example::CheckDelivery();
 }

@@ -1,3 +1,9 @@
+/*
+ * Copyright (c) 2025 TU Dresden
+ * SPDX-License-Identifier: Apache-2.0
+ * Based on P4Simulator (https://github.com/kphf1995cm/P4Simulator), Apache-2.0.
+ */
+
 #include "build-flowtable-helper.h"
 
 #include "ns3/log.h"
@@ -482,9 +488,9 @@ BuildFlowtableHelper::Write(std::string fileDir)
         std::string fileName = "flowtable_" + UintToStr(i);
         fp.open(fileDir + "/" + fileName);
         // set default action
-        std::string defaultAction[] = {"table_set_default ipv4_nhop _drop",
-                                       "table_set_default arp_nhop _drop",
-                                       "table_set_default forward_table _drop"};
+        std::string defaultAction[] = {"table_set_default ipv4_nhop drop",
+                                       "table_set_default arp_nhop drop",
+                                       "table_set_default forward_table drop"};
         for (int k = 0; k < 3; k++)
         {
             lineBuffer.clear();

@@ -1,0 +1,4 @@
+table_add MyIngress.ipv4_route MyIngress.forward 10.1.1.1 => 0
+table_add MyIngress.ipv4_route MyIngress.forward 10.1.1.2 => 1
+table_add MyIngress.ipv4_route MyIngress.forward 10.1.1.3 => 2
+table_add MyIngress.udp_priority MyIngress.set_priority 5000 => 7
