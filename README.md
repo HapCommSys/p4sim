@@ -26,12 +26,20 @@ P4sim is open-source software licensed under the Apache License 2.0; some files 
 
 ### Architectural Overview
 
-A `P4SwitchNetDevice` runs a P4 program on BMv2 and has two kinds of port, which can be mixed (see [Switch ports](#switch-ports)):
+<p align="center">
+  <img src="./doc/figures/p4sim-architecture.drawio.svg" width="900" alt="Architecture of P4sim: a P4SwitchNetDevice with its control plane, the P4SwitchCore pipeline on BMv2, bridge ports (left) and switched-Ethernet ports (right)">
+</p>
 
-- **Bridge ports** (left in the figure): each port is an ordinary ns-3 device of the switch's node, such as a `CSMA` or a point-to-point device. P4sim 1.x had only these.
-- **Switched-Ethernet ports** (right): each port is a full-duplex `SwitchedEthernetChannel` of the switch itself, so the switch sees when a port has sent a frame and controls its queues and timing.
+A `P4SwitchNetDevice` runs a P4 program on BMv2 inside the simulation. The figure follows one frame (green) from Host 1 to Host 2:
 
-![Two architectures](./doc/figures/p4sim_arch.drawio.png)
+1. **Two kinds of port**, which can be mixed in one switch (see [Switch ports](#switch-ports)):
+   - **Switched-Ethernet ports** (right, recommended) are part of the switch: each port is a full-duplex `SwitchedEthernetChannel`. They model a real switch port more closely: the switch puts each frame on the wire itself, so it knows exactly when the frame has left, and the backlog stays in its own queues. The channel can add the Ethernet overhead on the wire (`Framing`).
+   - **Bridge ports** (left) are ordinary ns-3 devices of the switch's node, such as a CSMA or a P4 point-to-point device. They connect the switch most easily to other ns-3 modules and devices, and the topology reader builds its networks with them. P4sim 1.x had only these.
+2. **The pipeline.** `P4SwitchCore` runs the program on BMv2 (v1model, PSA, PNA or the pipeline core): input buffer, parser and ingress, traffic manager, egress and deparser, and an optional transfer buffer. Each stage has its attributes (see [Switch Parameters](#switch-parameters)); not every architecture has every stage.
+3. **Event-driven egress.** A port takes its next frame from the traffic manager when it has sent the last one, so a congested port sends back to back at its line rate.
+4. **The control plane.** At start-up, the runtime CLI of the architecture runs the flow-table file (`FlowTablePath`) through the switch's Thrift server. During the simulation, `P4Controller` changes tables, counters, meters, registers and mirroring sessions through `P4RuntimeApi`, learns from `digest()` records and swaps the P4 program.
+
+The figure is an editable draw.io SVG: open [doc/figures/p4sim-architecture.drawio.svg](doc/figures/p4sim-architecture.drawio.svg) in [draw.io](https://www.drawio.com/) to change it.
 
 Branches: `main` holds P4sim 2.0, which added the switched-Ethernet ports, the event-driven egress (v1model, PSA and PNA), the traffic manager and `PipelineDelay`. `main-deprecated` keeps the 1.x line (v1.0.0 and its later fixes, bridge ports only); it gets no more changes.
 
