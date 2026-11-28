@@ -11,8 +11,10 @@ P4sim ships two profiles in [`profiles/`](../profiles):
 
 | Profile | Models | Forwarding | Buffer |
 |---|---|---|---|
-| `tofino-like` | A (ingress pipeline, Franco et al. 2024) and B (MAC receive and egress, DPTP 2019) | store-and-forward | P4sim's queues |
-| `cut-through-reference` | C (a 100 Mbps switch ASIC, from its RTL) | cut-through | none |
+| `tofino-like` | A (ingress pipeline, Franco et al. 2024 [1]) and B (MAC receive and egress, DPTP 2019 [2]) | store-and-forward | P4sim's queues |
+| `cut-through-reference` | C (a 100 Mbps switch ASIC, from its RTL [3]) | cut-through | none |
+
+The numbers in brackets refer to the [references](#references) at the end.
 
 Without a profile (the default), a switch behaves as before: `PipelineDelay`
 gives every packet the same latency.
@@ -67,11 +69,9 @@ The latency from the last bit to the traffic manager is
 
 ### Model A: the ingress pipeline
 
-Franco et al., *A comprehensive latency profiling study of the Tofino P4
-programmable ASIC-based hardware*, Computer Communications 218 (2024) 14-30,
-Table 2: the mean latency from the start of the ingress parser to the traffic
-manager (T1 to T2: ingress parser, control and deparser) on an APS BF2556X-1T
-(Tofino, TNA):
+Franco et al. [1], Table 2: the mean latency from the start of the ingress
+parser to the traffic manager (T1 to T2: ingress parser, control and deparser)
+on an APS BF2556X-1T (Tofino, TNA):
 
     L = a * p + b  +  sum over the parse states after Ethernet of (c * h_n + d)
                    +  sum over the tables matched of e(match type, key)
@@ -81,7 +81,7 @@ manager (T1 to T2: ingress parser, control and deparser) on an APS BF2556X-1T
 | 10G | 0.237 | 152.42 | 0.221 | 2.886 | 0.492 | 0.601 | 0.692 | 0.887 |
 | 100G | 0.056 | 143.441 | 0.105 | 1.431 | 0.607 | 0.685 | 0.749 | 0.896 |
 
-All in ns; checked digit for digit against the paper's Table 2 and its appendix.
+All in ns; checked digit for digit against Table 2 of [1] and its appendix.
 How P4sim gets the inputs, and where the paper leaves a choice:
 
 - **p** is the frame as P4sim carries it: Ethernet header and payload, without
@@ -115,9 +115,8 @@ How P4sim gets the inputs, and where the paper leaves a choice:
 
 ### Model B: MAC receive and egress
 
-Kannan, Joshi, Chan, *Precise Time-synchronization in the Data-Plane using
-Programmable Switching ASICs* (DPTP), SOSR 2019, Table 1 (10G, idle links;
-checked against the paper):
+Kannan, Joshi and Chan [2] (DPTP), Table 1 (10G, idle links; checked against
+the paper):
 
 | Segment | From, to | min-max (mean), ns | Used |
 |---|---|---|---|
@@ -126,11 +125,12 @@ checked against the paper):
 | ReqTx | egress pipeline, deparser, Tx MAC, to the start of serialization | 304-356 (340.8) | egress, 340.8 ns |
 | ReqWD | the wire, 1 m DAC: from the start of serialization to the whole packet at the receiver, so (inference) with the probe's serialization | 67-79 (72.6) | no: P4sim's link gives serialization and `Delay` |
 
-DPTP's Tx timestamp is the instant serialization starts (its section 3.1,
+DPTP's Tx timestamp is the instant serialization starts ([2], section 3.1,
 *Measuring ReqTx and RespTx*), so Tx does not contain the serialization of the
-probe itself (60 bytes); P4sim adds the serialization on the link. The
-oversubscribed values (RespQ about 1.554 ms) are a full queue, which P4sim's
-own queues produce.
+probe itself (60 bytes); P4sim adds the serialization on the link. The same
+section also lists serialization among the parts of RespTx; P4sim reads that as
+the wait for serialization under load (inference). The oversubscribed values
+(RespQ about 1.554 ms) are a full queue, which P4sim's own queues produce.
 
 The egress delay is fixed, so P4sim adds it before the traffic manager, not
 after: a port that takes its next packet only when it is idle would otherwise
@@ -141,10 +141,8 @@ timestamps that the P4 program reads differ.
 
 ## `cut-through-reference`: Model C
 
-A zero-buffer cut-through Ethernet switch ASIC at 100 Mbps,
-[Essenceia/ethernet_switch_asic](https://github.com/Essenceia/ethernet_switch_asic),
-commit a14e3e1, as its RTL behaves in simulation (Icarus Verilog), not measured
-silicon:
+A zero-buffer cut-through Ethernet switch ASIC at 100 Mbps [3], as its RTL
+behaves in simulation (Icarus Verilog), not measured silicon:
 
 - **Clock**: one 50 MHz clock for all ports (20 ns, 2 bits per cycle). Arrivals
   and decisions count at its edges.
@@ -238,7 +236,7 @@ No source gives a complete, public latency model of a P4 hardware switch; the
 tofino-like profile is assembled from partial measurements.
 
 - **Models A and B do not add up.** They come from different switches, port
-  speeds and probe packets. DPTP's Q (about 307 ns) contains the ingress
+  speeds and probe packets. DPTP's Q [2] (about 307 ns) contains the ingress
   pipeline; Model A alone gives about 176 ns for a 100-byte packet at 10G. The
   fixed time from the ingress pipeline into the queue has no value here.
 - **The packet-size term has no stated cause.** Its slope is about 30% of the
@@ -259,11 +257,20 @@ tofino-like profile is assembled from partial measurements.
   default). BMv2 1.15.8 does not install `bm/bm_sim/event_observer.h`; P4sim
   carries a copy (`utils/bm-event-observer.h`).
 
-## Sources
+## References
 
-- Franco et al., Computer Communications 218 (2024) 14-30,
-  [doi:10.1016/j.comcom.2024.01.010](https://doi.org/10.1016/j.comcom.2024.01.010): Model A.
-- Kannan, Joshi, Chan, DPTP, SOSR 2019,
-  [PDF](https://www.comp.nus.edu.sg/~chanmc/papers-by-year/2019-DPTP_SOSR.pdf): Model B.
-- [Essenceia/ethernet_switch_asic](https://github.com/Essenceia/ethernet_switch_asic),
-  commit a14e3e1: Model C.
+1. D. Franco, E. Ollora Zaballa, M. Zang, A. Atutxa, J. Sasiain, A. Pruski,
+   E. Rojas, M. Higuero, E. Jacob, "A comprehensive latency profiling study of
+   the Tofino P4 programmable ASIC-based hardware," *Computer Communications*,
+   vol. 218, pp. 14-30, 2024.
+   [doi:10.1016/j.comcom.2024.01.010](https://doi.org/10.1016/j.comcom.2024.01.010)
+   (open access). Model A.
+2. P. G. Kannan, R. Joshi, M. C. Chan, "Precise Time-synchronization in the
+   Data-Plane using Programmable Switching ASICs," in *Proc. ACM Symposium on
+   SDN Research (SOSR '19)*, San Jose, CA, USA, 2019.
+   [doi:10.1145/3314148.3314353](https://doi.org/10.1145/3314148.3314353)
+   ([authors' PDF](https://www.comp.nus.edu.sg/~chanmc/papers-by-year/2019-DPTP_SOSR.pdf)).
+   Model B.
+3. Essenceia, *ethernet_switch_asic*: RTL of a 100 Mbps cut-through Ethernet
+   switch ASIC, commit a14e3e1.
+   <https://github.com/Essenceia/ethernet_switch_asic/tree/a14e3e1>. Model C.
