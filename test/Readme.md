@@ -15,7 +15,7 @@ No environment variable is needed, and suites can run in parallel.
 
 ## Suites
 
-21 suites, 167 test cases. The first seven do not need BMv2.
+22 suites, 192 test cases. The first seven do not need BMv2.
 
 | Suite | Checks |
 |---|---|
@@ -37,6 +37,7 @@ No environment variable is needed, and suites can run in parallel.
 | `p4-pipeline-delay` | `PipelineDelay` delays every packet by the same time without lowering the throughput (default egress path, VOQ, PSA, PNA, pipeline core, with `SwitchRate`, on a congested port), once per pass for recirculated frames and clones; a switch with packets in its pipeline can be destroyed |
 | `p4-transfer-buffer` | `TransferBufferSize`: a congested port holds that many frames after the egress and still sends back to back (v1model, PSA; default 0); a high-priority frame does not overtake the frames in the buffer; a packet that the egress drops does not free a sending port |
 | `p4-bridge-port` | CSMA and point-to-point bridge ports next to a switched-Ethernet port |
+| `p4-latency` | target profiles ([doc/latency-model.md](../doc/latency-model.md)): Model A's vectors A1-A8 and its warnings; the latency features of a program and of a packet; store-and-forward with the tofino-like profile (latency, first and last bit, order); the cut-through scenarios C1-C9 of the reference ASIC, cycle for cycle; learning tables (capacity, replace the oldest, aging, control-plane delay) |
 | `p4-pna` | a PNA switch forwards, and drops what its program does not send; its flow table file runs in `bm_CLI`; a full output queue drops; a program that calls `recirculate()` or `mirror_packet()` is rejected with a clear message |
 | `link-framing` | Ethernet framing (preamble, FCS, padding, interframe gap) on the switched-Ethernet channel and the P4 point-to-point device; between two hosts, through a switch, and in a switch's estimate for a point-to-point bridge port |
 | `switched-ethernet-traffic-control` | flow control on host devices: a queue disc schedules the backlog of a host, `FqCoDelQueueDisc` is the default, `DisableFlowControl()` installs none; byte queue limits (`SetQueueLimits()`) keep the backlog in the queue disc even when the device queue has room |

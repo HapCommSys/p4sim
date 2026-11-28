@@ -595,9 +595,11 @@ P4CoreV1model::ReceivePacket(Ptr<Packet> packetIn,
         phv->get_field("intrinsic_metadata.ingress_global_timestamp").set(GetTimeStamp());
     }
 
+    uint64_t packetId = bm_packet->get_packet_id();
     if (!AdmitToIngress(InputBuffer::PacketType::NORMAL, std::move(bm_packet)))
     {
         // The pipeline is slower than the arriving traffic (see SwitchRate)
+        ForgetArrival(packetId);
         NS_LOG_WARN("Switch ID " << m_p4SwitchId << ": input buffer full, packet from port "
                                  << inPort << " dropped");
         m_switchNetDevice->NotifyMacRxDrop(packetIn);
@@ -656,6 +658,8 @@ P4CoreV1model::HandleIngressPipeline()
          deparser. TODO? */
     const bm::Packet::buffer_state_t packet_in_state = bm_packet->save_buffer_state();
 
+    // With a target profile: what the packet does here sets when it reaches the queues
+    IngressPass pass(*this, *bm_packet, "parser", "ingress");
     parser->parse(bm_packet.get());
 
     if (phv->has_field("standard_metadata.parser_error"))
@@ -669,6 +673,7 @@ P4CoreV1model::HandleIngressPipeline()
     }
 
     ingress_mau->apply(bm_packet.get());
+    pass.IngressDone();
 
     bm_packet->reset_exit();
 

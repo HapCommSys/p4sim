@@ -489,9 +489,11 @@ P4CorePsa::ReceivePacket(Ptr<Packet> packetIn,
     // each add_header / remove_header primitive call
     bm_packet->set_register(RegisterAccess::PACKET_LENGTH_REG_IDX, len);
 
+    uint64_t packetId = bm_packet->get_packet_id();
     if (!AdmitToIngress(std::move(bm_packet)))
     {
         // The pipeline is slower than the arriving traffic (see SwitchRate)
+        ForgetArrival(packetId);
         NS_LOG_WARN("PSA Switch ID " << m_p4SwitchId << ": input buffer full, packet from port "
                                      << inPort << " dropped");
         m_switchNetDevice->NotifyMacRxDrop(packetIn);
@@ -579,6 +581,8 @@ P4CorePsa::HandleIngressPipeline()
     phv->get_field("psa_ingress_input_metadata.ingress_timestamp").set(GetTimeStamp());
 
     bm::Parser* parser = this->get_parser("ingress_parser");
+    // With a target profile: what the packet does here sets when it reaches the queues
+    IngressPass pass(*this, *bm_packet, "ingress_parser", "ingress");
     parser->parse(bm_packet.get());
 
     // pass relevant values from ingress parser
@@ -599,6 +603,7 @@ P4CorePsa::HandleIngressPipeline()
 
     bm::Pipeline* ingress_mau = this->get_pipeline("ingress");
     ingress_mau->apply(bm_packet.get());
+    pass.IngressDone();
     bm_packet->reset_exit();
 
     const auto& f_ig_cos = phv->get_field("psa_ingress_output_metadata.class_of_service");

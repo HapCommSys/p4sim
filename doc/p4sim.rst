@@ -130,8 +130,10 @@ Scope and Limitations
 =====================
 
 * P4sim runs P4 programs as BMv2 does.  Its timing model is that of the links
-  and queues above; it does not model the stages of a hardware pipeline, and it
-  does not forward cut-through.
+  and queues above; it does not model the stages of a hardware pipeline.  A
+  target profile (``TargetProfile``, ``doc/latency-model.md``) adds a
+  per-packet latency (a Tofino-like switch, by published measurements) or a
+  zero-buffer cut-through switch; otherwise every hop is store and forward.
 * P4sim builds with ns-3.39 to ns-3.49 and is tested with ns-3.39 and ns-3.49,
   BMv2 1.15.8, on Ubuntu 24.04 and 26.04.  From ns-3.41 on, |ns3| builds as
   C++20 or C++23, and the spdlog that BMv2 bundles does not compile as C++20;
@@ -419,7 +421,7 @@ Troubleshooting
 Validation
 **********
 
-The module has 21 test suites with 167 test cases, from unit tests of
+The module has 22 test suites with 192 test cases, from unit tests of
 single classes to packet tests that send frames through a switch and check the
 frames that leave it (``p4-packet``, with test files in the format of p4c's
 STF).  Among them:

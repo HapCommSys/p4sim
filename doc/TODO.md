@@ -48,10 +48,12 @@ line (bridge ports only, the old timing model) and gets no more changes.
 ### Store and forward, or cut-through?
 - **Today.** Every hop is store and forward: a device gets a frame only when its
   last bit has arrived, so each hop adds one serialisation time (120 ns for a
-  1500-byte frame at 100 Gbps).
+  1500-byte frame at 100 Gbps). The exception is a switch with the
+  `cut-through-reference` target profile ([latency-model.md](latency-model.md)),
+  a zero-buffer cut-through switch.
 - **Question.** Tofino can also forward cut-through, starting on a frame before
-  it has fully arrived (it is store and forward by default). Whether to model
-  that is open; it changes the latency, not the throughput.
+  it has fully arrived (it is store and forward by default). Cut-through with a
+  queue is not modelled: no published data covers it.
 
 ## Feature gaps
 
@@ -104,6 +106,13 @@ line (bridge ports only, the old timing model) and gets no more changes.
   simulation, `P4Controller` for changes during it. (A CLI that connects after
   its switch was destroyed gets an error: the services of a switch stop before
   it is destroyed.)
+- **Target profiles** ([latency-model.md](latency-model.md)).
+  - Cut-through works with v1model, switched-Ethernet ports and no buffer only;
+    Tofino's cut-through with a queue, PSA and bridge ports have no model.
+  - No egress pipeline model, no Model A data for 25G and 40G, means only (the
+    DPTP ranges are in the profile but not used for jitter).
+  - The fixed time from the ingress pipeline into the queue (between Model A's
+    T2 and DPTP's Q) has no value; no control-plane delay for Tofino.
 - **Smaller gaps, to do when a test or user needs them:**
   - a configurable drop port (all switches of a simulation would share it);
   - a mirroring session with both a port and a multicast group;
@@ -125,6 +134,9 @@ line (bridge ports only, the old timing model) and gets no more changes.
     `mirroring_mapping_delete`, which the `psa_switch` service does not have;
     and the CLI does not import `InvalidMirroringOperation`, so any failed
     mirroring command raises a `NameError`. Both end the CLI.
+  - Upstream fix for BMv2's install (1.15.8): `include/Makefile.am` does not
+    install `bm/bm_sim/event_observer.h`, which the installed `event_logger.h`
+    includes; P4sim carries a copy (`utils/bm-event-observer.h`).
   - Upstream fix for BMI (1.15.8): `bmi_port_destroy_mgr()` joins the port
     manager's thread even when the manager was never started, which crashes
     with glibc 2.43 (Ubuntu 26.04). P4sim is not affected: its switches have a

@@ -40,7 +40,9 @@
 #include "ns3/switched-ethernet-channel.h"
 #include "ns3/uinteger.h"
 
+#include <algorithm>
 #include <cstdint>
+#include <iostream>
 
 namespace ns3
 {
@@ -111,28 +113,26 @@ P4SwitchNetDevice::GetTypeId()
                                              &P4SwitchNetDevice::SetFlowTablePath),
                           MakeStringChecker())
 
-            .AddAttribute(
-                "BmLogLevel",
-                "Level of the BMv2 pipeline log written to "
-                "/tmp/bmv2-<thrift port>-pipeline.log.txt: trace, debug, info, notice, "
-                "warn, error, critical, alert, emerg or off. With off (the default), "
-                "no log file is written; trace logs every step of every packet, "
-                "which helps to debug a P4 program but slows the simulation down. "
-                "The BMv2 logger is shared by all switches of a simulation, so use "
-                "the same level for all of them (e.g. with Config::SetDefault).",
-                StringValue("off"),
-                MakeStringAccessor(&P4SwitchNetDevice::m_bmLogLevel),
-                MakeStringChecker())
+            .AddAttribute("BmLogLevel",
+                          "Level of the BMv2 pipeline log written to "
+                          "/tmp/bmv2-<thrift port>-pipeline.log.txt: trace, debug, info, notice, "
+                          "warn, error, critical, alert, emerg or off. With off (the default), "
+                          "no log file is written; trace logs every step of every packet, "
+                          "which helps to debug a P4 program but slows the simulation down. "
+                          "The BMv2 logger is shared by all switches of a simulation, so use "
+                          "the same level for all of them (e.g. with Config::SetDefault).",
+                          StringValue("off"),
+                          MakeStringAccessor(&P4SwitchNetDevice::m_bmLogLevel),
+                          MakeStringChecker())
 
-            .AddAttribute(
-                "ThriftPort",
-                "Thrift port of the switch, used by the runtime CLI that loads "
-                "the flow table. 0 picks the first free port, starting at "
-                "$P4SIM_THRIFT_PORT_BASE (9090 if unset). A port is free if no "
-                "other p4sim process has reserved it and no program listens on it.",
-                UintegerValue(0),
-                MakeUintegerAccessor(&P4SwitchNetDevice::m_thriftPort),
-                MakeUintegerChecker<uint16_t>())
+            .AddAttribute("ThriftPort",
+                          "Thrift port of the switch, used by the runtime CLI that loads "
+                          "the flow table. 0 picks the first free port, starting at "
+                          "$P4SIM_THRIFT_PORT_BASE (9090 if unset). A port is free if no "
+                          "other p4sim process has reserved it and no program listens on it.",
+                          UintegerValue(0),
+                          MakeUintegerAccessor(&P4SwitchNetDevice::m_thriftPort),
+                          MakeUintegerChecker<uint16_t>())
 
             .AddAttribute("InputBufferSizeLow",
                           "Capacity of the input buffer for the packets received on the "
@@ -151,7 +151,8 @@ P4SwitchNetDevice::GetTypeId()
 
             .AddAttribute("QueueBufferSize",
                           "Capacity of each output queue, in packets: per port and "
-                          "priority (v1model, PSA), or per port (PNA).",
+                          "priority (v1model, PSA), or per port (PNA). The queue_capacity "
+                          "of a TargetProfile, if it gives one above 0, replaces it.",
                           UintegerValue(128),
                           MakeUintegerAccessor(&P4SwitchNetDevice::m_queueBufferSize),
                           MakeUintegerChecker<size_t>())
@@ -166,20 +167,21 @@ P4SwitchNetDevice::GetTypeId()
                           MakeUintegerAccessor(&P4SwitchNetDevice::m_switchRate),
                           MakeUintegerChecker<uint64_t>())
 
-            .AddAttribute("PipelineDelay",
-                          "Time a packet spends in the P4 pipeline (parser, ingress, egress "
-                          "and deparser), as a fixed latency: every packet reaches the egress "
-                          "queues this much later, clones and multicast copies included; the "
-                          "egress then takes no time. The pipeline takes the next packet at "
-                          "once, so the delay does not lower the throughput (see SwitchRate). "
-                          "A recirculated packet passes the pipeline again and is delayed "
-                          "again. 0 (the default) means no delay. For scale: on Tofino, the ingress block "
-                          "(parser, control, deparser) was measured at 162 to 224 ns on 100G "
-                          "ports and 221 to 472 ns on 10G ports, depending on the program "
-                          "(Franco et al., Computer Communications 218, 2024).",
-                          TimeValue(Seconds(0)),
-                          MakeTimeAccessor(&P4SwitchNetDevice::m_pipelineDelay),
-                          MakeTimeChecker(Seconds(0)))
+            .AddAttribute(
+                "PipelineDelay",
+                "Time a packet spends in the P4 pipeline (parser, ingress, egress "
+                "and deparser), as a fixed latency: every packet reaches the egress "
+                "queues this much later, clones and multicast copies included; the "
+                "egress then takes no time. The pipeline takes the next packet at "
+                "once, so the delay does not lower the throughput (see SwitchRate). "
+                "A recirculated packet passes the pipeline again and is delayed "
+                "again. 0 (the default) means no delay. For scale: on Tofino, the ingress block "
+                "(parser, control, deparser) was measured at 162 to 224 ns on 100G "
+                "ports and 221 to 472 ns on 10G ports, depending on the program "
+                "(Franco et al., Computer Communications 218, 2024).",
+                TimeValue(Seconds(0)),
+                MakeTimeAccessor(&P4SwitchNetDevice::m_pipelineDelay),
+                MakeTimeChecker(Seconds(0)))
 
             .AddAttribute("TransferBufferSize",
                           "Frames that a port holds after the egress pipeline, besides the one "
@@ -202,6 +204,41 @@ P4SwitchNetDevice::GetTypeId()
                           BooleanValue(false),
                           MakeBooleanAccessor(&P4SwitchNetDevice::m_enableVoqFabric),
                           MakeBooleanChecker())
+
+            .AddAttribute("TargetProfile",
+                          "A target profile (doc/latency-model.md): the name of a profile in "
+                          "the folder profiles/ (\"tofino-like\", \"cut-through-reference\") or "
+                          "a JSON file. It gives the latency of each packet from its arrival "
+                          "to the egress queues, instead of PipelineDelay, and the forwarding "
+                          "mode, buffering and lookup limits of the target. Empty (the "
+                          "default): none.",
+                          StringValue(""),
+                          MakeStringAccessor(&P4SwitchNetDevice::m_targetProfileName),
+                          MakeStringChecker())
+
+            .AddAttribute("LearningTable",
+                          "An exact-match table that the switch fills from the digests of the "
+                          "P4 program, with the limits of the target profile (table_capacity, "
+                          "eviction, entry_lifetime_s, learning_path): the first field of a "
+                          "digest is the key, the others the parameters of LearningAction. "
+                          "Empty (the default): none.",
+                          StringValue(""),
+                          MakeStringAccessor(&P4SwitchNetDevice::m_learningTableName),
+                          MakeStringChecker())
+
+            .AddAttribute("LearningAction",
+                          "The action of the entries of LearningTable.",
+                          StringValue(""),
+                          MakeStringAccessor(&P4SwitchNetDevice::m_learningActionName),
+                          MakeStringChecker())
+
+            .AddAttribute("ControlPlaneDelay",
+                          "Time from a digest to its entry in LearningTable when the target "
+                          "learns through the control plane. Negative (the default): the "
+                          "target profile's control_plane_update_delay_ns.",
+                          TimeValue(NanoSeconds(-1)),
+                          MakeTimeAccessor(&P4SwitchNetDevice::m_controlPlaneDelay),
+                          MakeTimeChecker())
 
             .AddAttribute(
                 "Mtu",
@@ -240,6 +277,12 @@ P4SwitchNetDevice::GetTypeId()
                             "P4 pipeline was full (see SwitchRate)",
                             MakeTraceSourceAccessor(&P4SwitchNetDevice::m_macRxDropTrace),
                             "ns3::Packet::TracedCallback")
+
+            .AddTraceSource("FrameArrival",
+                            "A frame arrived on a port of the switch: its first and last bit "
+                            "(cut-through: when its decision bytes have arrived)",
+                            MakeTraceSourceAccessor(&P4SwitchNetDevice::m_frameArrivalTrace),
+                            "ns3::P4SwitchNetDevice::FrameArrivalTracedCallback")
 
             .AddTraceSource("Digest",
                             "The record of a digest() in the P4 program (v1model and the "
@@ -310,6 +353,64 @@ P4SwitchNetDevice::DoInitialize()
         return;
     }
 
+    // The target profile: its forwarding mode needs a matching setup
+    if (!m_targetProfileName.empty())
+    {
+        m_targetProfile = TargetProfile::Load(m_targetProfileName);
+        const TargetProfile& profile = *m_targetProfile;
+        if (profile.forwardingMode == TargetProfile::ForwardingMode::CUT_THROUGH)
+        {
+            NS_ABORT_MSG_IF(m_switchArch != P4SWITCH_ARCH_V1MODEL,
+                            "Target profile " << profile.name
+                                              << ": cut-through works with v1model switches only");
+            NS_ABORT_MSG_IF(profile.queueCapacity != 0,
+                            "Target profile " << profile.name
+                                              << ": cut-through works without a queue only "
+                                                 "(queue_capacity 0)");
+            NS_ABORT_MSG_IF(profile.ingressModel != TargetProfile::IngressModel::FIXED,
+                            "Target profile " << profile.name
+                                              << ": cut-through needs a fixed latency");
+            NS_ABORT_MSG_IF(m_switchRate > 0,
+                            "Target profile " << profile.name
+                                              << ": cut-through has no input buffer; "
+                                                 "SwitchRate must be 0");
+            for (const Ptr<NetDevice>& bridgePort : m_bridgePorts)
+            {
+                NS_ABORT_MSG_IF(bridgePort,
+                                "Target profile " << profile.name
+                                                  << ": cut-through needs switched-Ethernet "
+                                                     "ports, not bridge ports");
+            }
+            m_cutThroughBytes = profile.decisionHeaderBytes;
+        }
+        if (profile.queueCapacity > 0)
+        {
+            m_queueBufferSize = static_cast<size_t>(profile.queueCapacity);
+        }
+        for (uint32_t port = 0; port < m_portChannels.size(); port++)
+        {
+            if (!m_portChannels[port])
+            {
+                continue;
+            }
+            if (profile.lineRateBps > 0 &&
+                static_cast<double>(m_portChannels[port]->GetDataRate().GetBitRate()) !=
+                    profile.lineRateBps)
+            {
+                std::cerr << "P4sim warning: target profile " << profile.name << " describes "
+                          << DataRate(static_cast<uint64_t>(profile.lineRateBps)) << " ports; port "
+                          << port << " has " << m_portChannels[port]->GetDataRate() << std::endl;
+            }
+            if (profile.preambleBytes > 0 &&
+                m_portChannels[port]->GetFraming() == LinkFraming::NONE)
+            {
+                std::cerr << "P4sim warning: target profile " << profile.name
+                          << " counts the preamble and the gap; the channel of port " << port
+                          << " has no framing (set its Framing attribute to Ethernet)" << std::endl;
+            }
+        }
+    }
+
     // Switch mode: boot the requested P4 pipeline.
     NS_LOG_INFO("P4SwitchNetDevice (switch mode, arch=" << m_switchArch << ", ports="
                                                         << m_portChannels.size() << ") on node "
@@ -371,6 +472,36 @@ P4SwitchNetDevice::DoInitialize()
 
     default:
         NS_FATAL_ERROR("Unknown P4 switch architecture: " << m_switchArch);
+    }
+
+    if (!m_learningTableName.empty())
+    {
+        NS_ABORT_MSG_IF(m_learningActionName.empty(), "LearningTable needs a LearningAction");
+        P4LearningTable::Config config;
+        config.table = m_learningTableName;
+        config.action = m_learningActionName;
+        if (m_targetProfile)
+        {
+            config.capacity = m_targetProfile->tableCapacity;
+            config.evictOldest = m_targetProfile->evictOldest;
+            config.lifetime = m_targetProfile->entryLifetime;
+            config.dataPlane =
+                m_targetProfile->learningPath != TargetProfile::LearningPath::CONTROL_PLANE;
+        }
+        if (!config.dataPlane)
+        {
+            config.controlPlaneDelay = m_controlPlaneDelay;
+            if (m_controlPlaneDelay.IsStrictlyNegative())
+            {
+                NS_ABORT_MSG_IF(!m_targetProfile->controlPlaneDelayGiven,
+                                "Target profile "
+                                    << m_targetProfile->name
+                                    << " learns through the control plane but gives no delay: "
+                                       "set the ControlPlaneDelay attribute");
+                config.controlPlaneDelay = m_targetProfile->controlPlaneDelay;
+            }
+        }
+        GetCore()->SetLearningTable(config);
     }
 
     NetDevice::DoInitialize();
@@ -436,6 +567,11 @@ P4SwitchNetDevice::Receive(Ptr<Packet> packet, Ptr<SwitchedEthernetChannel> chan
     NS_LOG_FUNCTION_NOARGS();
     NS_LOG_DEBUG("UID=" << packet->GetUid());
 
+    if (m_cutThroughBytes > 0)
+    {
+        return; // ReceiveHeaders() got the frame when its decision bytes arrived
+    }
+
     // The packet arrives as a full Ethernet frame.  Peek at the header to
     // recover src/dst/protocol for callbacks and P4 metadata.
     EthernetHeader eth;
@@ -491,14 +627,145 @@ P4SwitchNetDevice::Receive(Ptr<Packet> packet, Ptr<SwitchedEthernetChannel> chan
     NS_LOG_DEBUG("Ingress port=" << inPort << " src=" << src48 << " dst=" << dst48 << " proto=0x"
                                  << std::hex << proto << std::dec);
 
-    DeliverToCore(packet->Copy(), inPort, proto, dst48);
+    // The frame arrives with its last bit; its first bit (the preamble's, with
+    // Ethernet framing) arrived its time on the wire earlier
+    Time lastBit = Simulator::Now();
+    Time firstBit =
+        lastBit - channel->GetDataRate().CalculateBytesTxTime(
+                      LinkFraming(channel->GetFraming()).GetWireBytes(packet->GetSize()));
+    HandleArrival(packet->Copy(), inPort, proto, dst48, firstBit, lastBit);
+}
+
+void
+P4SwitchNetDevice::ReceiveHeaders(Ptr<Packet> packet,
+                                  Ptr<SwitchedEthernetChannel> channel,
+                                  uint32_t slot,
+                                  Time firstBit)
+{
+    NS_LOG_FUNCTION(this << packet << slot << firstBit);
+    EthernetHeader eth;
+    packet->PeekHeader(eth);
+    if (!m_promiscRxCallback.IsNull())
+    {
+        m_promiscRxCallback(this,
+                            packet,
+                            eth.GetLengthType(),
+                            eth.GetSource(),
+                            eth.GetDestination(),
+                            PACKET_OTHERHOST);
+    }
+    for (uint32_t i = 0; i < m_portChannels.size(); ++i)
+    {
+        if (m_portChannels[i] == channel && m_portDeviceIds[i] == slot)
+        {
+            Time lastBit =
+                firstBit + channel->GetDataRate().CalculateBytesTxTime(
+                               LinkFraming(channel->GetFraming()).GetWireBytes(packet->GetSize()));
+            HandleArrival(packet->Copy(),
+                          i,
+                          eth.GetLengthType(),
+                          eth.GetDestination(),
+                          firstBit,
+                          lastBit);
+            return;
+        }
+    }
+    NS_LOG_WARN("ReceiveHeaders: the channel is not attached to a port — dropping");
+}
+
+uint32_t
+P4SwitchNetDevice::GetCutThroughBytes() const
+{
+    return m_cutThroughBytes;
+}
+
+uint64_t
+P4SwitchNetDevice::GetLookupDrops() const
+{
+    return m_lookupDrops;
+}
+
+void
+P4SwitchNetDevice::HandleArrival(Ptr<Packet> frame,
+                                 uint32_t inPort,
+                                 uint16_t protocol,
+                                 Mac48Address dst,
+                                 Time firstBit,
+                                 Time lastBit)
+{
+    Time now = Simulator::Now();
+    Time period = m_targetProfile ? m_targetProfile->clockPeriod : Time(0);
+    if (period.IsStrictlyPositive())
+    {
+        // The target samples its inputs on a clock: an arrival counts at the next edge
+        int64_t steps = period.GetTimeStep();
+        int64_t late = ((firstBit.GetTimeStep() % steps) + steps) % steps;
+        if (late > 0)
+        {
+            firstBit += TimeStep(steps - late);
+            lastBit += TimeStep(steps - late);
+        }
+    }
+    m_frameArrivalTrace(frame, inPort, firstBit, lastBit);
+
+    if (m_targetProfile && m_targetProfile->lookupsPerCycle > 0)
+    {
+        // The lookup of a frame takes place in the clock period in which it
+        // can be decided; the frames of one period queue for the lookups
+        int64_t steps = period.GetTimeStep();
+        int64_t index = (now.GetTimeStep() + steps - 1) / steps;
+        std::vector<LookupRequest>& requests = m_lookupRequests[index];
+        requests.push_back({frame, inPort, protocol, dst, firstBit, lastBit});
+        if (requests.size() == 1)
+        {
+            Simulator::Schedule(TimeStep(index * steps) - now,
+                                &P4SwitchNetDevice::Arbitrate,
+                                this,
+                                index);
+        }
+        return;
+    }
+    DeliverToCore(frame, inPort, protocol, dst, firstBit, lastBit);
+}
+
+void
+P4SwitchNetDevice::Arbitrate(int64_t period)
+{
+    auto it = m_lookupRequests.find(period);
+    if (it == m_lookupRequests.end())
+    {
+        return;
+    }
+    std::vector<LookupRequest> requests = std::move(it->second);
+    m_lookupRequests.erase(it);
+    // Fixed priority: the lowest port index wins; the others lose their frame on all ports
+    std::stable_sort(
+        requests.begin(),
+        requests.end(),
+        [](const LookupRequest& a, const LookupRequest& b) { return a.inPort < b.inPort; });
+    for (size_t i = 0; i < requests.size(); i++)
+    {
+        LookupRequest& r = requests[i];
+        if (i < m_targetProfile->lookupsPerCycle)
+        {
+            DeliverToCore(r.frame, r.inPort, r.protocol, r.dst, r.firstBit, r.lastBit);
+        }
+        else
+        {
+            NS_LOG_DEBUG("Port " << r.inPort << " lost the lookup arbitration, frame dropped");
+            m_lookupDrops++;
+            m_macRxDropTrace(r.frame);
+        }
+    }
 }
 
 void
 P4SwitchNetDevice::DeliverToCore(Ptr<Packet> frame,
                                  uint32_t inPort,
                                  uint16_t protocol,
-                                 Mac48Address dst)
+                                 Mac48Address dst,
+                                 Time firstBit,
+                                 Time lastBit)
 {
     if (!m_v1modelSwitch && !m_psaSwitch && !m_pnaNic && !m_p4Pipeline)
     {
@@ -518,6 +785,7 @@ P4SwitchNetDevice::DeliverToCore(Ptr<Packet> frame,
     }
 
     // Feed the full Ethernet frame into the P4 pipeline.
+    GetCore()->NoteArrival(firstBit, lastBit);
     switch (m_switchArch)
     {
     case P4SWITCH_ARCH_V1MODEL:
@@ -795,7 +1063,13 @@ P4SwitchNetDevice::ReceiveFromDevice(Ptr<NetDevice> incomingPort,
     eth.SetLengthType(protocol);
     frame->AddHeader(eth);
 
-    DeliverToCore(frame, inPort, protocol, dst48);
+    // Its first bit arrived its time on the wire earlier; a port device
+    // without a data rate (SimpleNetDevice by default) delivers it at once
+    Time lastBit = Simulator::Now();
+    DataRate rate = GetPortDataRate(inPort);
+    Time firstBit =
+        rate.GetBitRate() > 0 ? lastBit - rate.CalculateBytesTxTime(frame->GetSize()) : lastBit;
+    HandleArrival(frame, inPort, protocol, dst48, firstBit, lastBit);
 }
 
 bool
@@ -929,6 +1203,7 @@ P4SwitchNetDevice::ConfigureCore(P4SwitchCore& core) const
     core.SetThriftPort(m_thriftPort);
     core.SetPipelineDelay(m_pipelineDelay);
     core.SetTransferBufferSize(m_transferBufferSize);
+    core.SetTargetProfile(m_targetProfile);
 }
 
 int

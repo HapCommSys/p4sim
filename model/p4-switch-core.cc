@@ -32,6 +32,7 @@
 #include "ns3/p4sim-ns3-compat.h"
 #include "ns3/rng-seed-manager.h"
 #include "ns3/simulator.h"
+#include "ns3/switched-ethernet-channel.h"
 
 #include <algorithm>
 #include <array>
@@ -726,6 +727,17 @@ P4SwitchCore::TrySwap()
     NS_ABORT_MSG_IF(rc != bm::RuntimeInterface::SUCCESS,
                     "Switch " << m_p4SwitchId << ": the swap failed (BMv2 error " << rc << ")");
     m_learnListsRead = false; // those of the new program
+    if (m_learningTable)
+    {
+        m_learningTable->Forget(); // the tables of the new program are empty
+    }
+    if (m_programFeatures)
+    {
+        std::string config = get_config();
+        std::string error;
+        NS_ABORT_MSG_IF(!m_programFeatures->Load(config, &error),
+                        "Switch " << m_p4SwitchId << ": " << error);
+    }
     NS_LOG_INFO("Switch " << m_p4SwitchId << " swapped its P4 program; " << m_heldFrames.size()
                           << " held frames enter the pipeline");
     std::deque<HeldFrame> held;
@@ -763,6 +775,10 @@ P4SwitchCore::Learn(int listId, const bm::Packet& packet)
     }
     NS_LOG_DEBUG("Switch " << m_p4SwitchId << ": digest " << digest);
     m_switchNetDevice->NotifyDigest(digest);
+    if (m_learningTable)
+    {
+        m_learningTable->OnDigest(digest);
+    }
 }
 
 void
@@ -820,6 +836,226 @@ P4SwitchCore::GetPipelineDelay() const
 }
 
 void
+P4SwitchCore::SetTargetProfile(std::shared_ptr<const TargetProfile> profile)
+{
+    m_targetProfile = profile;
+}
+
+const TargetProfile*
+P4SwitchCore::GetTargetProfile() const
+{
+    return m_targetProfile.get();
+}
+
+void
+P4SwitchCore::NoteArrival(Time firstBit, Time lastBit)
+{
+    m_arrivalNoted = true;
+    m_notedArrival = {firstBit, lastBit};
+}
+
+void
+P4SwitchCore::ForgetArrival(uint64_t packetId)
+{
+    m_arrivals.erase(packetId);
+}
+
+uint64_t
+P4SwitchCore::GetEgressBusyDrops() const
+{
+    return m_egressBusyDrops;
+}
+
+void
+P4SwitchCore::SetLearningTable(const P4LearningTable::Config& config)
+{
+    m_learningTable = std::make_unique<P4LearningTable>(*this, config);
+}
+
+P4LearningTable*
+P4SwitchCore::GetLearningTable() const
+{
+    return m_learningTable.get();
+}
+
+void
+P4SwitchCore::WarnOnce(const std::string& message)
+{
+    if (m_warnings.insert(message).second)
+    {
+        std::cerr << "P4sim warning: switch " << m_p4SwitchId << ": " << message << std::endl;
+    }
+}
+
+P4SwitchCore::IngressPass::IngressPass(P4SwitchCore& core,
+                                       const bm::Packet& packet,
+                                       const std::string& parser,
+                                       const std::string& pipeline)
+    : m_core(core),
+      m_packetId(packet.get_packet_id()),
+      m_inPort(static_cast<uint32_t>(packet.get_ingress_port())),
+      m_bytes(static_cast<uint32_t>(packet.get_data_size())),
+      m_parser(parser),
+      m_previousSet(core.m_passReleaseSet),
+      m_previousRelease(core.m_passRelease),
+      m_previousBytes(core.m_passBytes)
+{
+    core.m_passReleaseSet = false;
+    if (core.m_targetProfile &&
+        core.m_targetProfile->ingressModel == TargetProfile::IngressModel::FRANCO_LINEAR)
+    {
+        m_collector = std::make_unique<LatencyFeatureCollector>(&m_features, parser, pipeline);
+    }
+}
+
+void
+P4SwitchCore::IngressPass::IngressDone()
+{
+    if (m_collector)
+    {
+        m_collector->Stop();
+    }
+    if (!m_core.m_targetProfile)
+    {
+        return;
+    }
+    // The latency counts from the first bit (cut-through) or the last bit of
+    // the frame; a packet that is not a received frame (resubmit,
+    // recirculation) enters the pipeline now
+    Time now = Simulator::Now();
+    Time base = now;
+    auto arrival = m_core.m_arrivals.find(m_packetId);
+    if (arrival != m_core.m_arrivals.end())
+    {
+        base = m_core.m_targetProfile->forwardingMode == TargetProfile::ForwardingMode::CUT_THROUGH
+                   ? arrival->second.firstBit
+                   : arrival->second.lastBit;
+        m_core.m_arrivals.erase(arrival);
+    }
+    // A packet that waited for the pipeline (SwitchRate) takes the time of the
+    // pipeline after the wait, as with PipelineDelay
+    ProfileDelay delay = m_core.ProfileLatency(m_inPort, m_bytes, m_parser, m_features);
+    m_core.m_passRelease = std::max(now, base + delay.beforePipeline) + delay.inPipeline;
+    m_core.m_passBytes = m_bytes;
+    m_core.m_passReleaseSet = true;
+}
+
+P4SwitchCore::IngressPass::~IngressPass()
+{
+    m_core.m_arrivals.erase(m_packetId);
+    m_core.m_passReleaseSet = m_previousSet;
+    m_core.m_passRelease = m_previousRelease;
+    m_core.m_passBytes = m_previousBytes;
+}
+
+P4SwitchCore::ProfileDelay
+P4SwitchCore::ProfileLatency(uint32_t inPort,
+                             uint32_t bytes,
+                             const std::string& parser,
+                             const PacketLatencyFeatures& features)
+{
+    const TargetProfile& profile = *m_targetProfile;
+    if (profile.ingressModel == TargetProfile::IngressModel::FIXED)
+    {
+        // Cut-through: the fixed latency counts from the first bit, while the
+        // frame is still arriving (and the switch has no input buffer);
+        // store-and-forward: from when the pipeline takes the frame
+        if (profile.forwardingMode == TargetProfile::ForwardingMode::CUT_THROUGH)
+        {
+            return {profile.fixedLatency, Time(0)};
+        }
+        return {Time(0), profile.fixedLatency};
+    }
+
+    // Model A for the ingress pipeline. Its baseline contains the first parse
+    // state (Ethernet); the other states and the tables that matched add to it.
+    std::vector<uint32_t> states =
+        m_programFeatures->GetStateBytes(parser, features.extractedHeaders);
+    if (states.empty())
+    {
+        WarnOnce("Model A: the ingress parser extracted no header; the baseline counts one");
+    }
+    else
+    {
+        states.erase(states.begin());
+    }
+    std::vector<std::string> unknown;
+    std::vector<LatencyTableFeature> tables =
+        m_programFeatures->GetTableFeatures(features.hitTables, &unknown);
+    for (const std::string& name : unknown)
+    {
+        WarnOnce("Model A: the program has no table " + name);
+    }
+    for (const std::string& name : features.missedTables)
+    {
+        const LatencyTableFeature* table = m_programFeatures->FindTable(name);
+        if (table && table->keyCount == 0)
+        {
+            continue; // no lookup (see GetTableFeatures())
+        }
+        // Franco et al. fitted the control term on tables that matched
+        WarnOnce("Model A counts the tables that matched; " + name +
+                 " was applied without a match and adds nothing");
+    }
+    double portSpeedBps =
+        static_cast<double>(m_switchNetDevice->GetPortDataRate(inPort).GetBitRate());
+    IngressLatencyEstimate ingress =
+        profile.TofinoIngressLatencyNs(bytes, portSpeedBps, states, tables);
+    for (const std::string& warning : ingress.warnings)
+    {
+        WarnOnce(warning);
+    }
+
+    // Model B before and after it: the MAC receive delay, before the pipeline,
+    // and the egress up to the start of serialization. The egress delay is
+    // fixed, so it can be added before the traffic manager: the frames start
+    // on the wire at the same times (doc/latency-model.md).
+    double beforeNs = 0;
+    double inNs = ingress.TotalNs();
+    for (const TargetProfile::MeasuredDelay* delay : {&profile.macRxDelay, &profile.egressDelay})
+    {
+        if (!delay->given)
+        {
+            continue;
+        }
+        (delay == &profile.macRxDelay ? beforeNs : inNs) += delay->meanNs;
+        if (delay->lineRateBps > 0 && delay->lineRateBps != portSpeedBps)
+        {
+            WarnOnce("Model B: " + delay->source + " was measured at another port speed");
+        }
+    }
+    return {Time::FromDouble(beforeNs, Time::NS), Time::FromDouble(inNs, Time::NS)};
+}
+
+bool
+P4SwitchCore::ReserveEgress(uint32_t port, Time start, uint32_t frameBytes)
+{
+    const TargetProfile& profile = *m_targetProfile;
+    DataRate rate = m_switchNetDevice->GetPortDataRate(port);
+    if (rate.GetBitRate() == 0)
+    {
+        return true; // not a port of this switch: the device drops the frame
+    }
+    // The frame occupies the port from its first to its last bit on the wire
+    uint32_t wireBytes = frameBytes;
+    Ptr<SwitchedEthernetChannel> channel = m_switchNetDevice->GetPortChannel(port);
+    if (channel)
+    {
+        wireBytes = LinkFraming(channel->GetFraming()).GetWireBytes(frameBytes);
+    }
+    // ...and then needs to be idle for the guard time (and at least the gap)
+    Time idle = std::max(profile.egressGuard, rate.CalculateBytesTxTime(profile.ipgBytes));
+    auto previous = m_egressFrameEnd.find(port);
+    if (previous != m_egressFrameEnd.end() && start < previous->second + idle)
+    {
+        m_egressBusyDrops++;
+        return false;
+    }
+    m_egressFrameEnd[port] = start + rate.CalculateBytesTxTime(wireBytes);
+    return true;
+}
+
+void
 P4SwitchCore::SetTransferBufferSize(uint32_t frames)
 {
     m_transferBufferSize = frames;
@@ -849,19 +1085,38 @@ void
 P4SwitchCore::Enqueue(uint32_t egress_port, std::unique_ptr<bm::Packet>&& packet)
 {
     CheckPendingSwap(); // a full egress queue drops the packet
-    if (m_pipelineDelay.IsZero())
+    Time now = Simulator::Now();
+    // The packet of an ingress pass leaves at the time the target profile
+    // gives it (IngressPass); other packets PipelineDelay later
+    Time leaves = m_passReleaseSet ? std::max(m_passRelease, now) : now + m_pipelineDelay;
+    // The pipeline keeps the order of its packets: none overtakes another
+    if (!m_pipelinePackets.empty())
+    {
+        leaves = std::max(leaves, m_pipelinePackets.back().leaves);
+    }
+    // A port without a queue takes the frame only if it is free when the frame
+    // would start on it
+    if (m_targetProfile && m_targetProfile->queueCapacity == 0 &&
+        !ReserveEgress(egress_port,
+                       leaves,
+                       m_passReleaseSet ? m_passBytes
+                                        : static_cast<uint32_t>(packet->get_data_size())))
+    {
+        NS_LOG_DEBUG("Switch " << m_p4SwitchId << ": egress port " << egress_port
+                               << " busy, frame dropped");
+        return;
+    }
+    if (leaves == now && m_pipelinePackets.empty())
     {
         EnqueueNow(egress_port, std::move(packet));
         return;
     }
-    // Every packet is delayed by the same time, so the packets leave the
-    // pipeline in the order in which they entered it
-    Time leaves = Simulator::Now() + m_pipelineDelay;
     m_pipelinePackets.push_back({leaves, egress_port, std::move(packet)});
     if (!P4simIsPending(m_pipelineEvent))
     {
-        m_pipelineEvent =
-            Simulator::Schedule(m_pipelineDelay, &P4SwitchCore::ReleaseFromPipeline, this);
+        m_pipelineEvent = Simulator::Schedule(m_pipelinePackets.front().leaves - now,
+                                              &P4SwitchCore::ReleaseFromPipeline,
+                                              this);
     }
 }
 
@@ -998,6 +1253,19 @@ P4SwitchCore::InitializeSwitchFromP4Json(const std::string& jsonPath)
                                     << " (BMv2 init status " << status << ")");
     }
 
+    if (m_targetProfile &&
+        m_targetProfile->ingressModel == TargetProfile::IngressModel::FRANCO_LINEAR)
+    {
+        NS_ABORT_MSG_IF(!LatencyFeatureCollector::EventsAvailable(),
+                        "Switch " << m_p4SwitchId << ": the target profile "
+                                  << m_targetProfile->name
+                                  << " needs BMv2's pipeline events; this BMv2 was built "
+                                     "without its event logger (--disable-elogger)");
+        m_programFeatures = std::make_unique<P4LatencyFeatures>();
+        std::string error;
+        NS_ABORT_MSG_IF(!m_programFeatures->LoadFile(jsonPath, &error),
+                        "Switch " << m_p4SwitchId << ": " << error);
+    }
     NS_LOG_INFO("P4 json applied successfully.");
 }
 
@@ -1286,6 +1554,11 @@ P4SwitchCore::ConvertToBmPacket(Ptr<Packet> nsPacket, int inPort)
     uint8_t* pkt_buffer = new uint8_t[len];
     nsPacket->CopyData(pkt_buffer, len);
     bm::PacketBuffer buffer(len + 512, (char*)pkt_buffer, len);
+    if (m_arrivalNoted && m_targetProfile)
+    {
+        m_arrivals[m_packetId] = m_notedArrival;
+    }
+    m_arrivalNoted = false;
     std::unique_ptr<bm::Packet> bm_packet(
         new_packet_ptr(inPort, m_packetId++, len, std::move(buffer)));
     delete[] pkt_buffer;

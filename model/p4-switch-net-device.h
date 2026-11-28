@@ -26,9 +26,11 @@
 #include "ns3/net-device.h"
 #include "ns3/nstime.h"
 #include "ns3/p4-digest.h"
+#include "ns3/target-profile.h"
 #include "ns3/traced-callback.h"
 
 #include <cstdint>
+#include <map>
 #include <memory>
 #include <stdint.h>
 #include <string>
@@ -164,6 +166,45 @@ class P4SwitchNetDevice : public NetDevice
      * \param slot The slot of this device in \p channel (see Attach()).
      */
     void Receive(Ptr<Packet> packet, Ptr<SwitchedEthernetChannel> channel, uint32_t slot);
+
+    /**
+     * \brief Called by SwitchedEthernetChannel when the decision bytes of a
+     * frame (GetCutThroughBytes()) have arrived at a cut-through switch
+     * \param packet the whole frame
+     * \param channel the channel it arrives on
+     * \param slot the slot of this device on the channel
+     * \param firstBit when its first bit arrived
+     */
+    void ReceiveHeaders(Ptr<Packet> packet,
+                        Ptr<SwitchedEthernetChannel> channel,
+                        uint32_t slot,
+                        Time firstBit);
+
+    /**
+     * \brief The bytes of a frame, preamble included, that a cut-through
+     * switch needs before it decides
+     * \return the bytes; 0 if the switch forwards store-and-forward
+     */
+    uint32_t GetCutThroughBytes() const;
+
+    /**
+     * \brief Get the frames dropped because they lost the lookup arbitration
+     * (lookups_per_cycle of the target profile)
+     * \return the frames
+     */
+    uint64_t GetLookupDrops() const;
+
+    /**
+     * TracedCallback signature for the arrival of a frame
+     * \param frame the frame
+     * \param port the ingress port
+     * \param firstBit when its first bit arrived
+     * \param lastBit when its last bit arrived (or will arrive, cut-through)
+     */
+    typedef void (*FrameArrivalTracedCallback)(Ptr<const Packet> frame,
+                                               uint32_t port,
+                                               Time firstBit,
+                                               Time lastBit);
 
     // -----------------------------------------------------------------------
     // Egress from P4 pipeline (called by pipeline cores)
@@ -398,7 +439,47 @@ class P4SwitchNetDevice : public NetDevice
      * \brief Feed \p frame, a full Ethernet frame received on \p inPort, into
      *        the P4 core.
      */
-    void DeliverToCore(Ptr<Packet> frame, uint32_t inPort, uint16_t protocol, Mac48Address dst);
+    void DeliverToCore(Ptr<Packet> frame,
+                       uint32_t inPort,
+                       uint16_t protocol,
+                       Mac48Address dst,
+                       Time firstBit,
+                       Time lastBit);
+
+    /// A frame has arrived (or, cut-through, its decision bytes): fire FrameArrival,
+    /// pass the lookup arbitration if the target has one, deliver it to the core
+    void HandleArrival(Ptr<Packet> frame,
+                       uint32_t inPort,
+                       uint16_t protocol,
+                       Mac48Address dst,
+                       Time firstBit,
+                       Time lastBit);
+
+    /// Decide which frames of one clock period get their lookup (lookups_per_cycle)
+    void Arbitrate(int64_t period);
+
+    /// A frame waiting for the lookup arbitration
+    struct LookupRequest
+    {
+        Ptr<Packet> frame; //!< the frame
+        uint32_t inPort;   //!< its ingress port
+        uint16_t protocol; //!< its protocol
+        Mac48Address dst;  //!< its destination
+        Time firstBit;     //!< its first bit
+        Time lastBit;      //!< its last bit
+    };
+
+    std::string m_targetProfileName;                                //!< "TargetProfile" attribute
+    std::shared_ptr<const TargetProfile> m_targetProfile;           //!< the profile it names
+    uint32_t m_cutThroughBytes{0};                                  //!< see GetCutThroughBytes()
+    std::map<int64_t, std::vector<LookupRequest>> m_lookupRequests; //!< by clock period
+    uint64_t m_lookupDrops{0};                                      //!< see GetLookupDrops()
+    std::string m_learningTableName;                                //!< "LearningTable" attribute
+    std::string m_learningActionName;                               //!< "LearningAction" attribute
+    Time m_controlPlaneDelay; //!< "ControlPlaneDelay" attribute
+
+    /// Fired when a frame arrives (see FrameArrivalTracedCallback)
+    TracedCallback<Ptr<const Packet>, uint32_t, Time, Time> m_frameArrivalTrace;
 
     /// Receives the frames of the bridge ports (a promiscuous protocol handler)
     void ReceiveFromDevice(Ptr<NetDevice> incomingPort,

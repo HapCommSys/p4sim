@@ -11,7 +11,10 @@
 
 #include "ns3/event-id.h"
 #include "ns3/nstime.h"
+#include "ns3/p4-latency-features.h"
+#include "ns3/p4-learning-table.h"
 #include "ns3/p4-switch-net-device.h"
+#include "ns3/target-profile.h"
 
 #include <atomic>
 #include <bm/bm_sim/packet.h>
@@ -21,6 +24,7 @@
 #include <map>
 #include <memory>
 #include <random>
+#include <set>
 #include <string>
 #include <thread>
 #include <unordered_map>
@@ -166,6 +170,53 @@ class P4SwitchCore : public bm::Switch
      * @return the delay set by SetPipelineDelay()
      */
     Time GetPipelineDelay() const;
+
+    /**
+     * @brief Use a target profile (the TargetProfile attribute of
+     *        P4SwitchNetDevice; doc/latency-model.md), before
+     *        InitializeSwitchFromP4Json()
+     * @param profile the profile; nullptr: none
+     *
+     * A packet that passes the ingress then reaches the egress queues at its own
+     * time, by the profile's latency model, instead of PipelineDelay later; the
+     * packets keep their order. With a queue_capacity of 0, an egress port takes
+     * a frame only if it has been idle for egress_guard_ns when the frame would
+     * start; otherwise the frame is dropped on that port.
+     */
+    void SetTargetProfile(std::shared_ptr<const TargetProfile> profile);
+
+    /**
+     * @brief Get the target profile
+     * @return the profile, or nullptr
+     */
+    const TargetProfile* GetTargetProfile() const;
+
+    /**
+     * @brief The arrival of the frame that the next ReceivePacket() gets
+     * @param firstBit when its first bit arrived (the preamble's, on a link with
+     *        Ethernet framing)
+     * @param lastBit when its last bit arrived
+     */
+    void NoteArrival(Time firstBit, Time lastBit);
+
+    /**
+     * @brief Get the frames dropped because their egress port was busy
+     * @return the frames dropped at ports without a queue (queue_capacity 0)
+     */
+    uint64_t GetEgressBusyDrops() const;
+
+    /**
+     * @brief Learn into a table of the P4 program from its digests (see
+     *        P4LearningTable)
+     * @param config the table and the target's limits
+     */
+    void SetLearningTable(const P4LearningTable::Config& config);
+
+    /**
+     * @brief Get the learning table
+     * @return the table, or nullptr if none is set
+     */
+    P4LearningTable* GetLearningTable() const;
 
     /**
      * @brief Set the size of each port's transfer buffer (the TransferBufferSize
@@ -507,6 +558,56 @@ class P4SwitchCore : public bm::Switch
     virtual void EnqueueNow(uint32_t egress_port, std::unique_ptr<bm::Packet>&& packet) = 0;
 
     /**
+     * @brief One pass of a packet through the ingress, with a target profile
+     *
+     * Create it before the ingress parser and call IngressDone() after the
+     * ingress control. It collects the headers that the parser extracts and
+     * the tables that the control applies (BMv2's pipeline events) and then
+     * computes when the packet reaches the egress queues; Enqueue() uses that
+     * time for the packet and its copies until the pass ends. Without a target
+     * profile it does nothing.
+     */
+    class IngressPass
+    {
+      public:
+        /**
+         * @param core the switch
+         * @param packet the packet, before the parser
+         * @param parser the name of the ingress parser in the BMv2 JSON
+         * @param pipeline the name of the ingress control in the BMv2 JSON
+         */
+        IngressPass(P4SwitchCore& core,
+                    const bm::Packet& packet,
+                    const std::string& parser,
+                    const std::string& pipeline);
+        ~IngressPass();
+
+        /// The ingress control is done: compute when the packet leaves the pipeline
+        void IngressDone();
+
+        IngressPass(const IngressPass&) = delete;
+        IngressPass& operator=(const IngressPass&) = delete;
+
+      private:
+        P4SwitchCore& m_core;                                 ///< the switch
+        uint64_t m_packetId;                                  ///< the packet
+        uint32_t m_inPort;                                    ///< its ingress port
+        uint32_t m_bytes;                                     ///< its size before the parser
+        std::string m_parser;                                 ///< the ingress parser
+        PacketLatencyFeatures m_features;                     ///< what it did
+        std::unique_ptr<LatencyFeatureCollector> m_collector; ///< while it passes
+        bool m_previousSet;       ///< the pass that this one interrupts (resubmit)...
+        Time m_previousRelease;   ///< ...its release time
+        uint32_t m_previousBytes; ///< ...its frame size
+    };
+
+    /**
+     * @brief Forget the arrival of a packet that the switch dropped before its ingress
+     * @param packetId the packet
+     */
+    void ForgetArrival(uint64_t packetId);
+
+    /**
      * @brief Egress processing pipeline
      * @param workerId the worker ID
      * @return bool true if the packet is processed successfully, false otherwise
@@ -684,6 +785,61 @@ class P4SwitchCore : public bm::Switch
 
     std::map<int, LearnList> m_learnLists; //!< the learn lists of the P4 program, by ID
     bool m_learnListsRead{false};          //!< m_learnLists holds those of the current program
+
+    /// The latency that the target profile gives a packet, in two parts
+    struct ProfileDelay
+    {
+        Time beforePipeline; //!< from its arrival until the pipeline can take it
+        Time inPipeline;     //!< from when the pipeline takes it to the egress queues
+    };
+
+    /**
+     * @brief The latency that the target profile gives a packet, from its
+     *        arrival (cut-through: its first bit; else its last bit) to the
+     *        egress queues (see IngressPass). A packet that waits for the
+     *        pipeline (SwitchRate) gets inPipeline after the wait.
+     * @param inPort its ingress port
+     * @param bytes its size
+     * @param parser the ingress parser
+     * @param features what it did in the ingress
+     * @return the latency
+     */
+    ProfileDelay ProfileLatency(uint32_t inPort,
+                                uint32_t bytes,
+                                const std::string& parser,
+                                const PacketLatencyFeatures& features);
+
+    /**
+     * @brief Book an egress port without a queue for a frame, if it is free
+     * @param port the port
+     * @param start when the frame would start on it
+     * @param frameBytes the frame's size
+     * @return false if the port is busy then: the frame is dropped
+     */
+    bool ReserveEgress(uint32_t port, Time start, uint32_t frameBytes);
+
+    /// Print a warning on stderr, once per switch and text
+    void WarnOnce(const std::string& message);
+
+    /// When a frame arrived
+    struct Arrival
+    {
+        Time firstBit; //!< its first bit
+        Time lastBit;  //!< its last bit
+    };
+
+    std::shared_ptr<const TargetProfile> m_targetProfile; //!< see SetTargetProfile()
+    std::unique_ptr<P4LatencyFeatures> m_programFeatures; //!< of the P4 program, for Model A
+    bool m_arrivalNoted{false};                           //!< NoteArrival() was called...
+    Arrival m_notedArrival;                               //!< ...with this
+    std::unordered_map<uint64_t, Arrival> m_arrivals;     //!< by packet ID, until the ingress
+    bool m_passReleaseSet{false}; //!< an IngressPass gave the release time of its packet
+    Time m_passRelease;           //!< when the packet of the pass reaches the egress queues
+    uint32_t m_passBytes{0};      //!< its size
+    std::unordered_map<uint32_t, Time> m_egressFrameEnd; //!< end of the last frame, per port
+    uint64_t m_egressBusyDrops{0};                       //!< see GetEgressBusyDrops()
+    std::set<std::string> m_warnings;                    //!< printed by WarnOnce()
+    std::unique_ptr<P4LearningTable> m_learningTable;    //!< see SetLearningTable()
 };
 
 } // namespace ns3

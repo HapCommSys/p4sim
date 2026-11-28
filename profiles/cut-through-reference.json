@@ -1,0 +1,29 @@
+{
+  "name": "cut-through-reference",
+  "description": "A zero-buffer cut-through 100 Mbps Ethernet switch ASIC (Essenceia/ethernet_switch_asic, commit a14e3e1), as its RTL behaves in simulation; not measured silicon. See doc/latency-model.md.",
+  "forwarding_mode": "cut_through",
+  "line_rate_bps": 100000000,
+  "clock_period_ns": 20,
+  "ingress_latency_model": "fixed",
+  "fixed_latency_ns": 1260,
+  "decision_header_bytes": 14,
+  "mac_rx_delay_ns": null,
+  "egress_delay_ns": null,
+  "queue_capacity": 0,
+  "preamble_bytes": 8,
+  "ipg_bytes": 12,
+  "egress_guard_ns": 1020,
+  "lookups_per_cycle": 1,
+  "table_capacity": 4,
+  "eviction": "replace_oldest",
+  "entry_lifetime_s": 300,
+  "learning_path": "data_plane",
+  "control_plane_update_delay_ns": null,
+  "fcs_check": false,
+  "notes": [
+    "One RMII clock of 50 MHz (20 ns, 2 bits per cycle) for all ports. First preamble bit in to first preamble bit out: 63 cycles (1260 ns), whatever the frame length. The decision needs the 8 bytes of preamble and delimiter and the 6-byte destination MAC (14 bytes).",
+    "A frame is forwarded on a port only if it would start there at least 51 cycles (1020 ns) after the first idle cycle that followed the previous frame; otherwise it is dropped on that port. One lookup per cycle; within a cycle the lowest port index wins and the others are dropped on all ports.",
+    "Address table: 4 entries, learned on every frame from its source MAC (not group addresses), the oldest replaced when full, a lifetime of 300 s (the author's write-up); the age counter's 4-bit steps are not modelled.",
+    "No FCS check: corrupted frames are forwarded."
+  ]
+}

@@ -1,0 +1,11 @@
+# Flooding for l2_switch_v1model.p4 with 3 ports: multicast group p + 1 holds
+# every port except p (nodes 0, 1, 2)
+mc_mgrp_create 1
+mc_mgrp_create 2
+mc_mgrp_create 3
+mc_node_create 0 1 2
+mc_node_create 0 0 2
+mc_node_create 0 0 1
+mc_node_associate 1 0
+mc_node_associate 2 1
+mc_node_associate 3 2

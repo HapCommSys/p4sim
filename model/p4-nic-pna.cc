@@ -94,6 +94,8 @@ P4PnaNic::main_processing_pipeline()
     phv->get_field("pna_main_input_metadata.timestamp").set(GetTimeStamp());
 
     bm::Parser* parser = this->get_parser("main_parser");
+    // With a target profile: what the packet does here sets when it reaches the queues
+    IngressPass pass(*this, *bm_packet, "main_parser", "main_control");
     parser->parse(bm_packet.get());
 
     // pass relevant values from main parser
@@ -109,6 +111,7 @@ P4PnaNic::main_processing_pipeline()
 
     bm::Pipeline* main_mau = this->get_pipeline("main_control");
     main_mau->apply(bm_packet.get());
+    pass.IngressDone();
     bm_packet->reset_exit();
 
     bm::Deparser* deparser = this->get_deparser("main_deparser");
