@@ -186,7 +186,8 @@ class P4SwitchNetDevice : public NetDevice
      *
      * \param [out] txTime  if non-null, set to the frame's serialisation time
      *                      when the frame was accepted onto the channel (left
-     *                      unchanged when the frame was dropped).
+     *                      unchanged when the frame was dropped; 0 on a bridge
+     *                      port without a data rate).
      * \return true if the frame was handed to the channel; false if it was
      *         dropped (null packet, drop port, invalid port, a frame shorter
      *         than an Ethernet header, or channel busy).
@@ -410,6 +411,9 @@ class P4SwitchNetDevice : public NetDevice
 
     /**
      * \brief Send \p frame, a full Ethernet frame, on bridge port \p port.
+     * \param [out] txTime  if non-null and the device accepted the frame, set
+     *                      to its transmission time at the port's data rate
+     *                      (0 if the port has none, see GetPortDataRate())
      * \return true if the device accepted it.
      */
     bool SendOnBridgePort(uint32_t port, Ptr<Packet> frame, Time* txTime);

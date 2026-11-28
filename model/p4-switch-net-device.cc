@@ -819,15 +819,19 @@ P4SwitchNetDevice::SendOnBridgePort(uint32_t port, Ptr<Packet> frame, Time* txTi
     if (txTime)
     {
         // With the port's framing, if its device has one (the P4 point-to-point
-        // device; ns-3's CSMA device adds its FCS and gap itself)
+        // device; ns-3's CSMA device adds its FCS and gap itself). Without a
+        // data rate (a SimpleNetDevice, or a device without a DataRate
+        // attribute), 0: the port is free again at once, as below.
         P4SIM_ENUM_VALUE(LinkFraming::Type) framing;
         LinkFraming::Type type = LinkFraming::NONE;
         if (m_bridgePorts[port]->GetAttributeFailSafe("Framing", framing))
         {
             type = static_cast<LinkFraming::Type>(framing.Get());
         }
-        *txTime = GetPortDataRate(port).CalculateBytesTxTime(
-            LinkFraming(type).GetWireBytes(frame->GetSize()));
+        DataRate rate = GetPortDataRate(port);
+        *txTime = (rate.GetBitRate() > 0)
+                      ? rate.CalculateBytesTxTime(LinkFraming(type).GetWireBytes(frame->GetSize()))
+                      : Time(0);
     }
     if (!m_bridgePortTxEnd[port])
     {

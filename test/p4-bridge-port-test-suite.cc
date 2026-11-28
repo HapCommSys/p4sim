@@ -248,15 +248,26 @@ BridgePortTestCase::DoRun()
 class BridgePortNoTxEndTestCase : public TestCase
 {
   public:
-    explicit BridgePortNoTxEndTestCase(DataRate rate)
-        : TestCase(rate.GetBitRate() == 0
-                       ? "v1model: a bridge port without PhyTxEnd sends every frame"
-                       : "v1model: a bridge port without PhyTxEnd sends at its data rate"),
-          m_rate(rate)
+    explicit BridgePortNoTxEndTestCase(DataRate rate, bool voq = false)
+        : TestCase(Name(rate, voq)),
+          m_rate(rate),
+          m_voq(voq)
     {
     }
 
   private:
+    /// The name of the test case
+    static std::string Name(DataRate rate, bool voq)
+    {
+        if (voq)
+        {
+            return "v1model, VOQ fabric: a bridge port without a data rate sends every frame";
+        }
+        return rate.GetBitRate() == 0
+                   ? "v1model: a bridge port without PhyTxEnd sends every frame"
+                   : "v1model: a bridge port without PhyTxEnd sends at its data rate";
+    }
+
     void DoRun() override;
 
     void DoTeardown() override
@@ -285,6 +296,7 @@ class BridgePortNoTxEndTestCase : public TestCase
 
     DataRate m_rate; ///< "DataRate" of the SimpleNetDevice port, 0 = none
     Ptr<SwitchedEthernetHostDevice> m_host0;
+    bool m_voq; ///< EnableVoqFabric
     uint32_t m_received{0};
     std::vector<Time> m_switchTx; ///< when the switch sent each frame
 };
@@ -302,6 +314,9 @@ BridgePortNoTxEndTestCase::DoRun()
                      StringValue(CreateDataDirFilename(
                          "p4src/egress_ports/egress_ports_v1model.json")));
     sw->SetAttribute("FlowTablePath", StringValue(""));
+    // With the VOQ fabric, the traffic manager asks the port for each frame's
+    // transmission time: 0 without a data rate
+    sw->SetAttribute("EnableVoqFabric", BooleanValue(m_voq));
     switchNode->AddDevice(sw);
 
     // 10 Gbps: host 0 sends a frame in 0.81 us, before its next one is due
@@ -361,5 +376,6 @@ static class P4BridgePortTestSuite : public TestSuite
         AddTestCase(new BridgePortTestCase("psa", P4SWITCH_ARCH_PSA), P4SIM_TEST_QUICK);
         AddTestCase(new BridgePortNoTxEndTestCase(DataRate(0)), P4SIM_TEST_QUICK);
         AddTestCase(new BridgePortNoTxEndTestCase(DataRate("100Mbps")), P4SIM_TEST_QUICK);
+        AddTestCase(new BridgePortNoTxEndTestCase(DataRate(0), true), P4SIM_TEST_QUICK);
     }
 } g_p4BridgePortTestSuite;
