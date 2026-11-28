@@ -727,6 +727,10 @@ P4SwitchCore::TrySwap()
     NS_ABORT_MSG_IF(rc != bm::RuntimeInterface::SUCCESS,
                     "Switch " << m_p4SwitchId << ": the swap failed (BMv2 error " << rc << ")");
     m_learnListsRead = false; // those of the new program
+    if (m_learningTable)
+    {
+        m_learningTable->Forget(); // the tables of the new program are empty
+    }
     if (m_programFeatures)
     {
         std::string config = get_config();
@@ -928,8 +932,10 @@ P4SwitchCore::IngressPass::IngressDone()
                    : arrival->second.lastBit;
         m_core.m_arrivals.erase(arrival);
     }
-    m_core.m_passRelease =
-        std::max(now, base + m_core.ProfileLatency(m_inPort, m_bytes, m_parser, m_features));
+    // A packet that waited for the pipeline (SwitchRate) takes the time of the
+    // pipeline after the wait, as with PipelineDelay
+    ProfileDelay delay = m_core.ProfileLatency(m_inPort, m_bytes, m_parser, m_features);
+    m_core.m_passRelease = std::max(now, base + delay.beforePipeline) + delay.inPipeline;
     m_core.m_passBytes = m_bytes;
     m_core.m_passReleaseSet = true;
 }
@@ -942,7 +948,7 @@ P4SwitchCore::IngressPass::~IngressPass()
     m_core.m_passBytes = m_previousBytes;
 }
 
-Time
+P4SwitchCore::ProfileDelay
 P4SwitchCore::ProfileLatency(uint32_t inPort,
                              uint32_t bytes,
                              const std::string& parser,
@@ -951,7 +957,14 @@ P4SwitchCore::ProfileLatency(uint32_t inPort,
     const TargetProfile& profile = *m_targetProfile;
     if (profile.ingressModel == TargetProfile::IngressModel::FIXED)
     {
-        return profile.fixedLatency;
+        // Cut-through: the fixed latency counts from the first bit, while the
+        // frame is still arriving (and the switch has no input buffer);
+        // store-and-forward: from when the pipeline takes the frame
+        if (profile.forwardingMode == TargetProfile::ForwardingMode::CUT_THROUGH)
+        {
+            return {profile.fixedLatency, Time(0)};
+        }
+        return {Time(0), profile.fixedLatency};
     }
 
     // Model A for the ingress pipeline. Its baseline contains the first parse
@@ -993,24 +1006,25 @@ P4SwitchCore::ProfileLatency(uint32_t inPort,
         WarnOnce(warning);
     }
 
-    // Model B before and after it: the MAC receive delay and the egress up to
-    // the start of serialization. Both are fixed, so the egress part can be
-    // added before the traffic manager: the frames start on the wire at the
-    // same times (doc/latency-model.md).
-    double ns = ingress.TotalNs();
+    // Model B before and after it: the MAC receive delay, before the pipeline,
+    // and the egress up to the start of serialization. The egress delay is
+    // fixed, so it can be added before the traffic manager: the frames start
+    // on the wire at the same times (doc/latency-model.md).
+    double beforeNs = 0;
+    double inNs = ingress.TotalNs();
     for (const TargetProfile::MeasuredDelay* delay : {&profile.macRxDelay, &profile.egressDelay})
     {
         if (!delay->given)
         {
             continue;
         }
-        ns += delay->meanNs;
+        (delay == &profile.macRxDelay ? beforeNs : inNs) += delay->meanNs;
         if (delay->lineRateBps > 0 && delay->lineRateBps != portSpeedBps)
         {
             WarnOnce("Model B: " + delay->source + " was measured at another port speed");
         }
     }
-    return Time::FromDouble(ns, Time::NS);
+    return {Time::FromDouble(beforeNs, Time::NS), Time::FromDouble(inNs, Time::NS)};
 }
 
 bool

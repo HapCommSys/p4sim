@@ -786,20 +786,28 @@ class P4SwitchCore : public bm::Switch
     std::map<int, LearnList> m_learnLists; //!< the learn lists of the P4 program, by ID
     bool m_learnListsRead{false};          //!< m_learnLists holds those of the current program
 
+    /// The latency that the target profile gives a packet, in two parts
+    struct ProfileDelay
+    {
+        Time beforePipeline; //!< from its arrival until the pipeline can take it
+        Time inPipeline;     //!< from when the pipeline takes it to the egress queues
+    };
+
     /**
      * @brief The latency that the target profile gives a packet, from its
      *        arrival (cut-through: its first bit; else its last bit) to the
-     *        egress queues (see IngressPass)
+     *        egress queues (see IngressPass). A packet that waits for the
+     *        pipeline (SwitchRate) gets inPipeline after the wait.
      * @param inPort its ingress port
      * @param bytes its size
      * @param parser the ingress parser
      * @param features what it did in the ingress
      * @return the latency
      */
-    Time ProfileLatency(uint32_t inPort,
-                        uint32_t bytes,
-                        const std::string& parser,
-                        const PacketLatencyFeatures& features);
+    ProfileDelay ProfileLatency(uint32_t inPort,
+                                uint32_t bytes,
+                                const std::string& parser,
+                                const PacketLatencyFeatures& features);
 
     /**
      * @brief Book an egress port without a queue for a frame, if it is free

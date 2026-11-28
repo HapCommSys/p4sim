@@ -28,10 +28,11 @@ class P4SwitchCore;
  * an exact-match table, its other fields the parameters of an action. A key
  * that the table holds is refreshed (and gets the new parameters); a new key
  * takes a free entry or, in a full table that evicts, replaces the entry
- * refreshed least recently. An entry that is not refreshed for the lifetime is
- * removed. On the data-plane path the entry is installed when the switch
- * processes the digest, so the next frame sees it; on the control-plane path,
- * the control-plane delay later.
+ * refreshed least recently. The table is full at the target's capacity or
+ * when the P4 table is, whichever comes first. An entry that is not refreshed
+ * for the lifetime is removed. On the data-plane path the entry is installed
+ * when the switch processes the digest, so the next frame sees it; on the
+ * control-plane path, the control-plane delay later.
  */
 class P4LearningTable
 {
@@ -75,8 +76,18 @@ class P4LearningTable
     /// \return the entries replaced because the table was full
     uint64_t GetNEvictions() const;
 
-    /// \return the digests not learned because the table was full and does not evict
+    /**
+     * \return the digests not learned: the table was full and does not evict,
+     * or BMv2 did not take the entry
+     */
     uint64_t GetNRejected() const;
+
+    /**
+     * \brief Forget the learned entries, without removing them from BMv2: the
+     * switch swapped its P4 program, whose tables start empty. Digests on
+     * their way (control-plane path) are still installed, in the new table.
+     */
+    void Forget();
 
     P4LearningTable(const P4LearningTable&) = delete;
     P4LearningTable& operator=(const P4LearningTable&) = delete;
@@ -93,6 +104,17 @@ class P4LearningTable
 
     /// Install or refresh the entry of a digest
     void Apply(const P4Digest& digest);
+
+    /// \return the action data of \p params
+    static bm::ActionData MakeActionData(const std::vector<std::string>& params);
+
+    /// Add the entry of \p key to the BMv2 table
+    bm::MatchErrorCode Add(const std::string& key,
+                           const std::vector<std::string>& params,
+                           bm::entry_handle_t* handle);
+
+    /// Replace: remove the entry refreshed least recently
+    void EvictOldest();
 
     /// Remove an entry
     void Remove(const std::string& key);

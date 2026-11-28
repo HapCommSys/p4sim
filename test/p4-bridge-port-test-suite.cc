@@ -243,7 +243,8 @@ BridgePortTestCase::DoRun()
  * (SimpleNetDevice has no PhyTxEnd trace). Host 0 sends 5 frames, 1 us apart,
  * to the host behind such a port, and all 5 must arrive. Without a data rate,
  * the port is free again at once. With one, it is free again one transmission
- * time after each frame, so the switch sends the frames that far apart.
+ * time after each frame, so the switch sends the frames that far apart. Then
+ * host 1 sends a frame: the switch must receive it on that port too.
  */
 class BridgePortNoTxEndTestCase : public TestCase
 {
@@ -283,10 +284,17 @@ class BridgePortNoTxEndTestCase : public TestCase
         m_switchTx.push_back(Simulator::Now());
     }
 
+    /// Counts a frame that the switch receives
+    void SwitchRx(Ptr<const Packet>)
+    {
+        m_switchRx++;
+    }
+
     DataRate m_rate; ///< "DataRate" of the SimpleNetDevice port, 0 = none
     Ptr<SwitchedEthernetHostDevice> m_host0;
     uint32_t m_received{0};
     std::vector<Time> m_switchTx; ///< when the switch sent each frame
+    uint32_t m_switchRx{0};       ///< frames the switch received
 };
 
 void
@@ -327,17 +335,24 @@ BridgePortNoTxEndTestCase::DoRun()
     host1->SetReceiveCallback(MakeCallback(&BridgePortNoTxEndTestCase::Receive, this));
     sw->TraceConnectWithoutContext("MacTx",
                                    MakeCallback(&BridgePortNoTxEndTestCase::SwitchTx, this));
+    sw->TraceConnectWithoutContext("MacRx",
+                                   MakeCallback(&BridgePortNoTxEndTestCase::SwitchRx, this));
     sw->Initialize();
 
     for (uint32_t k = 0; k < 5; k++)
     {
         Simulator::Schedule(MicroSeconds(1 + k), &BridgePortNoTxEndTestCase::Send, this);
     }
+    // Host 1 sends a frame through the port (the program drops it)
+    Simulator::Schedule(MicroSeconds(100), [host1]() {
+        host1->Send(Create<Packet>(PAYLOAD), Mac48Address("00:00:00:00:00:10"), 0x88b5);
+    });
     Simulator::Stop(MilliSeconds(10));
     Simulator::Run();
 
     NS_TEST_EXPECT_MSG_EQ(m_received, 5, "Frames for the SimpleNetDevice port were lost");
     NS_TEST_EXPECT_MSG_EQ(m_switchTx.size(), 5, "The switch did not send 5 frames");
+    NS_TEST_EXPECT_MSG_EQ(m_switchRx, 6, "The switch did not receive host 1's frame");
     if (m_rate.GetBitRate() > 0)
     {
         // The SimpleNetDevice sends the payload without a header

@@ -170,18 +170,24 @@ class TargetProfile
     uint32_t decisionHeaderBytes{0}; ///< bytes, preamble included, before a cut-through decision
     MeasuredDelay macRxDelay;        ///< T0 to T1 (Model B)
     MeasuredDelay egressDelay;       ///< egress pipeline to the start of serialization (Model B)
-    int64_t queueCapacity{-1};       ///< frames per egress port; -1: the simulator's queues
-    uint32_t preambleBytes{0};       ///< preamble and start-of-frame delimiter
-    uint32_t ipgBytes{0};            ///< interpacket gap
-    Time egressGuard;                ///< idle time a port needs before a new frame; 0: none
-    uint32_t lookupsPerCycle{0};     ///< lookups per clock period; 0: unlimited
-    uint32_t tableCapacity{0};       ///< entries per learning table; 0: the P4 program's
-    bool evictOldest{false};         ///< a full learning table replaces its oldest entry
-    Time entryLifetime;              ///< an entry not refreshed for this long ages out; 0: never
+    /// Frames per output queue: above 0, QueueBufferSize; 0: no queue (a busy
+    /// port drops the frame); -1: QueueBufferSize as set
+    int64_t queueCapacity{-1};
+    /// Preamble and start-of-frame delimiter: the switch warns if a link has
+    /// no framing; the bytes on the wire come from the link's Framing
+    uint32_t preambleBytes{0};
+    uint32_t ipgBytes{0};        ///< interpacket gap
+    Time egressGuard;            ///< idle time a port needs before a new frame; 0: none
+    uint32_t lookupsPerCycle{0}; ///< lookups per clock period; 0: unlimited
+    uint32_t tableCapacity{0};   ///< entries per learning table; 0: the P4 program's
+    bool evictOldest{false};     ///< a full learning table replaces its oldest entry
+    Time entryLifetime;          ///< an entry not refreshed for this long ages out; 0: never
     LearningPath learningPath{LearningPath::NONE}; ///< where learned entries come from
     bool controlPlaneDelayGiven{false}; ///< false: the profile has no control-plane delay
     Time controlPlaneDelay;             ///< digest to installed entry (CONTROL_PLANE)
-    bool fcsCheck{false};               ///< whether the target drops corrupted frames
+    /// Whether the target drops corrupted frames: a description only, since
+    /// P4sim's frames carry no FCS to check
+    bool fcsCheck{false};
 
   private:
     /// \return the coefficients for \p portSpeedBps, or the nearest set with a warning

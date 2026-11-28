@@ -151,7 +151,8 @@ P4SwitchNetDevice::GetTypeId()
 
             .AddAttribute("QueueBufferSize",
                           "Capacity of each output queue, in packets: per port and "
-                          "priority (v1model, PSA), or per port (PNA).",
+                          "priority (v1model, PSA), or per port (PNA). The queue_capacity "
+                          "of a TargetProfile, if it gives one above 0, replaces it.",
                           UintegerValue(128),
                           MakeUintegerAccessor(&P4SwitchNetDevice::m_queueBufferSize),
                           MakeUintegerChecker<size_t>())
@@ -369,6 +370,10 @@ P4SwitchNetDevice::DoInitialize()
             NS_ABORT_MSG_IF(profile.ingressModel != TargetProfile::IngressModel::FIXED,
                             "Target profile " << profile.name
                                               << ": cut-through needs a fixed latency");
+            NS_ABORT_MSG_IF(m_switchRate > 0,
+                            "Target profile " << profile.name
+                                              << ": cut-through has no input buffer; "
+                                                 "SwitchRate must be 0");
             for (const Ptr<NetDevice>& bridgePort : m_bridgePorts)
             {
                 NS_ABORT_MSG_IF(bridgePort,
@@ -377,6 +382,10 @@ P4SwitchNetDevice::DoInitialize()
                                                      "ports, not bridge ports");
             }
             m_cutThroughBytes = profile.decisionHeaderBytes;
+        }
+        if (profile.queueCapacity > 0)
+        {
+            m_queueBufferSize = static_cast<size_t>(profile.queueCapacity);
         }
         for (uint32_t port = 0; port < m_portChannels.size(); port++)
         {
@@ -1054,8 +1063,12 @@ P4SwitchNetDevice::ReceiveFromDevice(Ptr<NetDevice> incomingPort,
     eth.SetLengthType(protocol);
     frame->AddHeader(eth);
 
+    // Its first bit arrived its time on the wire earlier; a port device
+    // without a data rate (SimpleNetDevice by default) delivers it at once
     Time lastBit = Simulator::Now();
-    Time firstBit = lastBit - GetPortDataRate(inPort).CalculateBytesTxTime(frame->GetSize());
+    DataRate rate = GetPortDataRate(inPort);
+    Time firstBit =
+        rate.GetBitRate() > 0 ? lastBit - rate.CalculateBytesTxTime(frame->GetSize()) : lastBit;
     HandleArrival(frame, inPort, protocol, dst48, firstBit, lastBit);
 }
 

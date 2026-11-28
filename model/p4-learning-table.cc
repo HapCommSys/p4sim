@@ -60,14 +60,10 @@ P4LearningTable::Apply(const P4Digest& digest)
 {
     const std::string& key = digest.fields.front().value;
     std::vector<std::string> params;
-    bm::ActionData data;
     for (size_t i = 1; i < digest.fields.size(); i++)
     {
         params.push_back(digest.fields[i].value);
-        data.push_back_action_data(digest.fields[i].value.data(),
-                                   static_cast<int>(digest.fields[i].value.size()));
     }
-    P4RuntimeApi api(m_core);
 
     auto known = m_entries.find(key);
     if (known != m_entries.end())
@@ -75,8 +71,10 @@ P4LearningTable::Apply(const P4Digest& digest)
         // A known address: refresh its age and, if it moved, its parameters
         if (known->second.params != params)
         {
-            if (api.ModifyFlowEntry(m_config.table, known->second.handle, m_config.action, data) !=
-                0)
+            if (P4RuntimeApi(m_core).ModifyFlowEntry(m_config.table,
+                                                     known->second.handle,
+                                                     m_config.action,
+                                                     MakeActionData(params)) != 0)
             {
                 NS_LOG_WARN("Cannot change the entry of a learned key in " << m_config.table);
             }
@@ -94,31 +92,77 @@ P4LearningTable::Apply(const P4Digest& digest)
             m_rejected++;
             return;
         }
-        auto oldest = m_entries.begin();
-        for (auto it = m_entries.begin(); it != m_entries.end(); ++it)
-        {
-            if (it->second.lastSeen < oldest->second.lastSeen)
-            {
-                oldest = it;
-            }
-        }
-        m_evictions++;
-        Remove(oldest->first);
+        EvictOldest();
     }
 
-    std::vector<bm::MatchKeyParam> match = {bm::MatchKeyParam(bm::MatchKeyParam::Type::EXACT, key)};
     Entry entry;
     entry.params = params;
     entry.lastSeen = Simulator::Now();
-    if (api.AddFlowEntry(m_config.table, match, m_config.action, std::move(data), &entry.handle) !=
-        0)
+    bm::MatchErrorCode rc = Add(key, params, &entry.handle);
+    if (rc == bm::MatchErrorCode::TABLE_FULL && m_config.evictOldest && !m_entries.empty())
     {
-        // The P4 table may be smaller than the target's capacity
+        // The P4 table is full before the target's capacity, or the target
+        // gives none: it limits the learning table
+        EvictOldest();
+        rc = Add(key, params, &entry.handle);
+    }
+    if (rc != bm::MatchErrorCode::SUCCESS)
+    {
         m_rejected++;
-        NS_LOG_WARN("Cannot add a learned entry to " << m_config.table);
+        NS_LOG_WARN("Cannot add a learned entry to " << m_config.table << " (BMv2 error "
+                                                     << static_cast<int>(rc) << ")");
         return;
     }
     StartAging(key, m_entries.emplace(key, entry).first->second);
+}
+
+bm::ActionData
+P4LearningTable::MakeActionData(const std::vector<std::string>& params)
+{
+    bm::ActionData data;
+    for (const std::string& param : params)
+    {
+        data.push_back_action_data(param.data(), static_cast<int>(param.size()));
+    }
+    return data;
+}
+
+bm::MatchErrorCode
+P4LearningTable::Add(const std::string& key,
+                     const std::vector<std::string>& params,
+                     bm::entry_handle_t* handle)
+{
+    std::vector<bm::MatchKeyParam> match = {bm::MatchKeyParam(bm::MatchKeyParam::Type::EXACT, key)};
+    return m_core
+        .mt_add_entry(0, m_config.table, match, m_config.action, MakeActionData(params), handle);
+}
+
+void
+P4LearningTable::EvictOldest()
+{
+    auto oldest = m_entries.begin();
+    for (auto it = m_entries.begin(); it != m_entries.end(); ++it)
+    {
+        if (it->second.lastSeen < oldest->second.lastSeen)
+        {
+            oldest = it;
+        }
+    }
+    if (oldest != m_entries.end())
+    {
+        m_evictions++;
+        Remove(oldest->first);
+    }
+}
+
+void
+P4LearningTable::Forget()
+{
+    for (auto& [key, entry] : m_entries)
+    {
+        Simulator::Cancel(entry.expiry);
+    }
+    m_entries.clear();
 }
 
 void

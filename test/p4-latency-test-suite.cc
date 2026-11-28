@@ -13,14 +13,17 @@
  * - Store-and-forward with the tofino-like profile: a frame leaves the switch
  *   MAC receive + Model A + egress after its last bit; the switch reports the
  *   first and last bit of each frame; a short frame does not overtake a long
- *   one in the pipeline.
+ *   one in the pipeline; with SwitchRate, the latency follows the wait for the
+ *   pipeline; a profile's queue_capacity sizes the output queues.
  * - C1-C9: the zero-buffer cut-through switch of the cut-through-reference
  *   profile, in the 3-port configuration (C1 and C6 also with 4 ports), cycle
  *   for cycle as the RTL simulation of the handoff spec: fixed latency from the
  *   first bit, drops at a busy egress port, flooding per port, one lookup per
  *   cycle (p4src/cut_through).
- * - Learning: a table of 4 entries that replaces the oldest and ages entries
- *   after 300 s (data plane), and the control-plane path with its delay.
+ * - Learning: a table of 4 entries (the profile's capacity, or the P4 table's
+ *   size) that replaces the oldest and ages entries after 300 s (data plane),
+ *   the control-plane path with its delay, and a program swap, after which
+ *   the table learns again.
  */
 
 #include "ns3/core-module.h"
@@ -39,6 +42,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <fstream>
 #include <functional>
 #include <sstream>
 #include <tuple>
@@ -106,6 +110,9 @@ struct Setup
     std::string rate{"100Mbps"}; ///< data rate of every link
     bool learning{false};        ///< LearningTable MyIngress.dmac, action MyIngress.forward
     Time controlPlaneDelay{NanoSeconds(-1)}; ///< ControlPlaneDelay
+    uint64_t switchRate{0};                  ///< SwitchRate
+    uint32_t queueBufferSize{0};             ///< QueueBufferSize; 0: its default
+    bool enableSwap{false};                  ///< EnableSwap
 };
 
 /// The MAC address of host \p i: A, B, C, D = 00:00:00:00:00:0a, 0b, 0c, 0d
@@ -136,6 +143,12 @@ Build(const Setup& setup)
         net.sw->SetAttribute("LearningAction", StringValue("MyIngress.forward"));
         net.sw->SetAttribute("ControlPlaneDelay", TimeValue(setup.controlPlaneDelay));
     }
+    net.sw->SetAttribute("SwitchRate", UintegerValue(setup.switchRate));
+    if (setup.queueBufferSize > 0)
+    {
+        net.sw->SetAttribute("QueueBufferSize", UintegerValue(setup.queueBufferSize));
+    }
+    net.sw->SetAttribute("EnableSwap", BooleanValue(setup.enableSwap));
     switchNode->AddDevice(net.sw);
     for (uint32_t i = 0; i < setup.ports; i++)
     {
@@ -557,6 +570,80 @@ class PipelineOrderTestCase : public TestCase
     }
 };
 
+/**
+ * \ingroup p4sim-tests
+ * Store-and-forward with SwitchRate: three 800-byte frames back to back, with
+ * a pipeline that takes one packet per 10 us. A frame that waits for the
+ * pipeline gets Model A and the egress delay after the wait (the MAC receive
+ * delay passes during it), as PipelineDelay is added after the wait.
+ */
+class SwitchRateLatencyTestCase : public TestCase
+{
+  public:
+    SwitchRateLatencyTestCase()
+        : TestCase("Store-and-forward with SwitchRate: the latency follows the wait")
+    {
+    }
+
+  private:
+    void DoRun() override
+    {
+        const uint64_t RATE = 100000; // packets per second: one per 10 us
+        Setup setup;
+        setup.json = "latency/latency_v1model.json";
+        setup.flowTable = "latency/flowtable.txt";
+        setup.profile = "tofino-like";
+        setup.ports = 2;
+        setup.rate = "10Gbps";
+        setup.switchRate = RATE;
+        Network net = Build(setup);
+        std::vector<Received> frames;
+        RecordAll(net, &frames);
+        std::vector<Time> lastBits;
+        net.sw->TraceConnectWithoutContext(
+            "FrameArrival",
+            MakeBoundCallback(
+                +[](std::vector<Time>* t, Ptr<const Packet>, uint32_t, Time, Time lastBit) {
+                    t->push_back(lastBit);
+                },
+                &lastBits));
+
+        const uint32_t FRAME = 800;
+        const uint32_t N = 3;
+        for (uint32_t k = 0; k < N; k++)
+        {
+            Simulator::Schedule(MilliSeconds(1), &SendUdp, net.hosts[0], FRAME);
+        }
+        Simulator::Stop(MilliSeconds(2));
+        Simulator::Run();
+        Simulator::Destroy();
+
+        std::shared_ptr<const TargetProfile> profile = TargetProfile::Load("tofino-like");
+        IngressLatencyEstimate a =
+            profile->TofinoIngressLatencyNs(FRAME,
+                                            10e9,
+                                            {20, 8},
+                                            {Table("exact", 32), Table("lpm", 32)});
+        double macRxNs = profile->macRxDelay.meanNs;
+        double inPipelineNs = a.TotalNs() + profile->egressDelay.meanNs;
+        double wireNs = LinkFraming(LinkFraming::ETHERNET).GetWireBytes(FRAME) * 8 / 10.0;
+        double serviceNs = 1e9 / RATE;
+
+        NS_TEST_ASSERT_MSG_EQ(lastBits.size(), N, "FrameArrival");
+        NS_TEST_ASSERT_MSG_EQ(frames.size(), N, "Frames lost");
+        // The pipeline takes a frame at its last bit if it is idle, else when
+        // it has served the previous one
+        double startNs = 0;
+        for (uint32_t k = 0; k < N; k++)
+        {
+            double lastBitNs = lastBits[k].GetNanoSeconds();
+            startNs = (k == 0) ? lastBitNs : std::max(lastBitNs, startNs + serviceNs);
+            double expectedNs = std::max(lastBitNs + macRxNs, startNs) + inPipelineNs + wireNs;
+            NS_TEST_EXPECT_MSG_EQ_TOL(frames[k].at.GetNanoSeconds(), expectedNs, 2, "Frame " << k);
+        }
+    }
+};
+
 namespace
 {
 
@@ -736,24 +823,37 @@ class CutThroughScenarioTestCase : public TestCase
 /**
  * \ingroup p4sim-tests
  * The learning table of the cut-through reference (data plane): an entry is
- * there for the next frame; 4 entries, a new address replaces the one
- * refreshed least recently; entries age out 300 s after their last frame
+ * there for the next frame; 4 entries (the profile's capacity, or the size of
+ * the P4 table), a new address replaces the one refreshed least recently;
+ * entries age out 300 s after their last frame
  */
 class LearningLimitsTestCase : public TestCase
 {
   public:
-    LearningLimitsTestCase()
-        : TestCase("Learning table: capacity, replace the oldest, aging (data plane)")
+    /**
+     * \param p4TableSize false: the profile cut-through-reference (capacity
+     * 4); true: a copy without table_capacity
+     * (p4src/cut_through/profile_table_size.json), so that the P4 table (size
+     * 4) limits the learning table
+     */
+    explicit LearningLimitsTestCase(bool p4TableSize)
+        : TestCase(std::string("Learning table: capacity (") +
+                   (p4TableSize ? "the P4 table's" : "the profile's") +
+                   "), replace the oldest, aging (data plane)"),
+          m_p4TableSize(p4TableSize)
     {
     }
 
   private:
+    bool m_p4TableSize; ///< see the constructor
+
     void DoRun() override
     {
         Setup setup;
         setup.json = "cut_through/l2_switch_v1model.json";
         setup.flowTable = "cut_through/flowtable_3ports.txt";
-        setup.profile = "cut-through-reference";
+        setup.profile = m_p4TableSize ? GetP4TestPath() + "/cut_through/profile_table_size.json"
+                                      : "cut-through-reference";
         setup.learning = true;
         Network net = Build(setup);
         P4LearningTable* table = net.sw->GetCore()->GetLearningTable();
@@ -875,6 +975,149 @@ class ControlPlaneLearningTestCase : public TestCase
 
 /**
  * \ingroup p4sim-tests
+ * A program swap: the tables of the new program start empty, so the learning
+ * table forgets its entries, and the next frame of a known address installs
+ * it again, in the new program's table
+ */
+class LearningSwapTestCase : public TestCase
+{
+  public:
+    LearningSwapTestCase()
+        : TestCase("Learning table: a program swap empties it, and it learns again")
+    {
+    }
+
+  private:
+    void DoRun() override
+    {
+        Setup setup;
+        setup.json = "cut_through/l2_switch_v1model.json";
+        setup.flowTable = "cut_through/flowtable_3ports.txt";
+        setup.profile = "cut-through-reference";
+        setup.learning = true;
+        setup.enableSwap = true;
+        Network net = Build(setup);
+        P4SwitchCore* core = net.sw->GetCore();
+        P4LearningTable* table = core->GetLearningTable();
+        NS_TEST_ASSERT_MSG_EQ((table != nullptr), true, "No learning table");
+
+        std::ifstream file(GetP4TestPath() + "/" + setup.json);
+        std::stringstream json;
+        json << file.rdbuf();
+        const Mac48Address source("00:00:00:00:01:01");
+        auto bmv2Entries = [core]() {
+            return static_cast<uint32_t>(P4RuntimeApi(*core).GetNumEntries("MyIngress.dmac"));
+        };
+
+        uint32_t learned = 0;
+        uint32_t afterSwap = 0;
+        uint32_t afterSwapBmv2 = 0;
+        uint32_t relearned = 0;
+        uint32_t relearnedBmv2 = 0;
+        int loaded = -1;
+        int swapped = -1;
+        Simulator::Schedule(MilliSeconds(1), &SendFrom, net.hosts[0], source, 60);
+        Simulator::Schedule(MilliSeconds(2), [&]() {
+            learned = table->GetNEntries();
+            loaded = core->load_new_config(json.str());
+            swapped = core->swap_configs(); // the switch is idle: at once
+            afterSwap = table->GetNEntries();
+            afterSwapBmv2 = bmv2Entries();
+        });
+        Simulator::Schedule(MilliSeconds(3), &SendFrom, net.hosts[0], source, 60);
+        Simulator::Schedule(MilliSeconds(4), [&]() {
+            relearned = table->GetNEntries();
+            relearnedBmv2 = bmv2Entries();
+        });
+        Simulator::Stop(MilliSeconds(5));
+        Simulator::Run();
+        Simulator::Destroy();
+
+        NS_TEST_EXPECT_MSG_EQ(learned, 1, "The address was not learned");
+        NS_TEST_EXPECT_MSG_EQ(loaded, bm::RuntimeInterface::SUCCESS, "load_new_config failed");
+        NS_TEST_EXPECT_MSG_EQ(swapped, bm::RuntimeInterface::SUCCESS, "swap_configs failed");
+        NS_TEST_EXPECT_MSG_EQ(afterSwapBmv2, 0, "The new program's table is not empty");
+        NS_TEST_EXPECT_MSG_EQ(afterSwap, 0, "The learning table kept the old program's entries");
+        NS_TEST_EXPECT_MSG_EQ(relearned, 1, "The address was not learned again");
+        NS_TEST_EXPECT_MSG_EQ(relearnedBmv2, 1, "The new program's table lacks the address");
+    }
+
+    void DoTeardown() override
+    {
+        Simulator::Destroy();
+    }
+};
+
+/**
+ * \ingroup p4sim-tests
+ * A profile's queue_capacity sets the size of the output queues: hosts 0 and
+ * 2 each send 20 frames to host 1 at once, so port 1 queues them. With
+ * queue_capacity 2 (p4src/latency/profile_queue2.json, no latency) the switch
+ * delivers the same frames at the same times as with QueueBufferSize 2 and no
+ * profile, and fewer than with the default queues.
+ */
+class QueueCapacityTestCase : public TestCase
+{
+  public:
+    QueueCapacityTestCase()
+        : TestCase("queue_capacity of a profile: the size of the output queues")
+    {
+    }
+
+  private:
+    /// The frames host 1 receives with \p profile and \p queueBufferSize
+    static std::vector<Received> Run(const std::string& profile, uint32_t queueBufferSize)
+    {
+        Setup setup;
+        setup.json = "latency/latency_v1model.json";
+        setup.flowTable = "latency/flowtable.txt";
+        setup.profile = profile;
+        setup.rate = "10Gbps";
+        setup.queueBufferSize = queueBufferSize;
+        Network net = Build(setup);
+        std::vector<Received> frames;
+        RecordAll(net, &frames);
+        for (uint32_t k = 0; k < 20; k++)
+        {
+            Simulator::Schedule(MilliSeconds(1), &SendUdp, net.hosts[0], 800);
+            Simulator::Schedule(MilliSeconds(1), &SendUdp, net.hosts[2], 800);
+        }
+        Simulator::Stop(MilliSeconds(2));
+        Simulator::Run();
+        Simulator::Destroy();
+        frames.erase(std::remove_if(frames.begin(),
+                                    frames.end(),
+                                    [](const Received& f) { return f.port != 1; }),
+                     frames.end());
+        return frames;
+    }
+
+    void DoRun() override
+    {
+        std::vector<Received> withProfile =
+            Run(GetP4TestPath() + "/latency/profile_queue2.json", 0);
+        std::vector<Received> withAttribute = Run("", 2);
+        std::vector<Received> withDefault = Run("", 0);
+
+        NS_TEST_EXPECT_MSG_EQ(withDefault.size(), 40, "The default queues dropped frames");
+        NS_TEST_EXPECT_MSG_LT(withProfile.size(), 40, "queue_capacity 2 dropped no frame");
+        NS_TEST_ASSERT_MSG_EQ(withProfile.size(),
+                              withAttribute.size(),
+                              "queue_capacity 2 differs from QueueBufferSize 2");
+        for (size_t i = 0; i < withProfile.size(); i++)
+        {
+            NS_TEST_EXPECT_MSG_EQ(withProfile[i].at, withAttribute[i].at, "Frame " << i);
+        }
+    }
+
+    void DoTeardown() override
+    {
+        Simulator::Destroy();
+    }
+};
+
+/**
+ * \ingroup p4sim-tests
  * The latency models of the target profiles
  */
 static class P4LatencyTestSuite : public TestSuite
@@ -935,6 +1178,8 @@ static class P4LatencyTestSuite : public TestSuite
         AddTestCase(new ProgramFeaturesTestCase(), P4SIM_TEST_QUICK);
         AddTestCase(new StoreAndForwardLatencyTestCase(), P4SIM_TEST_QUICK);
         AddTestCase(new PipelineOrderTestCase(), P4SIM_TEST_QUICK);
+        AddTestCase(new SwitchRateLatencyTestCase(), P4SIM_TEST_QUICK);
+        AddTestCase(new QueueCapacityTestCase(), P4SIM_TEST_QUICK);
 
         // Model C, 3 ports unless stated: (port, destination, bytes, start cycle)
         // -> (egress port, source, preamble, destination MAC, first idle cycle)
@@ -992,7 +1237,9 @@ static class P4LatencyTestSuite : public TestSuite
         AddTestCase(new CutThroughScenarioTestCase("C9", 3, {{0, "A", 64, 0}}, {}),
                     P4SIM_TEST_QUICK);
 
-        AddTestCase(new LearningLimitsTestCase(), P4SIM_TEST_QUICK);
+        AddTestCase(new LearningLimitsTestCase(false), P4SIM_TEST_QUICK);
+        AddTestCase(new LearningLimitsTestCase(true), P4SIM_TEST_QUICK);
         AddTestCase(new ControlPlaneLearningTestCase(), P4SIM_TEST_QUICK);
+        AddTestCase(new LearningSwapTestCase(), P4SIM_TEST_QUICK);
     }
 } g_p4LatencyTestSuite;

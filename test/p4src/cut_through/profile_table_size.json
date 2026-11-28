@@ -1,0 +1,23 @@
+{
+  "name": "cut-through-table-size",
+  "description": "Test profile (p4-latency): cut-through-reference without table_capacity, so that the size of the P4 table limits the learning table.",
+  "forwarding_mode": "cut_through",
+  "line_rate_bps": 100000000,
+  "clock_period_ns": 20,
+  "ingress_latency_model": "fixed",
+  "fixed_latency_ns": 1260,
+  "decision_header_bytes": 14,
+  "mac_rx_delay_ns": null,
+  "egress_delay_ns": null,
+  "queue_capacity": 0,
+  "preamble_bytes": 8,
+  "ipg_bytes": 12,
+  "egress_guard_ns": 1020,
+  "lookups_per_cycle": 1,
+  "table_capacity": null,
+  "eviction": "replace_oldest",
+  "entry_lifetime_s": 300,
+  "learning_path": "data_plane",
+  "control_plane_update_delay_ns": null,
+  "fcs_check": false
+}

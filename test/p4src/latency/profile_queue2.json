@@ -1,0 +1,23 @@
+{
+  "name": "queue-2",
+  "description": "Test profile (p4-latency): store-and-forward without latency, output queues of 2 frames.",
+  "forwarding_mode": "store_and_forward",
+  "line_rate_bps": null,
+  "clock_period_ns": null,
+  "ingress_latency_model": "fixed",
+  "fixed_latency_ns": 0,
+  "decision_header_bytes": null,
+  "mac_rx_delay_ns": null,
+  "egress_delay_ns": null,
+  "queue_capacity": 2,
+  "preamble_bytes": 8,
+  "ipg_bytes": 12,
+  "egress_guard_ns": null,
+  "lookups_per_cycle": null,
+  "table_capacity": null,
+  "eviction": null,
+  "entry_lifetime_s": null,
+  "learning_path": null,
+  "control_plane_update_delay_ns": null,
+  "fcs_check": false
+}

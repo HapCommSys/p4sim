@@ -44,6 +44,14 @@ reaches the egress queues at its own time:
 - **store-and-forward**: last bit + the profile's latency;
 - **cut-through**: first bit + the profile's latency (below).
 
+With `SwitchRate`, a packet can wait in the input buffer until the pipeline
+takes it. It then gets the pipeline's part of the latency after the wait, as
+`PipelineDelay` is added after it: for tofino-like, the time it reaches the
+queues is max(last bit + MAC receive, the time the pipeline takes it) + Model A
++ egress; for a fixed store-and-forward latency, the time the pipeline takes it
++ the latency. A cut-through switch has no input buffer and needs `SwitchRate`
+0.
+
 Packets keep their order: none leaves the pipeline before a packet that entered
 it earlier (in hardware the pipeline is in order; with a per-packet latency a
 short packet right behind a long one would otherwise overtake it). Copies of a
@@ -172,10 +180,13 @@ other fields the action's parameters. The profile sets:
 
 | Field | Meaning |
 |---|---|
-| `table_capacity` | entries; null: the P4 table's size |
+| `table_capacity` | entries; null: the P4 table's size (the table is also full when the P4 table is) |
 | `eviction` | `replace_oldest`: a full table replaces the entry refreshed least recently; null: new keys are not learned |
 | `entry_lifetime_s` | an entry not refreshed for this long is removed; null: never |
 | `learning_path` | `data_plane`: installed with the frame; `control_plane`: `ControlPlaneDelay` later |
+
+A program swap empties the tables: the learning table forgets its entries and
+learns them again from the next frames.
 
 The tofino-like profile learns through the control plane and gives no delay:
 no value for Tofino was found (the handoff spec cites Harkous et al. for
@@ -194,7 +205,7 @@ must be set.
 | `fixed_latency_ns` | | 1260 |
 | `decision_header_bytes` | | 14 |
 | `mac_rx_delay_ns`, `egress_delay_ns` | 27, 340.8 (DPTP, with min, max, port speed, source) | in the fixed latency |
-| `queue_capacity` | null (P4sim's queues) | 0 |
+| `queue_capacity` | null (P4sim's queues, `QueueBufferSize`) | 0 |
 | `preamble_bytes`, `ipg_bytes` | 8, 12 | 8, 12 |
 | `egress_guard_ns` | null | 1020 |
 | `lookups_per_cycle` | null (unlimited) | 1 |
@@ -202,7 +213,12 @@ must be set.
 | `learning_path`, `control_plane_update_delay_ns` | `control_plane`, null | `data_plane` |
 | `fcs_check` | true (assumed, not verified) | false |
 
-A profile can be any JSON file with these fields.
+A profile can be any JSON file with these fields. `queue_capacity` above 0
+sets the size of each output queue, as `QueueBufferSize` does; 0 means no
+queue: a frame for a busy port is dropped there (the guard above). The wire
+bytes come from each link's `Framing`; `preamble_bytes` only lets the switch
+warn about a link without framing. `fcs_check` describes the target: P4sim's
+frames carry no FCS, so it checks none.
 
 ## Validation
 
@@ -210,9 +226,11 @@ The suite `p4-latency`:
 
 - A1-A8: Model A's three terms within 0.01 ns of the vectors of the handoff spec.
 - C1-C9: the RTL scenarios, cycle for cycle (3 ports; C1 and C6 also with 4).
-- Model A end to end on a v1model switch at 10 Gbps, the features of a packet
-  from BMv2's events, the order of the packets, the first and last bit of a
-  frame, and the learning tables (capacity, eviction, aging, both paths).
+- Model A end to end on a v1model switch at 10 Gbps, also with `SwitchRate`,
+  the features of a packet from BMv2's events, the order of the packets, the
+  first and last bit of a frame, `queue_capacity`, and the learning tables
+  (capacity from the profile or the P4 table, eviction, aging, both paths, a
+  program swap).
 
 ## Known gaps
 
