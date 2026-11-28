@@ -62,9 +62,18 @@ REGISTER_PRIMITIVE(modify_field);
 
 class modify_field_rng_uniform : public ActionPrimitive<Data&, const Data&, const Data&>
 {
+  public:
+    // BMv2 creates the primitive while the switch loads its program: it keeps the
+    // engine of that switch, which follows ns-3's seed and run (see
+    // P4SwitchCore::GetRandomEngine())
+    modify_field_rng_uniform()
+        : m_engine(ns3::P4SwitchCore::LoadingRandomEngine())
+    {
+    }
+
+  private:
     void operator()(Data& f, const Data& b, const Data& e)
     {
-        // The engine follows ns-3's seed and run (see P4SwitchCore::RandomEngine())
         using distrib64 = std::uniform_int_distribution<uint64_t>;
         auto lo = b.get_uint64();
         auto hi = e.get_uint64();
@@ -75,8 +84,10 @@ class modify_field_rng_uniform : public ActionPrimitive<Data&, const Data&, cons
             return;
         }
         distrib64 distribution(lo, hi);
-        f.set(distribution(ns3::P4SwitchCore::RandomEngine()));
+        f.set(distribution(m_engine));
     }
+
+    std::mt19937_64& m_engine; ///< the random number engine of the switch
 };
 
 REGISTER_PRIMITIVE(modify_field_rng_uniform);

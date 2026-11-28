@@ -596,9 +596,12 @@ public:
    * @param index Index of the target switch.
    * @param tableName Name of the match-action table.
    * @param handle Entry handle to retrieve meter rates from.
+   * @param configs If not null, receives the rates, the lowest first: empty if
+   * the meter has none or the call failed. The rates are logged as well.
    */
   void GetMeterRates(uint32_t index, const std::string &tableName,
-                     bm::entry_handle_t handle);
+                     bm::entry_handle_t handle,
+                     std::vector<bm::Meter::rate_config_t> *configs = nullptr);
 
   /**
    * @brief Reset meter rates for a specific table entry.
@@ -619,33 +622,61 @@ public:
                           const std::vector<bm::Meter::rate_config_t> &configs);
 
   /**
-   * @brief Set meter rates for a specific meter index.
+   * @brief Set the rates of one meter of a meter array.
    * @param index Index of the target switch.
-   * @param meterName Name of the meter.
+   * @param meterName Name of the meter array.
    * @param meterIndex Index within the meter array.
    * @param configs Meter rate configuration vector.
    */
-  void SetMeterRates(uint32_t index, const std::string &meterName,
+  void MeterSetRates(uint32_t index, const std::string &meterName,
                      size_t meterIndex,
                      const std::vector<bm::Meter::rate_config_t> &configs);
 
   /**
-   * @brief Get meter rates for a specific meter index.
+   * @brief Get the rates of one meter of a meter array.
    * @param index Index of the target switch.
-   * @param meterName Name of the meter.
+   * @param meterName Name of the meter array.
    * @param meterIndex Index within the meter array.
+   * @param configs If not null, receives the rates, the lowest first: empty if
+   * the meter has none or the call failed. The rates are logged as well.
    */
-  void GetMeterRates(uint32_t index, const std::string &meterName,
-                     size_t meterIndex);
+  void MeterGetRates(uint32_t index, const std::string &meterName,
+                     size_t meterIndex,
+                     std::vector<bm::Meter::rate_config_t> *configs = nullptr);
 
   /**
-   * @brief Reset meter rates for a specific meter index.
+   * @brief Reset the rates of one meter of a meter array.
    * @param index Index of the target switch.
-   * @param meterName Name of the meter.
+   * @param meterName Name of the meter array.
    * @param meterIndex Index within the meter array.
    */
-  void ResetMeterRates(uint32_t index, const std::string &meterName,
+  void MeterResetRates(uint32_t index, const std::string &meterName,
                        size_t meterIndex);
+
+  /**
+   * @brief Set the rates of one meter of a meter array.
+   * @deprecated Use MeterSetRates(). This overload and the one for a table
+   * entry take an integer as third argument, so an int does not compile.
+   */
+  [[deprecated("use MeterSetRates()")]] void
+  SetMeterRates(uint32_t index, const std::string &meterName, size_t meterIndex,
+                const std::vector<bm::Meter::rate_config_t> &configs);
+
+  /**
+   * @brief Log the rates of one meter of a meter array.
+   * @deprecated Use MeterGetRates() (see SetMeterRates()).
+   */
+  [[deprecated("use MeterGetRates()")]] void
+  GetMeterRates(uint32_t index, const std::string &meterName,
+                size_t meterIndex);
+
+  /**
+   * @brief Reset the rates of one meter of a meter array.
+   * @deprecated Use MeterResetRates() (see SetMeterRates()).
+   */
+  [[deprecated("use MeterResetRates()")]] void
+  ResetMeterRates(uint32_t index, const std::string &meterName,
+                  size_t meterIndex);
 
   // ======= Register  Functions  =======
 

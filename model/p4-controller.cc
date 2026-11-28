@@ -1468,8 +1468,12 @@ void P4Controller::SetMeterRates(
   }
 }
 
-void P4Controller::GetMeterRates(uint32_t index, const std::string &tableName,
-                                 bm::entry_handle_t handle) {
+void P4Controller::GetMeterRates(
+    uint32_t index, const std::string &tableName, bm::entry_handle_t handle,
+    std::vector<bm::Meter::rate_config_t> *rates) {
+  if (rates) {
+    rates->clear();
+  }
   if (index >= m_connectedSwitches.size()) {
     NS_LOG_WARN("Invalid switch index " << index);
     return;
@@ -1488,6 +1492,9 @@ void P4Controller::GetMeterRates(uint32_t index, const std::string &tableName,
                                     << " on switch " << index << ":");
     for (const auto &cfg : configs) {
       NS_LOG_INFO("  CIR=" << cfg.info_rate << ", PBS=" << cfg.burst_size);
+    }
+    if (rates) {
+      *rates = configs;
     }
   } else {
     NS_LOG_WARN("GetMeterRates failed for table [" << tableName
@@ -1542,7 +1549,7 @@ void P4Controller::SetMeterArrayRates(
   }
 }
 
-void P4Controller::SetMeterRates(
+void P4Controller::MeterSetRates(
     uint32_t index, const std::string &meterName, size_t idx,
     const std::vector<bm::Meter::rate_config_t> &configs) {
   if (index >= m_connectedSwitches.size()) {
@@ -1558,16 +1565,20 @@ void P4Controller::SetMeterRates(
 
   bool success = api->MeterSetRates(meterName, idx, configs) == 0;
   if (success) {
-    NS_LOG_INFO("SetMeterRates succeeded for meter ["
+    NS_LOG_INFO("MeterSetRates succeeded for meter ["
                 << meterName << "] index " << idx << " on switch " << index);
   } else {
-    NS_LOG_WARN("SetMeterRates failed for meter ["
+    NS_LOG_WARN("MeterSetRates failed for meter ["
                 << meterName << "] index " << idx << " on switch " << index);
   }
 }
 
-void P4Controller::GetMeterRates(uint32_t index, const std::string &meterName,
-                                 size_t idx) {
+void P4Controller::MeterGetRates(
+    uint32_t index, const std::string &meterName, size_t idx,
+    std::vector<bm::Meter::rate_config_t> *rates) {
+  if (rates) {
+    rates->clear();
+  }
   if (index >= m_connectedSwitches.size()) {
     NS_LOG_WARN("Invalid switch index " << index);
     return;
@@ -1587,13 +1598,16 @@ void P4Controller::GetMeterRates(uint32_t index, const std::string &meterName,
     for (const auto &cfg : configs) {
       NS_LOG_INFO("  CIR=" << cfg.info_rate << ", PBS=" << cfg.burst_size);
     }
+    if (rates) {
+      *rates = configs;
+    }
   } else {
-    NS_LOG_WARN("GetMeterRates failed for meter ["
+    NS_LOG_WARN("MeterGetRates failed for meter ["
                 << meterName << "] index " << idx << " on switch " << index);
   }
 }
 
-void P4Controller::ResetMeterRates(uint32_t index, const std::string &meterName,
+void P4Controller::MeterResetRates(uint32_t index, const std::string &meterName,
                                    size_t idx) {
   if (index >= m_connectedSwitches.size()) {
     NS_LOG_WARN("Invalid switch index " << index);
@@ -1608,12 +1622,29 @@ void P4Controller::ResetMeterRates(uint32_t index, const std::string &meterName,
 
   bool success = api->MeterResetRates(meterName, idx) == 0;
   if (success) {
-    NS_LOG_INFO("ResetMeterRates succeeded for meter ["
+    NS_LOG_INFO("MeterResetRates succeeded for meter ["
                 << meterName << "] index " << idx << " on switch " << index);
   } else {
-    NS_LOG_WARN("ResetMeterRates failed for meter ["
+    NS_LOG_WARN("MeterResetRates failed for meter ["
                 << meterName << "] index " << idx << " on switch " << index);
   }
+}
+
+// The deprecated names of the meter-array functions
+void P4Controller::SetMeterRates(
+    uint32_t index, const std::string &meterName, size_t idx,
+    const std::vector<bm::Meter::rate_config_t> &configs) {
+  MeterSetRates(index, meterName, idx, configs);
+}
+
+void P4Controller::GetMeterRates(uint32_t index, const std::string &meterName,
+                                 size_t idx) {
+  MeterGetRates(index, meterName, idx);
+}
+
+void P4Controller::ResetMeterRates(uint32_t index, const std::string &meterName,
+                                   size_t idx) {
+  MeterResetRates(index, meterName, idx);
 }
 
 // ======= Register  Functions  =======

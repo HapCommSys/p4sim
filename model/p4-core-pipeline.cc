@@ -23,6 +23,8 @@
 #include "ns3/register-access-v1model.h"
 #include "ns3/simulator.h"
 
+#include <iostream>
+
 #undef LOG_INFO
 #undef LOG_ERROR
 #undef LOG_DEBUG
@@ -131,6 +133,22 @@ P4CorePipeline::ReceivePacket(Ptr<Packet> packetIn,
     bm::Field& f_egress_spec = phv->get_field("standard_metadata.egress_spec");
     uint32_t egress_spec = f_egress_spec.get_uint();
 
+    // No packet replication engine and no second pass: say so, as the program
+    // would otherwise just behave differently than on v1model
+    if (phv->has_field("intrinsic_metadata.mcast_grp") &&
+        phv->get_field("intrinsic_metadata.mcast_grp").get_uint() != 0)
+    {
+        WarnIgnored("multicast (mcast_grp)");
+    }
+    if (RegisterAccess::get_clone_mirror_session_id(bm_packet.get()) != 0)
+    {
+        WarnIgnored("clones");
+    }
+    if (RegisterAccess::get_resubmit_flag(bm_packet.get()) != 0)
+    {
+        WarnIgnored("resubmit");
+    }
+
     // LEARNING
     int learn_id = RegisterAccess::get_lf_field_list(bm_packet.get());
     if (learn_id > 0)
@@ -157,6 +175,15 @@ P4CorePipeline::ReceivePacket(Ptr<Packet> packetIn,
 
     egress_mau->apply(bm_packet.get());
 
+    if (RegisterAccess::get_clone_mirror_session_id(bm_packet.get()) != 0)
+    {
+        WarnIgnored("clones");
+    }
+    if (RegisterAccess::get_recirculate_flag(bm_packet.get()) != 0)
+    {
+        WarnIgnored("recirculation");
+    }
+
     // The egress dropped the packet (mark_to_drop() sets egress_spec)
     if (phv->get_field("standard_metadata.egress_spec").get_uint() == m_dropPort)
     {
@@ -170,6 +197,20 @@ P4CorePipeline::ReceivePacket(Ptr<Packet> packetIn,
     // === Send the packet once the pipeline delay is over (see EnqueueNow())
     Enqueue(egress_spec, std::move(bm_packet));
     return 0;
+}
+
+void
+P4CorePipeline::WarnIgnored(const std::string& request)
+{
+    if (!m_warnedAbout.insert(request).second)
+    {
+        return;
+    }
+    std::cerr << "P4sim warning: switch " << m_p4SwitchId
+              << " runs the pipeline core (P4SwitchArch 3), which ignores " << request
+              << "; the frame goes to its egress_spec only. v1model (P4SwitchArch 0) "
+                 "supports it. Shown once per switch."
+              << std::endl;
 }
 
 int

@@ -22,7 +22,7 @@ Mininet to ns-3.
 | `multicast` | `p4-multicast` | the solution, unchanged; the exercise's network and the table entries of its solution, whose multicast group already has port 4 (step 6 of the exercise) |
 | `p4runtime` | `p4-basic-controller` | P4sim has no P4Runtime server: `P4Controller` changes the tables from the simulation |
 | `qos` | `p4-queue-test`, `p4-voq-fabric-priority` | an own program, `qos.p4`, with priority queues instead of the exercise's DSCP marking |
-| `source_routing` | `p4-source-routing` | the solution, but its `drop()` does not drop |
+| `source_routing` | `p4-source-routing` | the solution |
 
 (\*) The program forwards ARP, and its IPv4 table is an exact-match table with another
 name (`ipv4_nhop` or `ipv4_exact` instead of the solution's `ipv4_lpm`), so the

@@ -15,7 +15,7 @@ No environment variable is needed, and suites can run in parallel.
 
 ## Suites
 
-21 suites, 161 test cases. The first seven do not need BMv2.
+21 suites, 167 test cases. The first seven do not need BMv2.
 
 | Suite | Checks |
 |---|---|
@@ -27,9 +27,9 @@ No environment variable is needed, and suites can run in parallel.
 | `p4-queue` | egress queue: capacity, rate, FIFO, per-port rate, priorities |
 | `p4-traffic-manager` | the VOQ + fabric traffic manager |
 | `p4sim` | v1model, PSA and PNA load their program; Thrift ports; `BmLogLevel` and its default, `off`; errors in a flow table are printed with file and line; a switch runs commands again during the simulation; the deprecated `ChannelType` and `EnableTracing` are still accepted |
-| `p4-packet` | frames sent into a switch and the frames that leave it, on v1model, PNA, PSA and the pipeline core; a frame from a host on a switched-Ethernet port enters on that port; the PSA and PNA externs `Counter`, `Meter`, `Hash` and `InternetChecksum`, and `Random`, which p4c compiles into v1model's `random()`; `random()` follows ns-3's seed and run |
+| `p4-packet` | frames sent into a switch and the frames that leave it, on v1model, PNA, PSA and the pipeline core; a frame from a host on a switched-Ethernet port enters on that port; the PSA and PNA externs `Counter`, `Meter`, `Hash` and `InternetChecksum`, and `Random`, which p4c compiles into v1model's `random()`; `random()` follows ns-3's seed and run, with an engine per switch; the pipeline core warns about the multicast, clones, resubmit and recirculation that it ignores |
 | `p4-externs` | a meter extern of a PSA or PNA program counts simulation time (rates set by `psa_switch_CLI` or `P4RuntimeApi`); `P4RuntimeApi` reads, writes and resets a PSA counter extern and sets, reads and unsets meter rates, by index and for the whole array |
-| `p4-controller` | `P4Controller`, read back from the switch: flow entries on v1model, PSA, PNA and the pipeline core, action profiles and a meter array on v1model, mirroring sessions on v1model and PSA; `P4RuntimeApi` with a null output argument fails; the mirroring, queue and time commands of `simple_switch_CLI` and `psa_switch_CLI`; the Thrift port of a destroyed switch answers with an error |
+| `p4-controller` | `P4Controller`, read back from the switch: flow entries on v1model, PSA, PNA and the pipeline core, action profiles and a meter array on v1model (the rates read through `P4Controller` too), mirroring sessions on v1model and PSA; `P4RuntimeApi` with a null output argument fails; the mirroring, queue and time commands of `simple_switch_CLI` and `psa_switch_CLI`; the Thrift port of a destroyed switch answers with an error |
 | `p4-digest` | every `digest()` gives one record to the `Digest` trace, with the fields of its learn list, when the ingress processes the frame (v1model, pipeline core); after a program swap the records follow the new program; L2 learning with `P4Controller`'s digest callback: learned hosts are no longer flooded; a destroyed controller gets no digests, and each switch is registered once |
 | `p4-config-swap` | `EnableSwap`: an idle switch swaps its program at once, a busy one when its last packet has left; frames that arrive meanwhile wait and use the new program (v1model through `P4Controller` and `simple_switch_CLI`, PSA; also with frames in the transfer buffer); without `EnableSwap` the program stays |
 | `p4-egress` | a congested switched-Ethernet port sends back to back at its line rate; a switch with a full egress queue, or one whose port just refused a frame, can be destroyed |

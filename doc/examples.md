@@ -42,7 +42,7 @@ port, set up by `SwitchedEthernetHelper`; and **bridge** ports, ordinary ns-3 de
 | `p4-calc` | The switch answers calculator requests (tutorial `calc` [4]) | v1model | CSMA | `calc` |
 | `p4-l3-router` | Three routers in a line with L3 forwarding | v1model | CSMA | `l3_router` |
 | `p4-link-monitoring` | In-band probes that collect link utilisation (tutorial `link_monitor` [5]) | v1model | CSMA | `link_monitor` |
-| `p4-source-routing` | Source routing with a header stack; `--path` gives the egress ports (tutorial `source_routing` [6]) | v1model | CSMA | `source_routing` |
+| `p4-source-routing` | Source routing with a header stack; `--path` gives the egress ports, and a frame without source routes is dropped (tutorial `source_routing` [6]) | v1model | CSMA | `source_routing` |
 | `p4-ecn` | ECN: a switch marks the ECN-capable packets that find a long queue, while another flow congests a 512 kbps link (tutorial `ecn` [8]); `--json` runs your own solution | v1model | switched Ethernet | `ecn` |
 | `p4-mri` | Multi-hop route inspection: every switch adds its ID and queue depth to an IPv4 option (tutorial `mri` [9]); `--json` runs your own solution | v1model | switched Ethernet | `mri` |
 | `p4-multicast` | Frames to unknown addresses go to a multicast group, without the copy for the ingress port; the hosts learn MAC addresses through it with ARP (tutorial `multicast` [10]); `--json` runs your own solution | v1model | switched Ethernet | `multicast` |

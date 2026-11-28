@@ -90,15 +90,18 @@ when the time no longer fits:
 | v1model `deq_timedelta`, the time in the output queue | 32 | 4.29 s |
 | PSA `ingress_timestamp`, `egress_timestamp`, PNA `timestamp` | 64 | 585 years |
 
-After 4.29 s of simulation, `enq_timestamp` has wrapped: take the time in the
-queue from `deq_timedelta`, not from `egress_global_timestamp - enq_timestamp`.
+From 4.29 s after the switch was created, `enq_timestamp` wraps: take the time
+in the queue from `deq_timedelta`, not from
+`egress_global_timestamp - enq_timestamp`.
 
 A simulation gives the same results every time it runs with the same ns-3 seed
 and run number (`RngSeedManager`, `--RngSeed`, `--RngRun`):
 
-- `random()` of v1model and the `Random` extern of PSA and PNA draw from one
-  engine that all switches share; each switch reseeds it from the seed and the
-  run when it loads its program. Another run gives other numbers.
+- `random()` of v1model and the `Random` extern of PSA and PNA draw from an
+  engine of their switch. The switch seeds it from the seed, the run, its node
+  id and its device index when it loads its program; a program swap keeps it.
+  So each switch draws its own numbers, a switch created during the simulation
+  does not change those of the others, and another run gives other numbers.
 - `meter.execute_meter()` of v1model and the `Meter` extern of PSA and PNA
   count simulation time from time 0. Direct meters (`direct_meter`) do not:
   BMv2 runs them with the wall clock, so their colors depend on how fast the
