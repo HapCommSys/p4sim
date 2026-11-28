@@ -124,6 +124,8 @@ The P4 program and its flow tables define the forwarding; the P4 program sees ev
 | `EnableSwap` | Allow swapping the P4 program at run time (`load_new_config` and `swap_configs` of the runtime CLI, or `P4Controller`). The swap waits until the switch holds no packet (PNA: except those in its output queues) |
 | `BmLogLevel` | Level of the BMv2 pipeline log in `/tmp/bmv2-<thrift port>-pipeline.log.txt`, `trace` to `off`. `off` (default) writes none; `trace` logs every step of every packet, which helps to debug a P4 program but slows the simulation down |
 | `ThriftPort` | Thrift port of the runtime CLI. 0 (default) picks the first free port from `$P4SIM_THRIFT_PORT_BASE` (9090), so simulations can run in parallel |
+| `TargetProfile` | A target profile ([doc/latency-model.md](doc/latency-model.md)): `tofino-like` (per-packet latency by Models A and B, store-and-forward), `cut-through-reference` (a zero-buffer cut-through switch), or a JSON file. Replaces `PipelineDelay` for the packets that pass the ingress; empty (default) = none |
+| `LearningTable`, `LearningAction`, `ControlPlaneDelay` | A table that the switch fills from the program's digests, with the profile's capacity, eviction, aging and learning path |
 | `ChannelType`, `EnableTracing` | Deprecated, no effect; removed in the next major version. Trace packets with the trace sources of the devices (`MacTx`, `MacRx`, ...), `PacketSink` or `FlowMonitor` |
 
 ### Switch ports
@@ -184,6 +186,7 @@ For a first look, the [P4sim website](https://mingyumaz.github.io/p4sim/) explai
 | [doc/examples.md](doc/examples.md) | All examples and the format of their P4 files |
 | [doc/tutorials.md](doc/tutorials.md) | The exercises of p4lang/tutorials, their examples, and the way from Mininet to ns-3 |
 | [doc/switch.md](doc/switch.md) | Pipeline and queues of the switch, switched-Ethernet ports and host devices, timing on the wire |
+| [doc/latency-model.md](doc/latency-model.md) | Target profiles: per-packet latency of a Tofino-like switch, a zero-buffer cut-through switch, learning tables |
 | [doc/traffic-manager.md](doc/traffic-manager.md) | The VOQ + fabric traffic manager |
 | [doc/event-driven-tm-scheduler.md](doc/event-driven-tm-scheduler.md) | How the egress sends the next frame when a port is free |
 | [doc/p4sim.rst](doc/p4sim.rst) | The model in the format of the ns-3 documentation |
@@ -194,8 +197,8 @@ For a first look, the [P4sim website](https://mingyumaz.github.io/p4sim/) explai
 
 ## Known Limitations
 
-- `SwitchRate` models only the throughput of the P4 pipeline, not its per-packet latency: a packet that finds the pipeline idle passes it without delay. Use `PipelineDelay` for the latency.
-- Every device stores a frame completely before it forwards it; P4sim does not forward cut-through, and it does not model the stages of a hardware pipeline.
+- `SwitchRate` models only the throughput of the P4 pipeline, not its per-packet latency: a packet that finds the pipeline idle passes it without delay. Use `PipelineDelay` or a `TargetProfile` for the latency.
+- Every device stores a frame completely before it forwards it, except a switch with the `cut-through-reference` profile (v1model, switched-Ethernet ports, no buffer). P4sim does not model the stages of a hardware pipeline; the `tofino-like` profile gives the latency of Tofino's ingress pipeline by a published linear model ([doc/latency-model.md](doc/latency-model.md)).
 - ns-3.39 to ns-3.49; tested with ns-3.39 and ns-3.49.
 - PNA has no Thrift service of its own: its `FlowTablePath` runs in BMv2's generic `bm_CLI`, which has the table commands but not the time commands of `pna_nic_CLI`.
 - PSA and PNA programs give no digest records, as BMv2's `psa_switch` and `pna_nic` give none.
@@ -232,6 +235,7 @@ P4sim is licensed under the [Apache License 2.0](LICENSE). The header of each fi
   - `p4-core-pipeline`;
   - files with code by Vineet Goel: `eth-net-device`, `p4-switch-net-device`, `p4-traffic-manager`; the tests `channel-state-test-suite.cc`, `p4-controller-test-suite.cc` and `p4-traffic-manager-test-suite.cc`; the examples `p4-basic-controller`, `p4-controller-action-profile`, `p4-source-routing` and `p4-voq-fabric-*`.
 - **Apache 2.0 with the notices of BMv2's authors**: the parts taken from BMv2 (`p4-core-v1model`, `p4-core-psa`, `p4-nic-pna`, `p4-queue`, `primitives-v1model.h`, `primitives-pna.h`, `register-access-v1model.h`, `utils/psa_externs`, `patches/config.h`).
+- **Apache-2.0, from BMv2**: `utils/bm-event-observer.h`, a copy of BMv2's `event_observer.h` (Copyright 2026 Yuao Ma), which BMv2 1.15.8 does not install.
 - **MIT**: `patches/bmv2-spdlog-cxx20.patch`, a change to spdlog (Copyright (c) 2014 Gabi Melman) as bundled with BMv2.
 - Code taken from [P4Simulator](https://github.com/kphf1995cm/P4Simulator) (Apache 2.0) says so in its header.
 

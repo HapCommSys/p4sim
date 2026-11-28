@@ -126,8 +126,11 @@ P4CorePipeline::ReceivePacket(Ptr<Packet> packetIn,
     // === Parser and MAU processing
     bm::Parser* parser = this->get_parser("parser");
     bm::Pipeline* ingress_mau = this->get_pipeline("ingress");
+    // With a target profile: what the packet does here sets when it reaches the queues
+    IngressPass pass(*this, *bm_packet, "parser", "ingress");
     parser->parse(bm_packet.get());
     ingress_mau->apply(bm_packet.get());
+    pass.IngressDone();
 
     bm_packet->reset_exit();
     bm::Field& f_egress_spec = phv->get_field("standard_metadata.egress_spec");

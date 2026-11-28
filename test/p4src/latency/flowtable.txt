@@ -1,0 +1,3 @@
+# latency_v1model.p4: frames for 10.0.0.2 go to port 1; sources in 10.0.0.0/8 match
+table_add MyIngress.route MyIngress.to_port 10.0.0.2 => 1
+table_add MyIngress.source MyIngress.mark 10.0.0.0/8 =>

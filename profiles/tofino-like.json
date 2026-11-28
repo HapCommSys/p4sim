@@ -1,0 +1,92 @@
+{
+  "name": "tofino-like",
+  "description": "A Tofino-like switch: Model A (Franco et al. 2024) for the ingress pipeline, Model B (DPTP, SOSR 2019) for MAC receive and egress. Means only; see doc/latency-model.md.",
+  "forwarding_mode": "store_and_forward",
+  "line_rate_bps": null,
+  "clock_period_ns": null,
+  "ingress_latency_model": "franco_linear",
+  "franco_linear": {
+    "source": "Franco et al., A comprehensive latency profiling study of the Tofino P4 programmable ASIC-based hardware, Computer Communications 218 (2024) 14-30, Table 2 and the generalized formula of the appendix. APS BF2556X-1T, TNA, ingress pipeline T1 to T2, mean latency in ns.",
+    "wide_key_bits": 16,
+    "coefficients": [
+      {
+        "line_rate_bps": 10000000000,
+        "a_ns_per_packet_byte": 0.237,
+        "b_ns": 152.42,
+        "c_ns_per_header_byte": 0.221,
+        "d_ns_per_parse_state": 2.886,
+        "e_ns_per_table": {
+          "exact_narrow_key": 0.492,
+          "exact_wide_key": 0.601,
+          "lpm_narrow_key": 0.692,
+          "lpm_wide_key": 0.887
+        }
+      },
+      {
+        "line_rate_bps": 100000000000,
+        "a_ns_per_packet_byte": 0.056,
+        "b_ns": 143.441,
+        "c_ns_per_header_byte": 0.105,
+        "d_ns_per_parse_state": 1.431,
+        "e_ns_per_table": {
+          "exact_narrow_key": 0.607,
+          "exact_wide_key": 0.685,
+          "lpm_narrow_key": 0.749,
+          "lpm_wide_key": 0.896
+        }
+      }
+    ],
+    "validity": {
+      "packet_bytes_min": 100,
+      "packet_bytes_max": 1400,
+      "parse_states_max": 10,
+      "header_bytes_per_state_min": 2,
+      "header_bytes_per_state_max": 20,
+      "tables_max": 10,
+      "key_bits": [8, 16, 32],
+      "keys_per_table_max": 3,
+      "match_types": ["exact", "lpm"],
+      "linear_limits": [
+        {
+          "line_rate_bps": 10000000000,
+          "packet_bytes_max": 800,
+          "parse_states_max": 5,
+          "header_bytes_per_state_max": 5
+        }
+      ]
+    }
+  },
+  "fixed_latency_ns": null,
+  "decision_header_bytes": null,
+  "mac_rx_delay_ns": {
+    "mean": 27,
+    "min": 0,
+    "max": 55,
+    "line_rate_bps": 10000000000,
+    "source": "DPTP (Kannan, Joshi, Chan, SOSR 2019), Table 1, MAC & Parser Delay at Client (MacD), idle links, 10G: from the end of the packet at the Rx MAC to the ingress pipeline"
+  },
+  "egress_delay_ns": {
+    "mean": 340.8,
+    "min": 304,
+    "max": 356,
+    "line_rate_bps": 10000000000,
+    "source": "DPTP (SOSR 2019), Table 1, Request Egress Tx Delay (ReqTx), idle links, 10G: egress pipeline, deparser and Tx MAC, up to the start of serialization (section 3.1, Measuring ReqTx and RespTx)"
+  },
+  "queue_capacity": null,
+  "preamble_bytes": 8,
+  "ipg_bytes": 12,
+  "egress_guard_ns": null,
+  "lookups_per_cycle": null,
+  "table_capacity": null,
+  "eviction": null,
+  "entry_lifetime_s": null,
+  "learning_path": "control_plane",
+  "control_plane_update_delay_ns": null,
+  "fcs_check": true,
+  "notes": [
+    "Models A and B come from different switches, port speeds and probe packets. DPTP's Q segment (about 307 ns) already contains the ingress pipeline, so it is not used; the time from the ingress pipeline into the queue (T2) has no value here.",
+    "The DPTP values are means at 10G; at other port speeds the switch warns. Wire delay (DPTP: about 70 ns over 1 m of DAC, serialization of the 60-byte probe included) is the channel's Delay plus its serialization in the simulator.",
+    "fcs_check: assumed, not verified. control_plane_update_delay_ns: no published value for Tofino; set the device attribute ControlPlaneDelay.",
+    "Forwarding mode of the measured switches: not stated by either paper; store-and-forward here."
+  ]
+}

@@ -252,6 +252,12 @@ class SwitchedEthernetChannel : public Channel
     /** \return Configured propagation delay. */
     Time GetDelay() const;
 
+    /**
+     * \brief Get what the link adds to each frame (the Framing attribute)
+     * \return the framing
+     */
+    LinkFraming::Type GetFraming() const;
+
   private:
     DataRate m_bps; ///< Link data rate
     Time m_delay;   ///< Propagation delay

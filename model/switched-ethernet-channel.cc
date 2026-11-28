@@ -279,6 +279,35 @@ SwitchedEthernetChannel::TransmitStart(Ptr<Packet> p, uint32_t srcId, Time* txTi
     {
         *txTime = Time::From(frameEnd, Time::S) - Simulator::Now();
     }
+
+    // A switch that forwards cut-through gets the frame as soon as the bytes it
+    // decides on have arrived; TransmitEnd() does not deliver it again
+    uint32_t wireBytes = framing.GetWireBytes(p->GetSize());
+    for (uint32_t i = 0; i < m_deviceList.size(); ++i)
+    {
+        if (!m_deviceList[i].IsActive() || i == srcId || m_deviceList[i].IsHost())
+        {
+            continue;
+        }
+        Ptr<P4SwitchNetDevice> dst = m_deviceList[i].devicePtr;
+        uint32_t decisionBytes = std::min(dst->GetCutThroughBytes(), wireBytes);
+        if (decisionBytes == 0)
+        {
+            continue;
+        }
+        Time firstBit = Time::From(start, Time::S) + m_delay;
+        Time headers =
+            Time::From(start + int64x64_t(decisionBytes * 8) / bitRate, Time::S) + m_delay;
+        Time wait = headers > Simulator::Now() ? headers - Simulator::Now() : Time(0);
+        Simulator::ScheduleWithContext(dst->GetNode()->GetId(),
+                                       wait,
+                                       &P4SwitchNetDevice::ReceiveHeaders,
+                                       dst,
+                                       p->Copy(),
+                                       Ptr<SwitchedEthernetChannel>(this),
+                                       i,
+                                       firstBit);
+    }
     return true;
 }
 
@@ -444,6 +473,12 @@ DataRate
 SwitchedEthernetChannel::GetDataRate() const
 {
     return m_bps;
+}
+
+LinkFraming::Type
+SwitchedEthernetChannel::GetFraming() const
+{
+    return m_framing;
 }
 
 Time

@@ -166,6 +166,9 @@ build_lib(
         model/custom-p2p-net-device.cc
         model/p4-controller.cc
         model/p4-runtime-api.cc
+        model/target-profile.cc
+        model/p4-latency-features.cc
+        model/p4-learning-table.cc
         helper/p4-topology-reader-helper.cc
         helper/p4-p2p-helper.cc
     HEADER_FILES # equivalent to headers.source
@@ -198,6 +201,10 @@ build_lib(
         model/custom-p2p-net-device.h
         model/p4-controller.h
         model/p4-runtime-api.h
+        model/target-profile.h
+        model/p4-latency-features.h
+        model/p4-learning-table.h
+        utils/bm-event-observer.h
         helper/p4-topology-reader-helper.h
         helper/p4-p2p-helper.h
         helper/p4-net-builder.h
@@ -232,6 +239,7 @@ build_lib(
         test/p4-p2p-channel-test-suite.cc
         test/p4-queue-test-suite.cc
         test/p4-packet-test-suite.cc
+        test/p4-latency-test-suite.cc
 )
 
 # GetP4SimDir() (utils/format-utils.cc) returns the p4sim folder of this build,
